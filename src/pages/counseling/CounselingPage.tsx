@@ -1,0 +1,354 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAi, useDb, useFs } from '../../app/context'
+import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
+import { listStudents } from '../../lib/roster/roster'
+import { deleteLog, listLogsByStudent, logTags, METHODS, nugaCopyText, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
+import { runNuga } from '../../lib/counseling/nuga'
+import { getSettings } from '../../lib/settings'
+import { buildTableHwpx } from '../../lib/docs/table-doc'
+import { writeSimpleXlsx } from '../../lib/xlsx/simple'
+import { toYmd } from '../../lib/schoolDays'
+import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
+
+type Filter = '전체' | '미정리' | '나이스 미입력'
+
+async function copy(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export default function CounselingPage({ today = toYmd(new Date()) }: { today?: string }) {
+  const db = useDb()
+  const fs = useFs()
+  const ai = useAi()
+  const { classes, classId, choose } = useClasses()
+  const [students, setStudents] = useState<StudentRec[]>([])
+  const [selected, setSelected] = useState<string>()
+  const [logs, setLogs] = useState<CounselingLogRec[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [filter, setFilter] = useState<Filter>('전체')
+  const [topic, setTopic] = useState('')
+  const [query, setQuery] = useState('')
+  const [hits, setHits] = useState<{ log: CounselingLogRec; student: StudentRec }[] | null>(null)
+  const [messages, setMessages] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<Record<string, string[]>>({})
+  const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState<string>() // 원문 고치는 기록 id
+  const seq = useRef(0)
+
+  const student = students.find((s) => s.id === selected)
+
+  const reload = useCallback(async () => {
+    if (!classId) return
+    const n = ++seq.current
+    const studs = await listStudents(db, classId)
+    const c: Record<string, number> = {}
+    for (const s of studs) c[s.id] = (await listLogsByStudent(db, s.id)).length
+    const mine = selected ? await listLogsByStudent(db, selected) : []
+    if (n !== seq.current) return
+    setStudents(studs)
+    setCounts(c)
+    setLogs(mine)
+  }, [db, classId, selected])
+  useEffect(() => {
+    reload()
+  }, [reload])
+
+  if (classes && classes.length === 0) return <NoClass title="상담일지" />
+
+  async function act(fn: () => Promise<string[] | void>) {
+    setMessages([])
+    try {
+      const m = await fn()
+      if (m) setMessages(m)
+    } catch (e) {
+      setMessages([e instanceof Error ? e.message : String(e)])
+    }
+    await reload()
+  }
+
+  async function organize(targets: CounselingLogRec[]) {
+    if (!student) return
+    const s = await getSettings(db)
+    if (!s.ai_enabled) return setMessages(['설정 > AI에서 AI 정리를 켜고 키를 입력하세요.'])
+    if (!targets.length) return setMessages(['정리할 기록이 없습니다.'])
+    setBusy(true)
+    await act(async () => {
+      const results = await runNuga(db, ai, student, students, targets)
+      setWarnings((w) => ({ ...w, ...Object.fromEntries(results.map((r) => [r.id, r.warnings])) }))
+      return [`${results.filter((r) => r.text).length}건을 누가기록으로 정리했습니다.`]
+    })
+    setBusy(false)
+  }
+
+  async function exportLogs(kind: 'hwpx' | 'xlsx') {
+    if (!student) return
+    const header = ['날짜', '장소', '대상·방법·분야', '누가기록(정리본 또는 원문)']
+    const rows = logs.map((l) => [nugaHeader(l.date, '').replace(/\s\|.*$/, ''), l.place, [l.target, l.method, l.topic].filter(Boolean).join(' · '), l.nuga_text || l.content])
+    const title = `${student.number}번 ${student.name} 상담일지`
+    const bytes = kind === 'hwpx' ? await buildTableHwpx({ title, header, rows, colRatios: [3, 3, 3, 10], fontSizePt: 10 }) : await writeSimpleXlsx('상담일지', [header, ...rows])
+    fs.downloadFile(`${title.replace(/\s+/g, '_')}.${kind}`, bytes)
+    setMessages([`${title}.${kind} 파일을 만들었습니다.`])
+  }
+
+  const shown = logs
+    .filter((l) => (filter === '미정리' ? l.nuga_status === '미정리' : filter === '나이스 미입력' ? l.nuga_status !== '나이스 입력 완료' : true))
+    .filter((l) => !topic || l.topic === topic)
+  const unorganized = logs.filter((l) => l.nuga_status === '미정리')
+
+  return (
+    <section className="stack">
+      <h2>상담일지</h2>
+      <div className="row">
+        {classes && <ClassSelect classes={classes} classId={classId} onChange={(id) => { setSelected(undefined); choose(id) }} />}
+        <form
+          className="row"
+          onSubmit={async (e) => {
+            e.preventDefault()
+            setHits(await searchLogs(db, students, query))
+          }}
+        >
+          <label className="inline">
+            검색
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="학급 전체 기록에서 찾기" />
+          </label>
+          <button type="submit">찾기</button>
+          {hits && (
+            <button type="button" onClick={() => setHits(null)}>
+              검색 닫기
+            </button>
+          )}
+        </form>
+      </div>
+      {messages.length > 0 && (
+        <div className="notice" role="status">
+          {messages.map((m) => (
+            <p key={m}>{m}</p>
+          ))}
+        </div>
+      )}
+      {hits && (
+        <div className="card stack wide" aria-label="검색 결과">
+          <h3>{`"${query}" 검색 결과 ${hits.length}건`}</h3>
+          {hits.map(({ log, student: s }) => (
+            <button key={log.id} type="button" className="link left" onClick={() => { setSelected(s.id); setHits(null) }}>
+              {`${s.number}번 ${s.name} · ${nugaHeader(log.date, log.place)} · ${(log.nuga_text || log.content).slice(0, 40)}`}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="attendance-layout">
+        <ul className="plain student-list" aria-label="학생 목록">
+          {students.map((s) => (
+            <li key={s.id}>
+              <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setMessages([]); setEditing(undefined) }}>
+                <span className="num pii">{`${s.number}번 ${s.name}`}</span>
+                {counts[s.id] ? <span className="att">{`${counts[s.id]}건`}</span> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="stack wide">
+          {!student && <p className="muted">학생을 고르세요.</p>}
+          {student && (
+            <>
+              <div className="card wide pii">
+                <h3>{`${student.number}번 ${student.name}`}</h3>
+                <p className="muted">
+                  {[student.guardian_name && `보호자 ${student.guardian_name}`, student.guardian_phone, student.phone && `학생 ${student.phone}`, student.memo].filter(Boolean).join(' · ') || '인적사항은 학급 > 명단에서 입력합니다.'}
+                </p>
+              </div>
+              <NewLog key={student.id} today={today} onSave={async (input) => { let ok = false; await act(async () => { await saveLog(db, { ...input, student_id: student.id }); ok = true }); return ok }} />
+              <div className="row">
+                <label className="inline">
+                  보기
+                  <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
+                    <option>전체</option>
+                    <option>미정리</option>
+                    <option>나이스 미입력</option>
+                  </select>
+                </label>
+                <label className="inline">
+                  분야 보기
+                  <select value={topic} onChange={(e) => setTopic(e.target.value)}>
+                    <option value="">전체</option>
+                    {TOPICS.map((t) => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" className="primary" disabled={busy || !unorganized.length} onClick={() => organize(unorganized)}>
+                  {busy ? '정리 중…' : `미정리 ${unorganized.length}건 누가기록으로 정리`}
+                </button>
+                <button type="button" disabled={!logs.length} onClick={() => exportLogs('hwpx')}>
+                  hwpx로 내보내기
+                </button>
+                <button type="button" disabled={!logs.length} onClick={() => exportLogs('xlsx')}>
+                  엑셀로 내보내기
+                </button>
+              </div>
+              {shown.length === 0 && <p className="muted">{logs.length ? '해당하는 기록이 없습니다.' : '아직 기록이 없습니다.'}</p>}
+              {[...shown].reverse().map((l) => (
+                <LogCard
+                  key={l.id}
+                  log={l}
+                  busy={busy}
+                  editing={editing === l.id}
+                  warnings={warnings[l.id] ?? []}
+                  onEdit={() => setEditing(l.id)}
+                  onCancelEdit={() => setEditing(undefined)}
+                  onSaveContent={(input) => act(async () => { await saveLog(db, { ...input, student_id: l.student_id }, l.id); setEditing(undefined) })}
+                  onDelete={() => act(async () => void (await deleteLog(db, l.id)))}
+                  onOrganize={() => organize([l])}
+                  onSaveNuga={(text) => act(async () => void (await updateNuga(db, l.id, { nuga_text: text })))}
+                  onStatus={(done) => act(async () => void (await updateNuga(db, l.id, { nuga_status: done ? '나이스 입력 완료' : l.nuga_text ? '정리됨' : '미정리' })))}
+                  onCopy={async (text) => setMessages([(await copy(nugaCopyText({ ...l, nuga_text: text }))) ? '복사했습니다. 나이스에 붙여넣으세요.' : '복사하지 못했습니다. 글을 직접 선택해 복사하세요.'])}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+type LogFields = { date: string; place: string; content: string; target: string; method: string; topic: string; time: string }
+const blankFields = (date: string): LogFields => ({ date, place: '', content: '', target: '학생', method: '대면', topic: '', time: '' })
+
+function Choice({ label, options, value, onChange, allowEmpty }: { label: string; options: readonly string[]; value: string; onChange: (v: string) => void; allowEmpty?: boolean }) {
+  return (
+    <div className="row choice" role="radiogroup" aria-label={label}>
+      <span className="muted">{label}</span>
+      {options.map((o) => (
+        <button key={o} type="button" role="radio" aria-checked={value === o} className={value === o ? 'on' : undefined} onClick={() => onChange(allowEmpty && value === o ? '' : o)}>
+          {o}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel }: { initial: LogFields; submitLabel: string; onSubmit: (f: LogFields) => unknown; onCancel?: () => void }) {
+  const [f, setF] = useState(initial)
+  return (
+    <form
+      className="stack wide"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        // 새 기록은 저장에 성공했을 때만 칸을 비운다(실패하면 쓴 글을 남김).
+        if ((await onSubmit(f)) === true && !onCancel) setF({ ...initial, content: '', time: '' })
+      }}
+    >
+      <div className="row">
+        <label className="inline">
+          날짜
+          <input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
+        </label>
+        <label className="inline">
+          시각
+          <input type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
+        </label>
+        <label className="inline">
+          장소
+          <input value={f.place} onChange={(e) => setF({ ...f, place: e.target.value })} placeholder="예: 점심시간 교실" />
+        </label>
+      </div>
+      <Choice label="대상" options={TARGETS} value={f.target} onChange={(v) => setF({ ...f, target: v })} />
+      <Choice label="방법" options={METHODS} value={f.method} onChange={(v) => setF({ ...f, method: v })} />
+      <Choice label="분야" options={TOPICS} value={f.topic} onChange={(v) => setF({ ...f, topic: v })} allowEmpty />
+      <label className="wide">
+        내용(개조식 메모나 녹음 글)
+        <textarea rows={3} value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} />
+      </label>
+      <div className="row">
+        <button type="submit" className="primary">
+          {submitLabel}
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel}>
+            취소
+          </button>
+        )}
+      </div>
+    </form>
+  )
+}
+
+function NewLog({ today, onSave }: { today: string; onSave: (f: LogFields) => Promise<boolean> }) {
+  return (
+    <details className="card wide" open>
+      <summary>새 기록</summary>
+      <LogFieldsForm initial={blankFields(today)} submitLabel="기록 추가" onSubmit={onSave} />
+    </details>
+  )
+}
+
+function LogCard(p: {
+  log: CounselingLogRec
+  busy: boolean
+  editing: boolean
+  warnings: string[]
+  onEdit: () => void
+  onCancelEdit: () => void
+  onSaveContent: (f: LogFields) => void
+  onDelete: () => void
+  onOrganize: () => void
+  onSaveNuga: (text: string) => void
+  onStatus: (done: boolean) => void
+  onCopy: (currentText: string) => void
+}) {
+  const l = p.log
+  const [nuga, setNuga] = useState(l.nuga_text)
+  // AI 정리 등으로 저장값이 바뀌면 칸도 따라간다(카드를 다시 만들지 않아 포커스·클릭이 끊기지 않음).
+  useEffect(() => setNuga(l.nuga_text), [l.nuga_text])
+  const head = nugaHeader(l.date, l.place)
+  return (
+    <article className="card wide stack" aria-label={`${head} 기록`}>
+      <div className="row between wide">
+        <strong>{head}</strong>
+        {logTags(l) && <span className="muted">{logTags(l)}</span>}
+        <span className={`tag${l.nuga_status === '미정리' ? ' warn' : ''}`}>{l.nuga_status}</span>
+      </div>
+      {p.editing ? (
+        <LogFieldsForm initial={{ ...blankFields(l.date), place: l.place, content: l.content, target: l.target || '학생', method: l.method || '대면', topic: l.topic ?? '', time: l.time ?? '' }} submitLabel="고친 내용 저장" onSubmit={p.onSaveContent} onCancel={p.onCancelEdit} />
+      ) : (
+        <p className="pre pii">{l.content}</p>
+      )}
+      <label className="wide">
+        누가기록
+        <textarea className="pii" rows={3} value={nuga} onChange={(e) => setNuga(e.target.value)} onBlur={() => nuga !== l.nuga_text && p.onSaveNuga(nuga.trim())} placeholder="AI로 정리하거나 직접 쓰세요." />
+      </label>
+      <span className="muted">{`${nuga.length}자`}</span>
+      {p.warnings.map((w) => (
+        <p key={w} className="warn">
+          {`⚠ ${w}`}
+        </p>
+      ))}
+      <div className="row">
+        <button type="button" disabled={p.busy} onClick={p.onOrganize}>
+          {l.nuga_text ? '다시 정리' : '누가기록으로 정리'}
+        </button>
+        <button type="button" onClick={() => p.onCopy(nuga.trim())}>
+          복사
+        </button>
+        <label className="inline">
+          <input type="checkbox" checked={l.nuga_status === '나이스 입력 완료'} onChange={(e) => p.onStatus(e.target.checked)} />
+          나이스 입력 완료
+        </label>
+        {!p.editing && (
+          <button type="button" onClick={p.onEdit}>
+            원문 고치기
+          </button>
+        )}
+        <button type="button" className="link" onClick={p.onDelete}>
+          지우기
+        </button>
+      </div>
+    </article>
+  )
+}

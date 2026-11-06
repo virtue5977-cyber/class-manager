@@ -1,0 +1,121 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useDb, useFs } from '../../app/context'
+import type { StudentRec } from '../../lib/db/types'
+import { listStudents, classLabel } from '../../lib/roster/roster'
+import { listAttendanceByStudent } from '../../lib/attendance/attendance'
+import { loadReportContext } from '../../lib/absenceReports/reconcile'
+import { computeAttendanceStats, statsTable } from '../../lib/stats'
+import { buildTableHwpx } from '../../lib/docs/table-doc'
+import { writeSimpleXlsx } from '../../lib/xlsx/simple'
+import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
+import { toYmd } from '../../lib/schoolDays'
+
+export default function StatsPage() {
+  const db = useDb()
+  const fs = useFs()
+  const { classes, classId, current, choose } = useClasses()
+  /** '' = 학년도 전체, 아니면 YYYY-MM */
+  const [month, setMonth] = useState('')
+  const [table, setTable] = useState<string[][]>([])
+  const [message, setMessage] = useState<string>()
+  const seq = useRef(0)
+
+  const range = useCallback(() => {
+    if (month) return { from: `${month}-01`, to: `${month}-31`, label: `${Number(month.slice(5))}월` }
+    const y = current?.school_year ?? new Date().getFullYear()
+    return { from: `${y}-03-01`, to: `${y + 1}-02-31`, label: `${y}학년도 전체` }
+  }, [month, current])
+
+  const reload = useCallback(async () => {
+    if (!classId) return
+    const n = ++seq.current
+    const students: StudentRec[] = await listStudents(db, classId, { includeInactive: true })
+    const atts = (await Promise.all(students.map((s) => listAttendanceByStudent(db, s.id)))).flat()
+    const { days } = await loadReportContext(db)
+    const r = range()
+    const t = statsTable(students, computeAttendanceStats(atts, days, r))
+    if (n === seq.current) setTable(t)
+  }, [db, classId, range])
+  useEffect(() => {
+    reload()
+  }, [reload])
+
+  if (classes && classes.length === 0) return <NoClass title="통계" />
+  const title = current ? `${classLabel(current)} 출결 통계` : '출결 통계'
+
+  async function exportAs(kind: 'hwpx' | 'xlsx') {
+    const [header, ...rows] = table
+    const name = `${title}_${range().label}`.replace(/\s+/g, '_')
+    const bytes =
+      kind === 'hwpx'
+        ? await buildTableHwpx({ title, subtitle: range().label, header, rows, landscape: true, fontSizePt: 9, colRatios: [2, 4, ...header.slice(2).map(() => 3)] })
+        : await writeSimpleXlsx('출결통계', table)
+    fs.downloadFile(`${name}.${kind}`, bytes)
+    setMessage(`${name}.${kind} 파일을 만들었습니다.`)
+  }
+
+  return (
+    <section className="stack">
+      <h2>통계</h2>
+      <div className="row">
+        {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
+        <label className="inline">
+          기간
+          <select value={month ? 'month' : 'year'} onChange={(e) => setMonth(e.target.value === 'year' ? '' : toYmd(new Date()).slice(0, 7))}>
+            <option value="year">학년도 전체</option>
+            <option value="month">월별</option>
+          </select>
+        </label>
+        {month && (
+          <label className="inline">
+            월
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+          </label>
+        )}
+        <button type="button" className="primary" onClick={() => exportAs('hwpx')}>
+          hwpx로 내보내기
+        </button>
+        <button type="button" onClick={() => exportAs('xlsx')}>
+          엑셀로 내보내기
+        </button>
+      </div>
+      <p className="muted">결석은 수업일 일수(이어진 묶음 건수), 지각·조퇴·결과는 건수입니다.</p>
+      {message && (
+        <p className="notice" role="status">
+          {message}
+        </p>
+      )}
+      {table.length > 0 && (
+        <div className="table-wrap">
+          <table className="grid stats">
+            <thead>
+              <tr>
+                <th rowSpan={2}>번호</th>
+                <th rowSpan={2}>이름</th>
+                {['결석', '지각', '조퇴', '결과'].map((k) => (
+                  <th key={k} colSpan={3}>
+                    {k}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {['결석', '지각', '조퇴', '결과'].flatMap((k) =>
+                  ['질병', '미인정', '출석인정'].map((c) => <th key={k + c}>{c === '출석인정' ? '인정' : c}</th>),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {table.slice(1).map((row, i) => (
+                <tr key={i} className={i === table.length - 2 ? 'total' : undefined}>
+                  {row.map((v, j) => (
+                    <td key={j} className={j === 1 ? 'pii' : undefined}>{v}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}

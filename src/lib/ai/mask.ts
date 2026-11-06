@@ -1,0 +1,108 @@
+/** AI 전송 전 이름·번호 가리기와 되돌리기(조사 보정 포함). */
+
+export interface Masked {
+  text: string
+  /** 가명·토큰 → 원래 글자 */
+  map: Record<string, string>
+}
+
+const PHONE_RE = /\b01[016789][-. ]?\d{3,4}[-. ]?\d{4}\b|\b0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}\b/g
+/** 학번: "학번 1503", "1503번"처럼 학번으로 보이는 것만(연도·금액은 그대로) */
+const STUDENT_NO_RE = /(?<=학번\s*:?\s*)\d{4,5}\b|\b\d{4,5}(?=번)/g
+
+const pseudonym = (i: number) => `학생${String.fromCharCode(65 + (i % 26))}${i >= 26 ? Math.floor(i / 26) : ''}`
+
+function escapeRe(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** 마지막 글자 받침: 0 없음, 8 ㄹ, 그 밖 >0 */
+function jong(word: string): number {
+  const c = word.charCodeAt(word.length - 1)
+  if (c < 0xac00 || c > 0xd7a3) return 0
+  return (c - 0xac00) % 28
+}
+
+/** 메모에 흔히 쓰는 이름 꼴: 김민수 / 민수 / 지훈이(받침 있는 이름 + 이). 두 글자 이름은 성을 떼지 않는다. */
+export function nameForms(full: string): string[] {
+  const n = full.trim()
+  if (n.length < 2) return []
+  const forms = [n]
+  if (n.length >= 3) {
+    const given = n.slice(1)
+    forms.push(given)
+    if (jong(given)) forms.push(given + '이')
+  } else if (jong(n)) forms.push(n + '이')
+  return forms
+}
+
+/**
+ * 명단 이름(성 뗀 이름·"지훈이" 꼴 포함)을 학생A…로, 전화번호·학번을 [전화1]·[번호1]로 바꾼다.
+ * 같은 학생의 여러 꼴은 같은 가명이 되고, 되돌릴 때는 글에 처음 나온 꼴로 돌린다(지훈이 → 지훈).
+ */
+export function maskText(text: string, names: string[], map: Record<string, string> = {}): Masked {
+  const out: Record<string, string> = { ...map }
+  const reverse = new Map(Object.entries(out).map(([k, v]) => [v, k]))
+  let n = { phone: Object.keys(out).filter((k) => k.startsWith('[전화')).length, no: Object.keys(out).filter((k) => k.startsWith('[번호')).length }
+  let s = text.replace(PHONE_RE, (m) => {
+    const t = `[전화${++n.phone}]`
+    out[t] = m
+    return t
+  })
+  s = s.replace(STUDENT_NO_RE, (m) => {
+    const t = `[번호${++n.no}]`
+    out[t] = m
+    return t
+  })
+  const people = [...new Set(names.map((x) => x.trim()))].map((full) => ({ full, forms: nameForms(full) })).filter((p) => p.forms.length)
+  // 긴 꼴부터 바꿔야 "김민수"가 "민수"보다 먼저 잡힌다.
+  const all = people.flatMap((p) => p.forms.map((f) => ({ f, p }))).sort((a, b) => b.f.length - a.f.length)
+  const pseudoOf = new Map<string, string>()
+  for (const { f, p } of all) {
+    if (!s.includes(f)) continue
+    let ps = pseudoOf.get(p.full) ?? reverse.get(p.full) ?? [...reverse].find(([v]) => p.forms.includes(v))?.[1]
+    if (!ps) {
+      ps = pseudonym(Object.keys(out).filter((k) => k.startsWith('학생')).length)
+      // 되돌릴 꼴: 글에 가장 먼저 나온 꼴. "지훈이"로 썼으면 "지훈"(조사는 따로 고친다)
+      const first = p.forms.filter((x) => s.includes(x)).sort((a, b) => s.indexOf(a) - s.indexOf(b) || b.length - a.length)[0] ?? f
+      out[ps] = first.endsWith('이') && p.forms.includes(first.slice(0, -1)) ? first.slice(0, -1) : first
+      reverse.set(out[ps], ps)
+    }
+    pseudoOf.set(p.full, ps)
+    s = s.replace(new RegExp(escapeRe(f), 'g'), ps)
+  }
+  return { text: s, map: out }
+}
+
+const PAIRS: [string, string][] = [
+  ['은', '는'],
+  ['이', '가'],
+  ['을', '를'],
+  ['과', '와'],
+  ['이랑', '랑'],
+  ['이나', '나'],
+]
+
+/** name 뒤에 올 조사를 받침에 맞게 고른다. */
+export function fixJosa(name: string, josa: string): string {
+  const j = jong(name)
+  if (josa === '으로' || josa === '로') return j === 0 || j === 8 ? '로' : '으로'
+  for (const [withJong, without] of PAIRS) if (josa === withJong || josa === without) return j ? withJong : without
+  return josa
+}
+
+/** 조사 뒤가 띄어쓰기·문장부호·끝일 때만 조사로 본다("학생A이고"의 "이"는 조사가 아님). */
+const JOSA = '(으로|이랑|이나|로|랑|나|은|는|이|가|을|를|과|와)?(?=[\\s.,!?"\'”’)\\]·~]|$)'
+
+export function unmaskText(text: string, map: Record<string, string>): string {
+  let out = text
+  for (const [token, orig] of Object.entries(map).sort((a, b) => b[0].length - a[0].length)) {
+    if (token.startsWith('[')) {
+      out = out.split(token).join(orig)
+      continue
+    }
+    out = out.replace(new RegExp(`${escapeRe(token)}${JOSA}`, 'g'), (_m, josa?: string) => orig + (josa ? fixJosa(orig, josa) : ''))
+    out = out.split(token).join(orig) // 조사 규칙에 안 맞는 나머지(예: 학생A의)
+  }
+  return out
+}

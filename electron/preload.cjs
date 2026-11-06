@@ -1,0 +1,32 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('desktop', {
+  isDesktop: true,
+  onLock(cb) {
+    const h = () => cb()
+    ipcRenderer.on('app-lock', h)
+    return () => ipcRenderer.removeListener('app-lock', h)
+  },
+  update: {
+    get: () => ipcRenderer.invoke('update:get'),
+    check: () => ipcRenderer.invoke('update:check'),
+    restart: () => ipcRenderer.invoke('update:restart'),
+    onState(cb) {
+      const h = (_e, st) => cb(st)
+      ipcRenderer.on('update:state', h)
+      return () => ipcRenderer.removeListener('update:state', h)
+    },
+  },
+  ai: {
+    status: () => ipcRenderer.invoke('ai:status'),
+    ask: (req) => ipcRenderer.invoke('ai:ask', req),
+  },
+  backup: {
+    pick: () => ipcRenderer.invoke('backup:pick'),
+    current: () => ipcRenderer.invoke('backup:current'),
+    write: (name, bytes) => ipcRenderer.invoke('backup:write', name, bytes),
+    read: (name) => ipcRenderer.invoke('backup:read', name),
+    list: () => ipcRenderer.invoke('backup:list'),
+    delete: (name) => ipcRenderer.invoke('backup:delete', name),
+  },
+})

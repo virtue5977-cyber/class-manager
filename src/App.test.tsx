@@ -1,0 +1,44 @@
+import { render, screen, within, waitFor } from '@testing-library/react'
+import App from './App'
+import { createDb } from './lib/db/schema'
+import { createMemoryFsAdapter } from './lib/fs/memory'
+
+const setup = () => render(<App db={createDb('test-' + crypto.randomUUID())} fs={createMemoryFsAdapter()} />)
+
+test('앱 제목이 보인다', async () => {
+  setup()
+  expect(await screen.findByRole('heading', { level: 1, name: '담임 업무' })).toBeInTheDocument()
+})
+
+test('메뉴 8개가 순서대로 보인다', async () => {
+  setup()
+  const nav = await screen.findByRole('navigation')
+  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '달력', '출결', '상담일지', '학급', '결석신고서', '통계', '설정'])
+})
+
+test('암호구가 없으면 시작 배너가 보인다', async () => {
+  setup()
+  expect(await screen.findByText('백업 암호구가 설정되지 않았습니다. 설정에서 백업을 켜 주세요.')).toBeInTheDocument()
+})
+
+test('배너에 설정으로 이동 링크가 있다', async () => {
+  setup()
+  await screen.findByText('백업 암호구가 설정되지 않았습니다. 설정에서 백업을 켜 주세요.')
+  expect(screen.getByRole('link', { name: '설정으로 이동' })).toHaveAttribute('href', '#/settings')
+})
+
+test('설정에서 암호구를 저장하면 배너가 바로 사라진다', async () => {
+  const { default: userEvent } = await import('@testing-library/user-event')
+  const { createMemoryFolder } = await import('./lib/fs/memory')
+  const user = userEvent.setup()
+  window.location.hash = '#/settings'
+  render(<App db={createDb('test-' + crypto.randomUUID())} fs={createMemoryFsAdapter(createMemoryFolder())} backupIterations={1000} />)
+  const bannerText = '백업 암호구가 설정되지 않았습니다. 설정에서 백업을 켜 주세요.'
+  await screen.findByText(bannerText)
+  await user.type(screen.getByLabelText('새 암호구'), '우리반암호구2026')
+  await user.type(screen.getByLabelText('암호구 확인'), '우리반암호구2026')
+  await user.click(screen.getByRole('button', { name: '암호구 저장' }))
+  await screen.findByText('암호구를 저장했습니다.')
+  await waitFor(() => expect(screen.queryByText(bannerText)).not.toBeInTheDocument())
+  window.location.hash = ''
+})

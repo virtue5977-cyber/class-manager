@@ -1,0 +1,32 @@
+// @vitest-environment node
+import { maskText, unmaskText, fixJosa, nameForms } from './mask'
+
+test('성 뗀 이름·"지훈이" 꼴도 같은 가명으로, 전화번호·학번은 되돌릴 수 있게', () => {
+  const m = maskText('민수랑 김민수가 싸움. 지훈이가 울었음. 010-1234-5678로 연락, 학번 1503', ['김민수', '박지훈'])
+  expect(m.text).not.toMatch(/민수|지훈|010-1234|1503/)
+  expect(m.text).toContain('[전화1]')
+  expect(m.text).toContain('[번호1]')
+  expect(new Set(m.text.match(/학생[A-Z]/g)).size).toBe(2)
+  expect(unmaskText(m.text, m.map)).toBe('민수랑 민수가 싸움. 지훈이 울었음. 010-1234-5678로 연락, 학번 1503')
+})
+
+test('연도·금액은 가리지 않는다', () => {
+  expect(maskText('2026.11.20까지 10000원 제출', []).text).toBe('2026.11.20까지 10000원 제출')
+})
+
+test('되돌릴 때 받침에 맞게 조사를 고치고, 낱말 안의 "이·나"는 건드리지 않는다', () => {
+  const m = maskText('지훈, 민수', ['지훈', '민수'])
+  const jh = Object.keys(m.map).find((k) => m.map[k] === '지훈')!
+  const ms = Object.keys(m.map).find((k) => m.map[k] === '민수')!
+  expect(unmaskText(`${jh}는 ${ms}와 놀았고 ${jh}가 ${ms}을 도움. ${jh}로 인해`, m.map)).toBe('지훈은 민수와 놀았고 지훈이 민수를 도움. 지훈으로 인해')
+  expect(unmaskText(`${ms}이고 ${jh}나무 ${ms}의`, m.map)).toBe('민수이고 지훈나무 민수의')
+})
+
+test('fixJosa·nameForms', () => {
+  expect(fixJosa('하늘', '으로')).toBe('로')
+  expect(fixJosa('지훈', '로')).toBe('으로')
+  expect(fixJosa('민수', '과')).toBe('와')
+  expect(nameForms('박지훈')).toEqual(['박지훈', '지훈', '지훈이'])
+  expect(nameForms('이준')).toEqual(['이준', '이준이'])
+  expect(nameForms('김민수')).toEqual(['김민수', '민수'])
+})
