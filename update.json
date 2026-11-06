@@ -1,9 +1,9 @@
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "shell": 1,
-  "bundle": "bundle-0.2.0.zip",
-  "sha256": "861d6de1b4a63b4d9ccc5f4f8d81d25da41b654b36db21f76fe5fd00e21536eb",
-  "sig": "kucIdRA3uOIZMIWCfnFVrWTlqm70tN8rhnSpAHFY20K9ew+t8AbziiNQQXebGe6ucjkIQaZx3E0E10swhE9KBQ==",
-  "note": "Claude Code 연결·자동 업데이트",
+  "bundle": "bundle-0.2.1.zip",
+  "sha256": "134a32f69f28c52df83187f3d927f9ec15f0ad40370d88bffc1ac28ca17a1338",
+  "sig": "YEqVC20l8v/GAx6mdljGiDanceru0AV93tq0XGU/1XlX64u6zd7Vlmo2b7NNo5yOne6j0jqwX2RDOxp9/3f5DA==",
+  "note": "AI 안내 문구 수정",
   "date": "2026-11-06"
 }
