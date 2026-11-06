@@ -1,0 +1,9 @@
+{
+  "version": "0.2.0",
+  "shell": 1,
+  "bundle": "bundle-0.2.0.zip",
+  "sha256": "861d6de1b4a63b4d9ccc5f4f8d81d25da41b654b36db21f76fe5fd00e21536eb",
+  "sig": "kucIdRA3uOIZMIWCfnFVrWTlqm70tN8rhnSpAHFY20K9ew+t8AbziiNQQXebGe6ucjkIQaZx3E0E10swhE9KBQ==",
+  "note": "Claude Code 연결·자동 업데이트",
+  "date": "2026-11-06"
+}
