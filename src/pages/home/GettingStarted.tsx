@@ -36,7 +36,7 @@ export default function GettingStarted() {
         { label: '학급 만들기', hint: '학년도·학년·반', to: '/class', done: classes.length > 0 },
         { label: '명렬표 올리기', hint: '나이스 명렬표 엑셀을 그대로 올리고, 양식으로 보호자 정보 덧붙이기', to: '/class', done: students > 0 },
         { label: '나이스 연결', hint: '학사일정·급식·시간표를 불러오기', to: '/settings', done: !!(await getNeisKey(db)) && !!s.neis_school_code },
-        { label: 'AI 켜기', hint: '누가기록·조례 정리(선택, exe는 Claude Code로 키 없이)', to: '/settings', done: s.ai_enabled && (!!(await getAiKey(db)) || !!getClaudeCode()), optional: true },
+        { label: 'AI 켜기', hint: '누가기록·조례 정리(선택, exe는 Claude Code로 키 없이, Pro 한도 안에서)', to: '/settings', done: s.ai_enabled && (!!(await getAiKey(db)) || !!getClaudeCode()), optional: true },
       ])
     })()
   }, [db])

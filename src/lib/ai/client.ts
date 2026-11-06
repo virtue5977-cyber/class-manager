@@ -77,7 +77,7 @@ export function getClaudeCode(): ClaudeCodeApi | undefined {
 }
 
 /** IPC 오류 앞에 붙는 "Error invoking remote method ..." 를 떼어 낸다. */
-const cleanIpcError = (e: unknown) => new AiError(String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'CLAUDE-CODE')
+const cleanIpcError = (e: unknown) => new AiError(String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').replace('사용량 한도(Pro 프로그램용 크레딧)', 'Pro 사용 한도'), 'CLAUDE-CODE')
 
 /** 설정에 따라 Claude Code(Pro 구독) 또는 API 키로 부른다. 기본값: exe면 Claude Code, 아니면 키. */
 export function createRoutedAiCaller(getProvider: () => Promise<'claude-code' | 'api-key' | undefined>, keyCaller: AiCaller, cc: () => ClaudeCodeApi | undefined = getClaudeCode): AiCaller {

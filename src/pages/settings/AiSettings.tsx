@@ -63,7 +63,7 @@ export default function AiSettings() {
       {provider === 'claude-code' ? (
         <div className="stack">
           <p className="muted">
-            노트북에 설치·로그인된 Claude Code로 정리합니다. 키가 필요 없고, Pro 요금제에 들어 있는 월 $20 프로그램용 크레딧에서 쓰입니다(누가기록 1건 약 0.5원). claude.ai 설정 &gt; 사용량에서 이 크레딧이 켜져 있어야 합니다. exe 버전에서만 됩니다.
+            노트북에 설치·로그인된 Claude Code로 정리합니다. 키가 필요 없고 Pro 요금제 사용 한도 안에서 쓰입니다(추가 요금 없음). exe 버전에서만 됩니다.
           </p>
           <div className="row">
             <button
