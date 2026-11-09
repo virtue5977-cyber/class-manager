@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ACCENTS, DEFAULT_APPEARANCE, readAppearance, saveAppearance, SIZES, type Appearance } from '../../lib/ui/appearance'
+import { THEMES, ACCENTS, DEFAULT_APPEARANCE, readAppearance, saveAppearance, SIZES, type Appearance } from '../../lib/ui/appearance'
 
 export default function AppearanceSettings() {
   const [a, setA] = useState<Appearance>(readAppearance)
@@ -11,6 +11,15 @@ export default function AppearanceSettings() {
   return (
     <div className="card stack wide" aria-label="화면 설정">
       <h3>화면</h3>
+      <div className="row choice swatches" role="radiogroup" aria-label="테마">
+        <span className="muted">테마</span>
+        {THEMES.map((t) => (
+          <button key={t.id} type="button" role="radio" aria-checked={a.theme === t.id} onClick={() => set({ theme: t.id })}>
+            <i style={{ background: `linear-gradient(135deg, ${t.swatch[0]} 50%, ${t.swatch[1]} 50%)`, border: '1px solid var(--line-input)' }} aria-hidden="true" />
+            {t.label}
+          </button>
+        ))}
+      </div>
       <div className="row choice" role="radiogroup" aria-label="글자 크기">
         <span className="muted">글자 크기</span>
         {SIZES.map((s) => (
