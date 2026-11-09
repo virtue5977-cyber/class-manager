@@ -7,7 +7,7 @@
 :root {
   --bg: #f7f6f3; --panel: #ffffff; --ink: #37352f; --sub: #787774; --faint: #9b9a97;
   --line: #e9e9e7; --line-input: #dfdcd9; --hover: rgba(55, 53, 47, .06); --selected: rgba(55, 53, 47, .1);
-  --accent: #097fe8; --accent-hover: #0069c6; --accent-ink: #ffffff; --focus: 0 0 0 2px rgba(9, 127, 232, .35);
+  --accent: #097fe8; --accent-hover: #0069c6; --accent-soft: #e9f3fd; --accent-soft-ink: #0b5cab; --accent-soft-line: #a8cdf3; --accent-ink: #ffffff; --focus: 0 0 0 2px rgba(9, 127, 232, .35);
   --warn: #c4554d; --banner: #fbf3db;
   --c-gray: #787774; --c-gray-bg: #f1f1ef; --c-orange: #d9730d; --c-orange-bg: #faebdd; --c-yellow: #cb912f; --c-yellow-bg: #fbf3db;
   --c-green: #448361; --c-green-bg: #edf3ec; --c-blue: #487ca5; --c-blue-bg: #e9f3f7; --c-purple: #8a67ab; --c-purple-bg: #f6f3f8;
@@ -206,7 +206,7 @@ ol.steps li.done .step-no { background: var(--accent); color: #fff; }
 
 /* ===== 디자인 v2 덮어쓰기 ===== */
 .layout { grid-template-columns: 224px 1fr; }
-.sidebar { background: var(--bg); border-right: 1px solid var(--line); padding: 16px 8px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: 100vh; }
+.sidebar { background: var(--bg); border-right: 1px solid var(--line); padding: 16px 8px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: calc(100vh / var(--zoom, 1)); }
 .sidebar h1 { font-size: 15px; font-weight: 700; margin: 4px 8px 8px; letter-spacing: -.01em; }
 .nav { gap: 2px; }
 .nav a { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--ink); }
@@ -260,7 +260,7 @@ table.grid tbody tr:hover td { background: #fbfbfa; }
 .hide-names-btn.on { background: var(--c-blue-bg); color: var(--c-blue); }
 /* 출결: 학생 격자 */
 .att-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; width: 100%; align-items: start; }
-.att-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 32px); overflow: auto; }
+.att-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh / var(--zoom, 1) - 32px); overflow: auto; }
 ul.student-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .student-cell { width: 100%; min-height: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .student-cell:hover { background: #fbfbfa; }
@@ -290,7 +290,7 @@ ol.briefing-list li input:not([type]):hover { border-color: var(--line-input); }
 .counsel-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; width: 100%; align-items: start; }
 ul.student-list.compact button { min-height: 0; padding: 6px 10px; border-radius: 6px; border: 0; background: transparent; width: 100%; display: flex; justify-content: space-between; }
 ul.student-list.compact button.active { background: var(--selected); font-weight: 600; }
-ul.student-list.compact { max-height: calc(100vh - 160px); overflow: auto; position: sticky; top: 16px; }
+ul.student-list.compact { max-height: calc(100vh / var(--zoom, 1) - 160px); overflow: auto; position: sticky; top: 16px; }
 .log-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .log-toolbar .spacer { flex: 1; }
 article.log { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 16px 0; width: 100%; display: flex; flex-direction: column; gap: 8px; }
@@ -302,8 +302,16 @@ article.log:hover .log-actions, article.log:focus-within .log-actions { opacity:
 @media (max-width: 1100px) { .att-layout { grid-template-columns: 1fr; } .att-side { position: static; max-height: none; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* 고른 선택지는 주 버튼과 구분되게 옅은 파랑으로 */
-.choice button.on, button.on, button[aria-checked="true"], button[aria-pressed="true"]:not(.student-cell):not(.hide-names-btn) { background: var(--c-blue-bg); color: #1f5f8b; border-color: #a9cbe0; font-weight: 600; }
+.choice button.on, button.on, button[aria-checked="true"], button[aria-pressed="true"]:not(.student-cell):not(.hide-names-btn) { background: var(--accent-soft); color: var(--accent-soft-ink); border-color: var(--accent-soft-line); font-weight: 600; }
 ul.student-list.compact button.student-row { border: 0; box-shadow: none; }
 ul.student-list.compact button.student-row.active { background: var(--selected); }
-.student-cell.active { background: #f5faff; }
-.row button.active, .seg button.active { background: var(--c-blue-bg); color: #1f5f8b; border-color: #a9cbe0; font-weight: 600; }
+.student-cell.active { background: var(--accent-soft); }
+.row button.active, .seg button.active { background: var(--accent-soft); color: var(--accent-soft-ink); border-color: var(--accent-soft-line); font-weight: 600; }
+/* 화면 설정: 강조색 프리셋(흰 글자 대비 4.5:1 이상 유지) */
+:root[data-accent="indigo"] { --accent: #4c5fd5; --accent-hover: #3b4cc0; --accent-soft: #eef0fc; --accent-soft-ink: #3442a8; --accent-soft-line: #bcc4f2; --focus: 0 0 0 2px rgba(76, 95, 213, .35); }
+:root[data-accent="green"] { --accent: #24784b; --accent-hover: #1c623d; --accent-soft: #eaf4ee; --accent-soft-ink: #1c623d; --accent-soft-line: #a9d3ba; --focus: 0 0 0 2px rgba(36, 120, 75, .35); }
+:root[data-accent="teal"] { --accent: #0b7a7c; --accent-hover: #086365; --accent-soft: #e6f4f4; --accent-soft-ink: #086365; --accent-soft-line: #a3d6d7; --focus: 0 0 0 2px rgba(11, 122, 124, .35); }
+:root[data-accent="purple"] { --accent: #7a5af5; --accent-hover: #6646e0; --accent-soft: #f2eefe; --accent-soft-ink: #5a3cc7; --accent-soft-line: #cbbdf9; --focus: 0 0 0 2px rgba(122, 90, 245, .35); }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatches button { display: inline-flex; align-items: center; gap: 6px; }
+.swatches i { width: 14px; height: 14px; border-radius: 9999px; display: inline-block; }

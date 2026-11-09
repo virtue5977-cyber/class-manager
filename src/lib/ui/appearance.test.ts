@@ -1,0 +1,15 @@
+import { afterEach, expect, test } from 'vitest'
+import { readAppearance, saveAppearance } from './appearance'
+
+afterEach(() => localStorage.clear())
+
+test('저장한 화면 설정을 적용하고, 잘못된 값은 기본값으로 읽는다', () => {
+  saveAppearance({ size: 'lg', accent: 'green' })
+  expect(readAppearance()).toEqual({ size: 'lg', accent: 'green' })
+  expect(document.documentElement.dataset.accent).toBe('green')
+  expect(document.documentElement.style.getPropertyValue('--zoom')).toBe('1.1')
+  localStorage.setItem('cm.appearance', '{"size":"huge","accent":"red"}')
+  expect(readAppearance()).toEqual({ size: 'md', accent: 'blue' })
+  saveAppearance({ size: 'md', accent: 'blue' })
+  expect(document.documentElement.dataset.accent).toBeUndefined()
+})

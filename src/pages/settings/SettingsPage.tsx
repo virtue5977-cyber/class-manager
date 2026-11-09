@@ -6,12 +6,14 @@ import AiSettings from './AiSettings'
 import PinSettings from './PinSettings'
 import UpdateSettings from './UpdateSettings'
 import GoogleSettings from './GoogleSettings'
+import AppearanceSettings from './AppearanceSettings'
 
 export default function SettingsPage({ backupIterations }: { backupIterations?: number }) {
   return (
     <section>
       <h2>설정</h2>
       <div className="stack gap">
+        <AppearanceSettings />
         <SchoolSettings />
         <MyTimetable />
         <ReportSettings />
