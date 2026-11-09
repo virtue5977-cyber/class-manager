@@ -1,9 +1,9 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "shell": 1,
-  "bundle": "bundle-0.3.0.zip",
-  "sha256": "0cfdf9e22c39fe42069860c6a378cb76b994619875317efd0a4f6c8c3c3c3fa7",
-  "sig": "35hY/DJIMcIqCgtSxIy8Aq54xqAGgAhmbmuEwalng6VSBpDTTtbm948gQ3NiveO4QrIkZtjYLWvRRtqUFADzBg==",
-  "note": "구글 캘린더 연동(새 exe 필요)",
+  "bundle": "bundle-0.3.1.zip",
+  "sha256": "c9d2f3d834e5e388dc09e13097b523240a0ca64a0ae35ce81c7fa096af7886a4",
+  "sig": "aq0bK2EtpvK/66MkPU8vEBUi50KA0Sm1iOJgQ74vl9CpjToybu426fRfGjWIHr7xootxaLsrwWfqWqCcoygnDw==",
+  "note": "구글 로그인 버튼만으로 연결",
   "date": "2026-11-09"
 }
