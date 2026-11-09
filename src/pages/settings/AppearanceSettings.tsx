@@ -32,7 +32,7 @@ export default function AppearanceSettings() {
         <span className="muted">강조색</span>
         {ACCENTS.map((c) => (
           <button key={c.id} type="button" role="radio" aria-checked={a.accent === c.id} onClick={() => set({ accent: c.id })}>
-            <i style={{ background: c.color }} aria-hidden="true" />
+            {c.color && <i style={{ background: c.color }} aria-hidden="true" />}
             {c.label}
           </button>
         ))}
