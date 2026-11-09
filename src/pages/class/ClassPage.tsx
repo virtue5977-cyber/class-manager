@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useContext, useEffect, useState, type FormEvent } from 'react'
 import { useDb } from '../../app/context'
 import type { ClassRec } from '../../lib/db/types'
-import { notifyClassChange } from '../common/useClasses'
+import { CLASS_EVENT, GlobalClassContext, notifyClassChange } from '../common/useClasses'
 import { classLabel, createClass, getCurrentClassId, listClasses, setCurrentClassId } from '../../lib/roster/roster'
 import { currentSchoolYear } from '../../lib/roster/schoolYear'
 import RosterTab from './RosterTab'
@@ -34,7 +34,10 @@ export default function ClassPage() {
   }, [db])
   useEffect(() => {
     load()
+    window.addEventListener(CLASS_EVENT, load)
+    return () => window.removeEventListener(CLASS_EVENT, load)
   }, [load])
+  const globalClass = useContext(GlobalClassContext)
 
   async function choose(id: string) {
     setCurrentId(id)
@@ -62,9 +65,10 @@ export default function ClassPage() {
 
   return (
     <section className="stack">
+      <div className="page-head">
       <h2>학급</h2>
-      <div className="row">
-        {classes && classes.length > 0 && (
+      <div className="tools">
+        {classes && classes.length > 0 && !globalClass && (
           <label className="inline">
             학급 선택
             <select value={currentId} onChange={(e) => choose(e.target.value)}>
@@ -74,9 +78,10 @@ export default function ClassPage() {
             </select>
           </label>
         )}
-        <button type="button" onClick={() => setAdding((v) => !v)}>
+        <button type="button" className="link" onClick={() => setAdding((v) => !v)}>
           학급 추가
         </button>
+      </div>
       </div>
 
       {adding && (

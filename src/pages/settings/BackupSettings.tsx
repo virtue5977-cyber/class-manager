@@ -125,12 +125,17 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
   }
 
   return (
-    <div className="card">
+    <div className="card stack settings-card">
       <h3>백업</h3>
-      <p className="warn">암호구를 잃으면 백업 파일을 복구할 수 없습니다. 종이 등에 적어 보관하세요.</p>
+      <p className="status-line">
+        <span className={`tag ${hasKey ? 'status-나이스' : 'status-미정리'}`}>{hasKey ? '암호구 설정됨' : '암호구 없음'}</span>
+        {` 마지막 백업: ${lastBackup ? formatLocal(lastBackup) : '아직 없음'}`}
+      </p>
 
       <form onSubmit={savePassphrase} className="stack">
         <h4>{hasKey ? '백업 암호구 변경' : '백업 암호구 설정'}</h4>
+        <p className="muted">암호구를 잃으면 백업 파일을 복구할 수 없습니다. 종이 등에 적어 보관하세요.</p>
+        <div className="row">
         <label>
           새 암호구
           <input type="password" value={pass1} onChange={(e) => setPass1(e.target.value)} autoComplete="new-password" />
@@ -139,21 +144,22 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
           암호구 확인
           <input type="password" value={pass2} onChange={(e) => setPass2(e.target.value)} autoComplete="new-password" />
         </label>
-        <button type="submit" disabled={busy}>
+        <button type="submit" className={hasKey ? undefined : 'primary'} disabled={busy}>
           암호구 저장
         </button>
+        </div>
       </form>
 
       <div className="stack">
         <h4>백업 폴더</h4>
         {fs.isFolderSupported() ? (
           <>
-            <p>백업 폴더: {folder ? folder.name : '지정 안 됨'}</p>
             <div className="row">
+              <span>{`백업 폴더: ${folder ? folder.name : '지정 안 됨'}`}</span>
               <button type="button" onClick={pickFolder} disabled={busy}>
                 백업 폴더 지정
               </button>
-              <button type="button" onClick={backupNow} disabled={busy || !hasKey}>
+              <button type="button" className={hasKey ? 'primary' : undefined} onClick={backupNow} disabled={busy || !hasKey}>
                 지금 백업
               </button>
             </div>
@@ -166,7 +172,6 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
             </button>
           </>
         )}
-        <p>마지막 백업: {lastBackup ? formatLocal(lastBackup) : '아직 없음'}</p>
       </div>
 
       <div className="stack">

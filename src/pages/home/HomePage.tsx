@@ -83,7 +83,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
             <h3>오늘 내 시간표</h3>
             {timetable.length === 0 ? (
               <p className="muted">
-                없음 · <Link to="/settings">설정에서 내 시간표 만들기</Link>
+                없음 · <Link to="/settings?tab=timetable">설정에서 내 시간표 만들기</Link>
               </p>
             ) : (
               <ul className="plain">

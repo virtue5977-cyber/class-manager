@@ -1,3 +1,4 @@
+import MonthPicker from '../../components/MonthPicker'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
@@ -59,34 +60,23 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
 
   if (classes && classes.length === 0) return <NoClass title="달력" />
 
-  const move = (d: number) => {
-    const [y, m] = month.split('-').map(Number)
-    const t = new Date(y, m - 1 + d, 1)
-    setMonth(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`)
-  }
   const sel = data[picked] ?? { events: [], google: [], atts: [], logs: [] }
 
   return (
     <section className="stack">
-      <div className="row between wide">
+      <div className="page-head">
         <h2>달력</h2>
-        <div className="row">
+        <div className="tools">
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
           <button type="button" onClick={() => { setMonth(today.slice(0, 7)); setPicked(today) }}>
             오늘
           </button>
-          <button type="button" aria-label="이전 달" onClick={() => move(-1)}>
-            ◀
-          </button>
-          <strong aria-live="polite">{`${month.slice(0, 4)}. ${Number(month.slice(5))}`}</strong>
-          <button type="button" aria-label="다음 달" onClick={() => move(1)}>
-            ▶
-          </button>
+          <MonthPicker value={month} onChange={setMonth} label="달" />
           <label className="inline">
             <input type="checkbox" checked={weekends} onChange={(e) => setWeekends(e.target.checked)} />
             주말 보기
           </label>
-          <button type="button" onClick={() => window.print()}>
+          <button type="button" className="link" onClick={() => window.print()}>
             인쇄
           </button>
         </div>
@@ -135,14 +125,14 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
           {sel.events.length > 0 && (
             <ul className="plain">
               {sel.events.map((e) => (
-                <li key={e.id}>{`📅 ${e.title}`}</li>
+                <li key={e.id}><span className="dot dot-school" aria-hidden="true" />{e.title}</li>
               ))}
             </ul>
           )}
           {sel.google.length > 0 && (
             <ul className="plain">
               {sel.google.map((e) => (
-                <li key={e.id}>{`🗓 ${e.time ? e.time + ' ' : ''}${e.title}`}</li>
+                <li key={e.id}><span className="dot dot-google" aria-hidden="true" />{`${e.time ? e.time + ' ' : ''}${e.title}`}<span className="muted"> · 구글</span></li>
               ))}
             </ul>
           )}

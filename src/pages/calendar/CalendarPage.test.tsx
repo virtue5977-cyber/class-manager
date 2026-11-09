@@ -39,7 +39,7 @@ test('한 달에 학사일정·출결·상담이 함께 보이고, 날짜를 누
   await user.click(screen.getByLabelText('주말 보기'))
   expect(screen.getByRole('columnheader', { name: '토' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '다음 달' }))
-  expect(await screen.findByText('2026. 12')).toBeInTheDocument()
+  expect(await screen.findByText('2026년 12월')).toBeInTheDocument()
 })
 
 test('구글에서 가져온 일정도 달력과 고른 날에 보인다(여러 날 일정은 날마다)', async () => {
@@ -60,5 +60,5 @@ test('구글에서 가져온 일정도 달력과 고른 날에 보인다(여러 
   expect(await within(await screen.findByRole('gridcell', { name: '11월 12일' })).findByText('15:30 학부모 상담')).toBeInTheDocument()
   expect(within(screen.getByRole('gridcell', { name: '11월 18일' })).getByText('연수')).toBeInTheDocument()
   await user.click(screen.getByRole('gridcell', { name: '11월 12일' }))
-  expect(within(screen.getByRole('complementary', { name: '고른 날' })).getByText('🗓 15:30 학부모 상담')).toBeInTheDocument()
+  expect(within(screen.getByRole('complementary', { name: '고른 날' })).getByText('15:30 학부모 상담')).toBeInTheDocument()
 })

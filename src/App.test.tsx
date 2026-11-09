@@ -24,7 +24,7 @@ test('암호구가 없으면 시작 배너가 보인다', async () => {
 test('배너에 설정으로 이동 링크가 있다', async () => {
   setup()
   await screen.findByText('백업 암호구가 설정되지 않았습니다. 설정에서 백업을 켜 주세요.')
-  expect(screen.getByRole('link', { name: '설정으로 이동' })).toHaveAttribute('href', '#/settings')
+  expect(screen.getByRole('link', { name: '설정으로 이동' })).toHaveAttribute('href', '#/settings?tab=backup')
 })
 
 test('설정에서 암호구를 저장하면 배너가 바로 사라진다', async () => {

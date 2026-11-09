@@ -1,3 +1,4 @@
+import MonthPicker from '../../components/MonthPicker'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { StudentRec } from '../../lib/db/types'
@@ -56,8 +57,12 @@ export default function StatsPage() {
 
   return (
     <section className="stack">
-      <h2>통계</h2>
-      <div className="row">
+      <div className="page-head">
+        <div>
+          <h2>통계</h2>
+          <span className="muted">결석은 수업일 일수(이어진 묶음 건수), 지각·조퇴·결과는 건수입니다.</span>
+        </div>
+        <div className="tools">
         {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
         <label className="inline">
           기간
@@ -67,10 +72,7 @@ export default function StatsPage() {
           </select>
         </label>
         {month && (
-          <label className="inline">
-            월
-            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
-          </label>
+          <MonthPicker value={month} onChange={setMonth} />
         )}
         <button type="button" className="primary" onClick={() => exportAs('hwpx')}>
           hwpx로 내보내기
@@ -78,8 +80,8 @@ export default function StatsPage() {
         <button type="button" onClick={() => exportAs('xlsx')}>
           엑셀로 내보내기
         </button>
+        </div>
       </div>
-      <p className="muted">결석은 수업일 일수(이어진 묶음 건수), 지각·조퇴·결과는 건수입니다.</p>
       {message && (
         <p className="notice" role="status">
           {message}

@@ -1,3 +1,4 @@
+import MonthPicker from '../../components/MonthPicker'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import { listReportsForMonth, setSubmittedMany, type ReportRow } from '../../lib/absenceReports/list'
@@ -68,19 +69,20 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
 
   return (
     <section className="stack">
-      <h2>결석신고서</h2>
-      <div className="row">
-        {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
-        <label className="inline">
-          월
-          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
-          미제출만
-        </label>
+      <div className="page-head">
+        <div>
+          <h2>결석신고서</h2>
+          <span className="muted">{`전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}</span>
+        </div>
+        <div className="tools">
+          {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
+          <MonthPicker value={month} onChange={setMonth} />
+          <label className="inline">
+            <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
+            미제출만
+          </label>
+        </div>
       </div>
-      <p className="summary">{`전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}</p>
       {messages.length > 0 && (
         <div className="notice" role="status">
           {messages.map((m) => (

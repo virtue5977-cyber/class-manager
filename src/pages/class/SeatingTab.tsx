@@ -81,7 +81,7 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
 
   return (
     <div className="stack wide">
-      <div className="row">
+      <div className="toolbar">
         <label className="inline">
           배치
           <select
@@ -108,60 +108,22 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
             이 배치 지우기
           </button>
         )}
-      </div>
-      <div className="row">
-        <label className="inline">
-          제목
-          <input value={chart.title} onChange={(e) => setChart({ ...chart, title: e.target.value })} onBlur={() => commit(chart)} />
-        </label>
-        <label className="inline">
-          날짜
-          <input type="date" value={chart.date} onChange={(e) => e.target.value && commit({ ...chart, date: e.target.value })} />
-        </label>
-      </div>
-      <div className="row">
-        <label className="inline">
-          행
-          <input type="number" min={1} max={10} className="num" value={size.rows} onChange={(e) => setSize({ ...size, rows: e.target.value })} />
-        </label>
-        <label className="inline">
-          열
-          <input type="number" min={1} max={10} className="num" value={size.cols} onChange={(e) => setSize({ ...size, cols: e.target.value })} />
-        </label>
-        <button
-          type="button"
-          onClick={() => {
-            try {
-              const r = Number(size.rows)
-              const c = Number(size.cols)
-              commit({ ...chart, rows: r, cols: c, seats: resizeSeats(chart.seats, r, c) })
-              setMessages([])
-            } catch (e) {
-              setMessages([e instanceof Error ? e.message : String(e)])
-            }
-          }}
-        >
-          크기 적용
+        <span className="spacer" />
+        <button type="button" className="link" onClick={() => window.print()}>
+          인쇄
         </button>
-        <label className="inline">
-          교탁
-          <select value={chart.podium_position} onChange={(e) => commit({ ...chart, podium_position: e.target.value as 'top' | 'bottom' })}>
-            <option value="bottom">아래</option>
-            <option value="top">위</option>
-          </select>
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={chart.show_roster} onChange={(e) => commit({ ...chart, show_roster: e.target.checked })} />
-          옆에 명렬표
-        </label>
+        <button type="button" className="primary" onClick={exportHwpx}>
+          hwpx로 내보내기
+        </button>
       </div>
-      <div className="row">
+      <div className="toolbar">
         <button
           type="button"
           onClick={() => {
             const r = randomize(chart.seats, students.map((s) => s.id))
             seatsChange(r.seats)
-            setMessages(r.overflow ? [`책상이 ${r.overflow}개 모자랍니다.`] : ['고정석을 빼고 무작위로 배치했습니다.'])
+            // 책상이 모자란 경우는 아래 경고 한 줄로만 알린다.
+            setMessages(r.overflow ? [] : ['고정석을 빼고 무작위로 배치했습니다.'])
           }}
         >
           무작위 배치
@@ -169,14 +131,59 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
         <button type="button" onClick={() => seatsChange(chart.seats.map((s) => (s.fixed ? s : { ...s, student_id: null })))}>
           고정석 빼고 비우기
         </button>
-        <button type="button" className="primary" onClick={exportHwpx}>
-          hwpx로 내보내기
-        </button>
-        <button type="button" onClick={() => window.print()}>
-          인쇄
-        </button>
       </div>
-      {students.length > usable && <p className="warn">{`학생 ${students.length}명이 책상 ${usable}개보다 많습니다.`}</p>}
+      <details className="panel">
+        <summary>{`제목·날짜·책상 크기 (${chart.rows}행 ${chart.cols}열, 교탁 ${chart.podium_position === 'top' ? '위' : '아래'})`}</summary>
+        <div className="stack">
+          <div className="row">
+            <label className="inline">
+              제목
+              <input value={chart.title} onChange={(e) => setChart({ ...chart, title: e.target.value })} onBlur={() => commit(chart)} />
+            </label>
+            <label className="inline">
+              날짜
+              <input type="date" value={chart.date} onChange={(e) => e.target.value && commit({ ...chart, date: e.target.value })} />
+            </label>
+          </div>
+          <div className="row">
+            <label className="inline">
+              행
+              <input type="number" min={1} max={10} className="num" value={size.rows} onChange={(e) => setSize({ ...size, rows: e.target.value })} />
+            </label>
+            <label className="inline">
+              열
+              <input type="number" min={1} max={10} className="num" value={size.cols} onChange={(e) => setSize({ ...size, cols: e.target.value })} />
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  const r = Number(size.rows)
+                  const c = Number(size.cols)
+                  commit({ ...chart, rows: r, cols: c, seats: resizeSeats(chart.seats, r, c) })
+                  setMessages([])
+                } catch (e) {
+                  setMessages([e instanceof Error ? e.message : String(e)])
+                }
+              }}
+            >
+              크기 적용
+            </button>
+            <label className="inline">
+              교탁
+              <select value={chart.podium_position} onChange={(e) => commit({ ...chart, podium_position: e.target.value as 'top' | 'bottom' })}>
+                <option value="bottom">아래</option>
+                <option value="top">위</option>
+              </select>
+            </label>
+            <label className="inline">
+              <input type="checkbox" checked={chart.show_roster} onChange={(e) => commit({ ...chart, show_roster: e.target.checked })} />
+              hwpx 옆에 명렬표
+            </label>
+          </div>
+        </div>
+      </details>
+      {students.length > usable && <p className="banner">{`책상이 ${students.length - usable}개 모자랍니다(학생 ${students.length}명, 책상 ${usable}개). '제목·날짜·책상 크기'에서 칸을 늘리세요.`}</p>}
       {messages.length > 0 && (
         <div className="notice" role="status">
           {messages.map((m) => (

@@ -61,22 +61,20 @@ export default function CleaningTab({ classRec }: { classRec: ClassRec }) {
 
   return (
     <div className="stack wide">
-      <div className="row">
+      <div className="toolbar">
         <label className="inline">
           제목
           <input value={chart.title} onChange={(e) => setChart({ ...chart, title: e.target.value })} onBlur={() => commit(chart)} />
         </label>
-        <button type="button" onClick={() => commit(addRow(chart))}>
-          구역(줄) 추가
+        <span className="spacer" />
+        <button type="button" className="link" onClick={() => exportAs('xlsx')}>
+          엑셀로 내보내기
         </button>
-        <button type="button" onClick={() => commit(addColumn(chart, '새 칸', 'text'))}>
-          글자 칸 추가
-        </button>
-        <button type="button" onClick={() => commit(addColumn(chart, `${studentCols.length + 1}주차`, 'students'))}>
-          학생 칸 추가
+        <button type="button" className="primary" onClick={() => exportAs('hwpx')}>
+          hwpx로 내보내기
         </button>
       </div>
-      <div className="row">
+      <div className="toolbar">
         {studentCols.length > 1 && (
           <label className="inline">
             기준 학생 칸
@@ -95,11 +93,15 @@ export default function CleaningTab({ classRec }: { classRec: ClassRec }) {
         <button type="button" disabled={!col || chart.rows.length < 2} onClick={() => col && commit(rotate(chart, col.id))}>
           순환(한 구역씩 밀기)
         </button>
-        <button type="button" className="primary" onClick={() => exportAs('hwpx')}>
-          hwpx로 내보내기
+        <span className="spacer" />
+        <button type="button" className="link" aria-label="구역(줄) 추가" onClick={() => commit(addRow(chart))}>
+          + 구역(줄)
         </button>
-        <button type="button" onClick={() => exportAs('xlsx')}>
-          엑셀로 내보내기
+        <button type="button" className="link" aria-label="글자 칸 추가" onClick={() => commit(addColumn(chart, '새 칸', 'text'))}>
+          + 글자 칸
+        </button>
+        <button type="button" className="link" aria-label="학생 칸 추가" onClick={() => commit(addColumn(chart, `${studentCols.length + 1}주차`, 'students'))}>
+          + 학생 칸
         </button>
       </div>
       {message && (

@@ -58,7 +58,7 @@ export default function BackupBanner() {
           허용
         </button>
       ) : (
-        <Link to="/settings">설정으로 이동</Link>
+        <Link to="/settings?tab=backup">설정으로 이동</Link>
       )}
     </div>
   )
