@@ -43,9 +43,9 @@ export default function GettingStarted() {
   if (!steps || hidden || steps.filter((x) => !x.optional).every((x) => x.done)) return null
   const left = steps.filter((x) => !x.done).length
   return (
-    <div className="card wide stack" aria-label="시작하기">
+    <div className="card wide stack" aria-label="시작하기" style={{ gap: 8, padding: 12 }}>
       <div className="row between wide">
-        <h3>{`시작하기 · 남은 단계 ${left}개`}</h3>
+        <h3 style={{ margin: 0 }}>{`시작하기 · 남은 단계 ${left}개`}</h3>
         <button
           type="button"
           className="link"
@@ -61,18 +61,13 @@ export default function GettingStarted() {
           숨기기
         </button>
       </div>
-      <ol className="steps">
+      <div className="steps-compact">
         {steps.map((s, i) => (
-          <li key={s.label} className={s.done ? 'done' : undefined}>
-            <span className="step-no">{s.done ? '✓' : i + 1}</span>
-            <Link to={s.to}>
-              <strong>{s.label}</strong>
-              {s.optional && <span className="muted"> (선택)</span>}
-              <span className="muted"> · {s.hint}</span>
-            </Link>
-          </li>
+          <Link key={s.label} to={s.to} title={s.hint} className={s.done ? 'done' : undefined}>
+            {`${s.done ? '✓' : `${i + 1}`}. ${s.label}${s.optional ? '(선택)' : ''}`}
+          </Link>
         ))}
-      </ol>
+      </div>
     </div>
   )
 }

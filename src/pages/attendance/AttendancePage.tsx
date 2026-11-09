@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useDb } from '../../app/context'
-import type { AbsenceReportRec, AttendanceRec, ClassRec, StudentRec } from '../../lib/db/types'
-import { classLabel, getCurrentClassId, listClasses, listStudents, setCurrentClassId } from '../../lib/roster/roster'
+import type { AbsenceReportRec, AttendanceRec, StudentRec } from '../../lib/db/types'
+import { listStudents } from '../../lib/roster/roster'
+import { ClassSelect, useClasses } from '../common/useClasses'
 import { listAttendanceByDate } from '../../lib/attendance/attendance'
 import { listReportsByStudent, loadReportContext } from '../../lib/absenceReports/reconcile'
 import { addDays, toYmd, type SchoolDays } from '../../lib/schoolDays'
@@ -12,8 +13,7 @@ const label = (r: AttendanceRec) => `${r.kind}${r.period ? ` ${r.period}교시` 
 
 export default function AttendancePage({ today = toYmd(new Date()) }: { today?: string }) {
   const db = useDb()
-  const [classes, setClasses] = useState<ClassRec[] | null>(null)
-  const [classId, setClassId] = useState<string>()
+  const { classes, classId, choose } = useClasses()
   const [date, setDate] = useState(today)
   const [students, setStudents] = useState<StudentRec[]>([])
   const [records, setRecords] = useState<AttendanceRec[]>([])
@@ -24,15 +24,6 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
   const [loadedFor, setLoadedFor] = useState<string>()
   const listRef = useRef<HTMLUListElement>(null)
   const loadSeq = useRef(0)
-
-  useEffect(() => {
-    ;(async () => {
-      const list = await listClasses(db)
-      const saved = await getCurrentClassId(db)
-      setClasses(list)
-      setClassId(list.some((c) => c.id === saved) ? saved : list[0]?.id)
-    })()
-  }, [db])
 
   const reload = useCallback(async () => {
     if (!classId) return
@@ -56,17 +47,14 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
     reload().catch((e) => setNotice(`불러오지 못했습니다: ${e instanceof Error ? e.message : String(e)}`))
   }, [reload])
 
-  async function chooseClass(id: string) {
-    setClassId(id)
-    setSelected(null)
-    await setCurrentClassId(db, id)
-  }
+  useEffect(() => setSelected(null), [classId])
 
   function moveFocus(e: KeyboardEvent) {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const step = { ArrowDown: 1, ArrowUp: -1, ArrowRight: 1, ArrowLeft: -1 }[e.key]
+    if (!step) return
     const buttons = [...(listRef.current?.querySelectorAll('button') ?? [])]
     const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
-    const next = buttons[Math.min(buttons.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]
+    const next = buttons[Math.min(buttons.length - 1, Math.max(0, i + step))]
     next?.focus()
     e.preventDefault()
   }
@@ -79,55 +67,69 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
 
   if (classes && classes.length === 0) return <section><h2>출결</h2><p className="muted">먼저 학급 메뉴에서 학급과 학생을 추가하세요.</p></section>
 
+  const counts = (['결석', '지각', '조퇴', '결과'] as const).map((k) => [k, new Set(dayRecords.filter((r) => r.kind === k).map((r) => r.student_id)).size] as const)
+
   return (
     <section className="stack">
-      <h2>출결</h2>
-      <div className="row">
-        {classes && (
-          <label className="inline">
-            학급
-            <select value={classId} onChange={(e) => chooseClass(e.target.value)}>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>{`${c.school_year}학년도 ${classLabel(c)}`}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <button type="button" onClick={() => setDate(addDays(date, -1))}>
-          ◀ 전날
-        </button>
-        <label className="inline">
-          날짜
-          <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
-        </label>
-        <button type="button" onClick={() => setDate(addDays(date, 1))}>
-          다음날 ▶
-        </button>
+      <div className="page-head">
+        <div>
+          <h2>출결</h2>
+          <div className="att-summary" aria-label="오늘 출결 요약">
+            <span>{`재적 ${students.length}명`}</span>
+            {counts.map(([k, n]) => (
+              <span key={k}>{`${k} ${n}`}</span>
+            ))}
+          </div>
+        </div>
+        <div className="tools">
+          {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
+          <div className="date-bar">
+            <button type="button" aria-label="전날" title="전날" onClick={() => setDate(addDays(date, -1))}>
+              ◀ 전날
+            </button>
+            <input type="date" aria-label="날짜" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
+            <button type="button" aria-label="다음날 ▶" title="다음날" onClick={() => setDate(addDays(date, 1))}>
+              다음날 ▶
+            </button>
+            {date !== today && (
+              <button type="button" className="link" onClick={() => setDate(today)}>
+                오늘
+              </button>
+            )}
+          </div>
+        </div>
       </div>
-      {days && !days.isClassDay(date) && <p className="warn">수업일이 아닙니다(휴업일·주말).</p>}
+      {days && !days.isClassDay(date) && <p className="banner">수업일이 아닙니다(휴업일·주말).</p>}
       {days && !days.hasCalendarFor(date) && <p className="muted">학사일정을 가져오지 않아 공휴일 일부를 모를 수 있습니다.</p>}
       {notice && (
         <p className="notice" role="status">
           {notice}
         </p>
       )}
-      <div className="attendance-layout">
-        <ul className="plain student-list" ref={listRef} onKeyDown={moveFocus} aria-label="학생 목록">
+      <div className="att-layout">
+        <ul className="student-grid" ref={listRef} onKeyDown={moveFocus} aria-label="학생 목록">
           {students.map((s) => {
             const mine = dayRecords.filter((r) => r.student_id === s.id)
             const reps = reportsOn(s.id)
             return (
               <li key={s.id}>
-                <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setNotice(undefined) }}>
+                <button type="button" className={`student-cell${selected === s.id ? ' active' : ''}`} aria-pressed={selected === s.id} onClick={() => { setSelected(s.id); setNotice(undefined) }}>
                   <span className="num pii">{`${s.number}번 ${s.name}`}</span>
-                  <span className="att">{mine.map(label).join(' · ')}</span>
-                  {reps.length > 0 && <span className="tag badge">{reps.every((r) => r.submitted) ? '제출' : '신고서'}</span>}
+                  {(mine.length > 0 || reps.length > 0) && (
+                    <span className="marks">
+                      {mine.map((r) => (
+                        <span key={r.id} className={`chip-${r.kind}`}>{label(r)}</span>
+                      ))}
+                      {reps.length > 0 && <span className="tag badge">{reps.every((r) => r.submitted) ? '제출' : '신고서'}</span>}
+                    </span>
+                  )}
                 </button>
               </li>
             )
           })}
         </ul>
-        <div className="stack">
+        <div className="att-side">
+          {!student && <div className="card muted">학생을 누르면 여기에서 출결을 입력합니다. 방향키로 옮겨 다닐 수 있습니다.</div>}
           {student && ready && (
             <AttendanceForm
               key={`${student.id}-${date}-${dayRecords.filter((r) => r.student_id === student.id).map((r) => r.id + r.updated_at).join()}`}

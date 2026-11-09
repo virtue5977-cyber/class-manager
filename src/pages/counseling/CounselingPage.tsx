@@ -38,6 +38,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   const [warnings, setWarnings] = useState<Record<string, string[]>>({})
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState<string>() // 원문 고치는 기록 id
+  const [adding, setAdding] = useState(false)
   const seq = useRef(0)
 
   const student = students.find((s) => s.id === selected)
@@ -102,8 +103,9 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
 
   return (
     <section className="stack">
-      <h2>상담일지</h2>
-      <div className="row">
+      <div className="page-head">
+        <h2>상담일지</h2>
+        <div className="tools">
         {classes && <ClassSelect classes={classes} classId={classId} onChange={(id) => { setSelected(undefined); choose(id) }} />}
         <form
           className="row"
@@ -113,8 +115,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
           }}
         >
           <label className="inline">
-            검색
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="학급 전체 기록에서 찾기" />
+            <span className="sr-only">검색</span>
+            <input aria-label="검색" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="학급 전체 기록에서 찾기" />
           </label>
           <button type="submit">찾기</button>
           {hits && (
@@ -123,6 +125,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
             </button>
           )}
         </form>
+        </div>
       </div>
       {messages.length > 0 && (
         <div className="notice" role="status">
@@ -141,11 +144,11 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
           ))}
         </div>
       )}
-      <div className="attendance-layout">
-        <ul className="plain student-list" aria-label="학생 목록">
+      <div className="counsel-layout">
+        <ul className="plain student-list compact" aria-label="학생 목록">
           {students.map((s) => (
             <li key={s.id}>
-              <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setMessages([]); setEditing(undefined) }}>
+              <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setMessages([]); setEditing(undefined); setAdding(false) }}>
                 <span className="num pii">{`${s.number}번 ${s.name}`}</span>
                 {counts[s.id] ? <span className="att">{`${counts[s.id]}건`}</span> : null}
               </button>
@@ -156,14 +159,36 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
           {!student && <p className="muted">학생을 고르세요.</p>}
           {student && (
             <>
-              <div className="card wide pii">
-                <h3>{`${student.number}번 ${student.name}`}</h3>
-                <p className="muted">
-                  {[student.guardian_name && `보호자 ${student.guardian_name}`, student.guardian_phone, student.phone && `학생 ${student.phone}`, student.memo].filter(Boolean).join(' · ') || '인적사항은 학급 > 명단에서 입력합니다.'}
-                </p>
+              <div className="page-head">
+                <div className="pii">
+                  <h3 style={{ fontSize: 18, margin: 0 }}>{`${student.number}번 ${student.name}`}</h3>
+                  <span className="muted">
+                    {[student.guardian_name && `보호자 ${student.guardian_name}`, student.guardian_phone, student.phone && `학생 ${student.phone}`, student.memo].filter(Boolean).join(' · ') || '인적사항은 학급 > 명단에서 입력합니다.'}
+                  </span>
+                </div>
+                {!(adding || logs.length === 0) && (
+                  <button type="button" className="primary" onClick={() => setAdding(true)}>
+                    + 새 기록
+                  </button>
+                )}
               </div>
-              <NewLog key={student.id} today={today} onSave={async (input) => { let ok = false; await act(async () => { await saveLog(db, { ...input, student_id: student.id }); ok = true }); return ok }} />
-              <div className="row">
+              {(adding || logs.length === 0) && (
+                <NewLog
+                  key={student.id}
+                  today={today}
+                  onCancel={logs.length ? () => setAdding(false) : undefined}
+                  onSave={async (input) => {
+                    let ok = false
+                    await act(async () => {
+                      await saveLog(db, { ...input, student_id: student.id })
+                      ok = true
+                    })
+                    if (ok) setAdding(false)
+                    return ok
+                  }}
+                />
+              )}
+              <div className="log-toolbar">
                 <label className="inline">
                   보기
                   <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
@@ -181,13 +206,14 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
                     ))}
                   </select>
                 </label>
-                <button type="button" className="primary" disabled={busy || !unorganized.length} onClick={() => organize(unorganized)}>
+                <span className="spacer" />
+                <button type="button" disabled={busy || !unorganized.length} onClick={() => organize(unorganized)}>
                   {busy ? '정리 중…' : `미정리 ${unorganized.length}건 누가기록으로 정리`}
                 </button>
-                <button type="button" disabled={!logs.length} onClick={() => exportLogs('hwpx')}>
+                <button type="button" className="link" disabled={!logs.length} onClick={() => exportLogs('hwpx')}>
                   hwpx로 내보내기
                 </button>
-                <button type="button" disabled={!logs.length} onClick={() => exportLogs('xlsx')}>
+                <button type="button" className="link" disabled={!logs.length} onClick={() => exportLogs('xlsx')}>
                   엑셀로 내보내기
                 </button>
               </div>
@@ -233,7 +259,7 @@ function Choice({ label, options, value, onChange, allowEmpty }: { label: string
   )
 }
 
-function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel }: { initial: LogFields; submitLabel: string; onSubmit: (f: LogFields) => unknown; onCancel?: () => void }) {
+function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCancelNew }: { initial: LogFields; submitLabel: string; onSubmit: (f: LogFields) => unknown; onCancel?: () => void; onCancelNew?: () => void }) {
   const [f, setF] = useState(initial)
   return (
     <form
@@ -269,8 +295,8 @@ function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel }: { initial: 
         <button type="submit" className="primary">
           {submitLabel}
         </button>
-        {onCancel && (
-          <button type="button" onClick={onCancel}>
+        {(onCancel || onCancelNew) && (
+          <button type="button" onClick={onCancel ?? onCancelNew}>
             취소
           </button>
         )}
@@ -279,12 +305,12 @@ function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel }: { initial: 
   )
 }
 
-function NewLog({ today, onSave }: { today: string; onSave: (f: LogFields) => Promise<boolean> }) {
+function NewLog({ today, onSave, onCancel }: { today: string; onSave: (f: LogFields) => Promise<boolean>; onCancel?: () => void }) {
   return (
-    <details className="card wide" open>
-      <summary>새 기록</summary>
-      <LogFieldsForm initial={blankFields(today)} submitLabel="기록 추가" onSubmit={onSave} />
-    </details>
+    <div className="card wide stack" aria-label="새 기록">
+      <h3>새 기록</h3>
+      <LogFieldsForm initial={blankFields(today)} submitLabel="기록 추가" onSubmit={onSave} onCancelNew={onCancel} />
+    </div>
   )
 }
 
@@ -308,11 +334,11 @@ function LogCard(p: {
   useEffect(() => setNuga(l.nuga_text), [l.nuga_text])
   const head = nugaHeader(l.date, l.place)
   return (
-    <article className="card wide stack" aria-label={`${head} 기록`}>
-      <div className="row between wide">
+    <article className="log" aria-label={`${head} 기록`}>
+      <div className="row wide">
         <strong>{head}</strong>
         {logTags(l) && <span className="muted">{logTags(l)}</span>}
-        <span className={`tag${l.nuga_status === '미정리' ? ' warn' : ''}`}>{l.nuga_status}</span>
+        <span className={`tag status-${l.nuga_status === '나이스 입력 완료' ? '나이스' : l.nuga_status}`}>{l.nuga_status}</span>
       </div>
       {p.editing ? (
         <LogFieldsForm initial={{ ...blankFields(l.date), place: l.place, content: l.content, target: l.target || '학생', method: l.method || '대면', topic: l.topic ?? '', time: l.time ?? '' }} submitLabel="고친 내용 저장" onSubmit={p.onSaveContent} onCancel={p.onCancelEdit} />
@@ -329,7 +355,7 @@ function LogCard(p: {
           {`⚠ ${w}`}
         </p>
       ))}
-      <div className="row">
+      <div className="row log-actions">
         <button type="button" disabled={p.busy} onClick={p.onOrganize}>
           {l.nuga_text ? '다시 정리' : '누가기록으로 정리'}
         </button>

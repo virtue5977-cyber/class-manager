@@ -15,6 +15,7 @@ import StatsPage from './pages/stats/StatsPage'
 import CounselingPage from './pages/counseling/CounselingPage'
 import HomePage from './pages/home/HomePage'
 import CalendarPage from './pages/calendar/CalendarPage'
+import { GlobalClassContext, SidebarClass } from './pages/common/useClasses'
 import { createDb, type AppDB } from './lib/db/schema'
 import { createWebFsAdapter } from './lib/fs/web'
 import { createDesktopFsAdapter, type DesktopBackupApi } from './lib/fs/desktop'
@@ -32,11 +33,15 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
     <AppProviders db={db} fs={fs}>
       <PinGate>
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <GlobalClassContext.Provider value={true}>
         <div className="layout">
           <aside className="sidebar">
             <h1>담임 업무</h1>
+            <SidebarClass />
             <Nav />
-            <HideNames />
+            <div className="side-bottom">
+              <HideNames />
+            </div>
           </aside>
           <main className="content">
             <UpdateBanner />
@@ -54,6 +59,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
             </Routes>
           </main>
         </div>
+        </GlobalClassContext.Provider>
       </HashRouter>
       </PinGate>
     </AppProviders>

@@ -49,5 +49,5 @@ test('처음에는 시작하기 단계가 보이고, 학급을 만들면 체크�
     </MemoryRouter>,
   )
   expect(await screen.findByText('시작하기 · 남은 단계 4개')).toBeInTheDocument()
-  expect(screen.getByText('학급 만들기').closest('li')).toHaveClass('done')
+  expect(screen.getByRole('link', { name: '✓. 학급 만들기' })).toHaveClass('done')
 })

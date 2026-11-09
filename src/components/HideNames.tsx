@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Icon from './Icon'
 
 const KEY = 'cm.hideNames'
 const read = () => {
@@ -22,7 +23,8 @@ export default function HideNames() {
   }, [on])
   return (
     <button type="button" className={`hide-names-btn${on ? ' on' : ''}`} aria-pressed={on} onClick={() => setOn(!on)} title="교실 화면에 띄울 때 학생 이름과 상담 내용을 가립니다">
-      {on ? '🙈 이름 가림' : '👁 이름 보임'}
+      <Icon name={on ? 'eyeOff' : 'eye'} />
+      <span>{on ? '이름 가림' : '이름 보임'}</span>
     </button>
   )
 }

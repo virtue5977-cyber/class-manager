@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useDb } from '../../app/context'
 import type { ClassRec } from '../../lib/db/types'
+import { notifyClassChange } from '../common/useClasses'
 import { classLabel, createClass, getCurrentClassId, listClasses, setCurrentClassId } from '../../lib/roster/roster'
 import { currentSchoolYear } from '../../lib/roster/schoolYear'
 import RosterTab from './RosterTab'
@@ -38,6 +39,7 @@ export default function ClassPage() {
   async function choose(id: string) {
     setCurrentId(id)
     await setCurrentClassId(db, id)
+    notifyClassChange()
   }
 
   async function add(e: FormEvent) {
@@ -48,6 +50,7 @@ export default function ClassPage() {
     try {
       const c = await createClass(db, { school_year: nums[0], grade: nums[1], class_no: nums[2] })
       await setCurrentClassId(db, c.id)
+      notifyClassChange()
       setAdding(false)
       await load()
     } catch (err) {

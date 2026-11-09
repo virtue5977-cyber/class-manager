@@ -56,13 +56,25 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   return (
     <section className="stack home">
       <h2>{`${md(today)} ${classDay === undefined ? '' : classDay ? '· 수업일' : '· 수업 없는 날'}`}</h2>
-      {todayEvents.length > 0 && <p className="summary">{todayEvents.map((e) => e.title).join(' · ')}</p>}
+      <div className="card today-card" aria-label="오늘 요약">
+        <div>
+          <span className="k">오늘 일정</span>
+          <span className="v">{todayEvents.length ? todayEvents.map((e) => `${e.time ? e.time + ' ' : ''}${e.title}`).join(' · ') : '없음'}</span>
+        </div>
+        <div>
+          <span className="k">내 수업</span>
+          <span className="v">{timetable.length ? `${timetable.length}시간 · ${timetable.map((t) => t.period).join(',')}교시` : '없음'}</span>
+        </div>
+        <div>
+          <span className="k">다음 일정</span>
+          <span className="v">{upcoming[0] ? `${dday(today, upcoming[0].date)} ${upcoming[0].title}` : '없음'}</span>
+        </div>
+        <div>
+          <span className="k">미제출 결석신고서</span>
+          {openReports > 0 ? <Link className="v" to="/reports">{`${openReports}건`}</Link> : <span className="v">없음</span>}
+        </div>
+      </div>
       <GettingStarted />
-      {openReports > 0 && (
-        <p className="notice">
-          <Link to="/reports">{`이번 달 미제출 결석신고서 ${openReports}건`}</Link>
-        </p>
-      )}
       <div className="home-grid">
         <Briefing today={today} />
         <div className="stack">
@@ -233,6 +245,7 @@ function Briefing({ today }: { today: string }) {
               onChange={(e) => setItems((cur) => ({ ...cur, [slot]: list.map((x, k) => (k === i ? { ...x, text: e.target.value } : x)) }))}
               onBlur={() => commit(list)}
             />
+            <span className="row-tools">
             <button type="button" aria-label={`${i + 1}번 위로`} onClick={() => move(i, -1)}>
               ▲
             </button>
@@ -251,6 +264,7 @@ function Briefing({ today }: { today: string }) {
             <button type="button" aria-label={`${i + 1}번 지우기`} onClick={() => commit(list.filter((_, k) => k !== i))}>
               ✕
             </button>
+            </span>
           </li>
         ))}
       </ol>
