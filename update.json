@@ -1,9 +1,9 @@
 {
-  "version": "0.3.2",
+  "version": "0.4.0",
   "shell": 1,
-  "bundle": "bundle-0.3.2.zip",
-  "sha256": "4468a4a3ea161dc7808d7e90cb1f470368557d44fad21f9bdb271084da1d9886",
-  "sig": "C6YuXJ5loz/9eobuRdxJbbFgQoo5GfmFN+RBvK5u5nHJRVOo2ZFMjGhabKqfRenBVa4zxX1+dqQB05gYJ01+Ag==",
-  "note": "구글 로그인 오류 수정(exe 교체 필요)",
+  "bundle": "bundle-0.4.0.zip",
+  "sha256": "1006060f5161efe533c5f1ffcf313c1f2be140c259f6398d3b1f70c72ebcc914",
+  "sig": "qVL+VbhiXSIOAQ1+ZKDzUxLdSzSrpbq4VDqxPhiUBO4sWwUJBk80oUfhAWP+Aor2+Pqes6+jtmW7j2qQvX1IBQ==",
+  "note": "디자인 새 단장: 테마·글자 크기, 출결 격자, 설정 탭",
   "date": "2026-11-09"
 }
