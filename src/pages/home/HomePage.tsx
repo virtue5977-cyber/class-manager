@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAi, useDb, useNeisEvents, useNetFetch } from '../../app/context'
 import type { BriefingItem, SchoolCalendarRec, TeacherTimetableRec } from '../../lib/db/types'
+import { listGoogleEvents } from '../../lib/google/google'
 import { listCalendar } from '../../lib/neis/schedule'
 import { fetchMeals, getCachedMeals, type Meal } from '../../lib/neis/meal'
 import { listMyTimetable } from '../../lib/timetable/estimate'
@@ -12,6 +13,14 @@ import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getNeisKey, getSettings } from '../../lib/settings'
 import { addDays, toYmd, weekday } from '../../lib/schoolDays'
 import GettingStarted from './GettingStarted'
+
+interface HomeEvent {
+  id: string
+  date: string
+  title: string
+  time?: string
+  google?: boolean
+}
 
 const DAY = ['', '월', '화', '수', '목', '금', '토', '일']
 const md = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8, 10))}일(${DAY[weekday(d)]})`
@@ -24,8 +33,8 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   const db = useDb()
   const { version } = useNeisEvents()
   const [classDay, setClassDay] = useState<boolean>()
-  const [todayEvents, setTodayEvents] = useState<SchoolCalendarRec[]>([])
-  const [upcoming, setUpcoming] = useState<SchoolCalendarRec[]>([])
+  const [todayEvents, setTodayEvents] = useState<HomeEvent[]>([])
+  const [upcoming, setUpcoming] = useState<HomeEvent[]>([])
   const [timetable, setTimetable] = useState<TeacherTimetableRec[]>([])
   const [openReports, setOpenReports] = useState(0)
 
@@ -33,7 +42,9 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
     ;(async () => {
       const { days } = await loadReportContext(db)
       setClassDay(days.isClassDay(today))
-      const cal = (await listCalendar(db, today, addDays(today, 14))).filter((r) => r.title && r.title !== '토요휴업일')
+      const school: HomeEvent[] = (await listCalendar(db, today, addDays(today, 14))).filter((r: SchoolCalendarRec) => r.title && r.title !== '토요휴업일').map((r) => ({ id: r.id, date: r.date, title: r.title }))
+      const google: HomeEvent[] = (await listGoogleEvents(db, today, addDays(today, 14))).map((e) => ({ id: e.id, date: e.date, title: e.title, time: e.time, google: true }))
+      const cal = [...school, ...google].sort((a, b) => (a.date + (a.time ?? '') < b.date + (b.time ?? '') ? -1 : 1))
       setTodayEvents(cal.filter((r) => r.date === today))
       setUpcoming(cal.filter((r) => r.date > today))
       setTimetable((await listMyTimetable(db)).filter((t) => t.weekday === weekday(today)).sort((a, b) => a.period - b.period))
@@ -70,15 +81,16 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
               </ul>
             )}
           </div>
-          <div className="card wide" aria-label="다가오는 학사일정">
-            <h3>다가오는 학사일정(2주)</h3>
+          <div className="card wide" aria-label="다가오는 일정">
+            <h3>다가오는 일정(2주)</h3>
             {upcoming.length === 0 ? (
               <p className="muted">등록된 일정이 없습니다.</p>
             ) : (
               <ul className="plain">
                 {upcoming.map((e) => (
                   <li key={e.id}>
-                    <span className="tag">{dday(today, e.date)}</span> {`${md(e.date)} ${e.title}`}
+                    <span className="tag">{dday(today, e.date)}</span> {`${md(e.date)} ${e.time ? e.time + ' ' : ''}${e.title}`}
+                    {e.google && <span className="muted"> · 구글</span>}
                   </li>
                 ))}
               </ul>

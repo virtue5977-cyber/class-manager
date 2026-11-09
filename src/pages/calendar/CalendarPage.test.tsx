@@ -41,3 +41,24 @@ test('한 달에 학사일정·출결·상담이 함께 보이고, 날짜를 누
   await user.click(screen.getByRole('button', { name: '다음 달' }))
   expect(await screen.findByText('2026. 12')).toBeInTheDocument()
 })
+
+test('구글에서 가져온 일정도 달력과 고른 날에 보인다(여러 날 일정은 날마다)', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await db.google_events.bulkPut([
+    { id: 'g1', date: '2026-11-12', end_date: '2026-11-12', time: '15:30', title: '학부모 상담', calendar: 'primary', updated: '' },
+    { id: 'g2', date: '2026-11-17', end_date: '2026-11-18', time: '', title: '연수', calendar: 'primary', updated: '' },
+  ])
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <CalendarPage today="2026-11-06" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  expect(await within(await screen.findByRole('gridcell', { name: '11월 12일' })).findByText('15:30 학부모 상담')).toBeInTheDocument()
+  expect(within(screen.getByRole('gridcell', { name: '11월 18일' })).getByText('연수')).toBeInTheDocument()
+  await user.click(screen.getByRole('gridcell', { name: '11월 12일' }))
+  expect(within(screen.getByRole('complementary', { name: '고른 날' })).getByText('🗓 15:30 학부모 상담')).toBeInTheDocument()
+})

@@ -9,7 +9,7 @@ import JSZip from 'jszip'
 const [keyPath, outDir, note = ''] = process.argv.slice(2)
 if (!keyPath || !outDir) throw new Error('사용법: node scripts/publish-update.mjs <개인키.pem> <출력 폴더> [설명]')
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
-const SHELL = Number(readFileSync('electron/main.cjs', 'utf8').match(/const SHELL = (\d+)/)[1])
+const SHELL = Number(process.env.MIN_SHELL ?? readFileSync('electron/main.cjs', 'utf8').match(/const SHELL = (\d+)/)[1])
 const version = pkg.version
 
 const zip = new JSZip()

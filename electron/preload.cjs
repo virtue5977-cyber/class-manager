@@ -17,6 +17,13 @@ contextBridge.exposeInMainWorld('desktop', {
       return () => ipcRenderer.removeListener('update:state', h)
     },
   },
+  google: {
+    status: () => ipcRenderer.invoke('google:status'),
+    setClient: (json) => ipcRenderer.invoke('google:setClient', json),
+    login: () => ipcRenderer.invoke('google:login'),
+    logout: () => ipcRenderer.invoke('google:logout'),
+    api: (method, path, body) => ipcRenderer.invoke('google:api', method, path, body),
+  },
   ai: {
     status: () => ipcRenderer.invoke('ai:status'),
     ask: (req) => ipcRenderer.invoke('ai:ask', req),

@@ -6,6 +6,7 @@ import BackupBanner from './components/BackupBanner'
 import PinGate from './components/PinGate'
 import HideNames from './components/HideNames'
 import UpdateBanner from './components/UpdateBanner'
+import GoogleAutoSync from './components/GoogleAutoSync'
 import SettingsPage from './pages/settings/SettingsPage'
 import ClassPage from './pages/class/ClassPage'
 import AttendancePage from './pages/attendance/AttendancePage'
@@ -39,6 +40,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
           </aside>
           <main className="content">
             <UpdateBanner />
+            <GoogleAutoSync />
             <BackupBanner />
             <Routes>
               <Route path="/class" element={<ClassPage />} />

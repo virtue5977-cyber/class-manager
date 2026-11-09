@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
-import type { AttendanceRec, CounselingLogRec, SchoolCalendarRec, StudentRec } from '../../lib/db/types'
+import type { AttendanceRec, CounselingLogRec, GoogleEventRec, SchoolCalendarRec, StudentRec } from '../../lib/db/types'
+import { listGoogleEvents } from '../../lib/google/google'
 import { listStudents } from '../../lib/roster/roster'
 import { listCalendar } from '../../lib/neis/schedule'
 import { listAttendanceByStudent } from '../../lib/attendance/attendance'
@@ -14,6 +15,7 @@ const shortKind = (a: AttendanceRec) => `${a.kind}${a.period ? `(${a.period}교�
 
 interface DayData {
   events: SchoolCalendarRec[]
+  google: GoogleEventRec[]
   atts: { a: AttendanceRec; s: StudentRec }[]
   logs: { l: CounselingLogRec; s: StudentRec }[]
 }
@@ -40,8 +42,9 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
     const from = cells[0]
     const to = cells[41]
     const map: Record<string, DayData> = {}
-    const day = (d: string) => (map[d] ??= { events: [], atts: [], logs: [] })
+    const day = (d: string) => (map[d] ??= { events: [], google: [], atts: [], logs: [] })
     for (const e of await listCalendar(db, from, to)) if (e.title && e.title !== '토요휴업일') day(e.date).events.push(e)
+    for (const ge of await listGoogleEvents(db, from, to)) for (let d = ge.date; d <= ge.end_date && d <= to; d = addDays(d, 1)) day(d).google.push(ge)
     if (classId) {
       for (const s of await listStudents(db, classId, { includeInactive: true })) {
         for (const a of await listAttendanceByStudent(db, s.id)) if (a.date >= from && a.date <= to) day(a.date).atts.push({ a, s })
@@ -61,7 +64,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
     const t = new Date(y, m - 1 + d, 1)
     setMonth(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`)
   }
-  const sel = data[picked] ?? { events: [], atts: [], logs: [] }
+  const sel = data[picked] ?? { events: [], google: [], atts: [], logs: [] }
 
   return (
     <section className="stack">
@@ -115,6 +118,11 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
                     {e.title}
                   </span>
                 ))}
+                {dd?.google.map((e) => (
+                  <span key={e.id} className="cal-g">
+                    {`${e.time ? e.time + ' ' : ''}${e.title}`}
+                  </span>
+                ))}
                 {absent > 0 && <span className="cal-att">{`출결 ${absent}`}</span>}
                 {dd && dd.logs.length > 0 && <span className="cal-log">{`상담 ${dd.logs.length}`}</span>}
               </button>
@@ -123,11 +131,18 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
         </div>
         <aside className="card stack cal-side" aria-label="고른 날">
           <h3>{`${Number(picked.slice(5, 7))}월 ${Number(picked.slice(8))}일(${DAYS[weekday(picked) - 1]})`}</h3>
-          {sel.events.length + sel.atts.length + sel.logs.length === 0 && <p className="muted">기록이 없습니다.</p>}
+          {sel.events.length + sel.google.length + sel.atts.length + sel.logs.length === 0 && <p className="muted">기록이 없습니다.</p>}
           {sel.events.length > 0 && (
             <ul className="plain">
               {sel.events.map((e) => (
                 <li key={e.id}>{`📅 ${e.title}`}</li>
+              ))}
+            </ul>
+          )}
+          {sel.google.length > 0 && (
+            <ul className="plain">
+              {sel.google.map((e) => (
+                <li key={e.id}>{`🗓 ${e.time ? e.time + ' ' : ''}${e.title}`}</li>
               ))}
             </ul>
           )}

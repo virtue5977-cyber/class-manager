@@ -5,6 +5,7 @@ import ReportSettings from './ReportSettings'
 import AiSettings from './AiSettings'
 import PinSettings from './PinSettings'
 import UpdateSettings from './UpdateSettings'
+import GoogleSettings from './GoogleSettings'
 
 export default function SettingsPage({ backupIterations }: { backupIterations?: number }) {
   return (
@@ -15,6 +16,7 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
         <MyTimetable />
         <ReportSettings />
         <AiSettings />
+        <GoogleSettings />
         <UpdateSettings />
         <BackupSettings iterations={backupIterations} />
         <PinSettings />

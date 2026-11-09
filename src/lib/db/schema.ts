@@ -2,9 +2,10 @@ import Dexie, { type Table } from 'dexie'
 import type {
   AbsenceReportRec, AiPromptRec, AppSettingsRec, AttendanceRec, BriefingRec, ClassRec,
   CleaningChartRec, CounselingLogRec, DeviceLocalRec, HwpxTemplateRec, NeisCacheRec, NoticeRec,
-  ReportAttendanceRec, SchoolCalendarRec, SeatingChartRec, StudentRec, TeacherTimetableRec,
+  ReportAttendanceRec, SchoolCalendarRec, SeatingChartRec, StudentRec, TeacherTimetableRec, GoogleEventRec,
 } from './types'
 
+/** 백업 파일 형식 번호(표 구성이 바뀔 때만 올린다) */
 export const SCHEMA_VERSION = 1
 
 export const SYNCED_TABLES = [
@@ -33,6 +34,8 @@ export class AppDB extends Dexie {
   hwpx_templates!: Table<HwpxTemplateRec, string>
   app_settings!: Table<AppSettingsRec, string>
   device_local!: Table<DeviceLocalRec, string>
+  /** 구글 캘린더에서 가져온 일정(다시 받을 수 있어 백업하지 않음) */
+  google_events!: Table<GoogleEventRec, string>
 
   constructor(name: string) {
     super(name)
@@ -55,6 +58,8 @@ export class AppDB extends Dexie {
       app_settings: 'id',
       device_local: 'id',
     })
+    // 2: 구글 캘린더에서 가져온 일정
+    this.version(2).stores({ google_events: 'id, date' })
   }
 
   /** 동기화·백업 대상 표를 이름으로 꺼낸다. */

@@ -231,3 +231,16 @@ export interface DeviceLocalRec {
   id: DeviceLocalId | string
   value: unknown
 }
+
+/** 구글 캘린더 일정(가져오기 전용). id = 구글 일정 id */
+export interface GoogleEventRec {
+  id: string
+  /** 시작 날짜 YYYY-MM-DD(여러 날이면 첫날) */
+  date: string
+  end_date: string
+  /** 종일이 아니면 HH:MM */
+  time: string
+  title: string
+  calendar: string
+  updated: string
+}
