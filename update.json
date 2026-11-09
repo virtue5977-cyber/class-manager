@@ -1,9 +1,9 @@
 {
-  "version": "0.3.1",
+  "version": "0.3.2",
   "shell": 1,
-  "bundle": "bundle-0.3.1.zip",
-  "sha256": "c9d2f3d834e5e388dc09e13097b523240a0ca64a0ae35ce81c7fa096af7886a4",
-  "sig": "aq0bK2EtpvK/66MkPU8vEBUi50KA0Sm1iOJgQ74vl9CpjToybu426fRfGjWIHr7xootxaLsrwWfqWqCcoygnDw==",
-  "note": "구글 로그인 버튼만으로 연결",
+  "bundle": "bundle-0.3.2.zip",
+  "sha256": "4468a4a3ea161dc7808d7e90cb1f470368557d44fad21f9bdb271084da1d9886",
+  "sig": "C6YuXJ5loz/9eobuRdxJbbFgQoo5GfmFN+RBvK5u5nHJRVOo2ZFMjGhabKqfRenBVa4zxX1+dqQB05gYJ01+Ag==",
+  "note": "구글 로그인 오류 수정(exe 교체 필요)",
   "date": "2026-11-09"
 }
