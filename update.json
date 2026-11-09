@@ -1,9 +1,9 @@
 {
-  "version": "0.2.1",
+  "version": "0.3.0",
   "shell": 1,
-  "bundle": "bundle-0.2.1.zip",
-  "sha256": "134a32f69f28c52df83187f3d927f9ec15f0ad40370d88bffc1ac28ca17a1338",
-  "sig": "YEqVC20l8v/GAx6mdljGiDanceru0AV93tq0XGU/1XlX64u6zd7Vlmo2b7NNo5yOne6j0jqwX2RDOxp9/3f5DA==",
-  "note": "AI 안내 문구 수정",
-  "date": "2026-11-06"
+  "bundle": "bundle-0.3.0.zip",
+  "sha256": "0cfdf9e22c39fe42069860c6a378cb76b994619875317efd0a4f6c8c3c3c3fa7",
+  "sig": "35hY/DJIMcIqCgtSxIy8Aq54xqAGgAhmbmuEwalng6VSBpDTTtbm948gQ3NiveO4QrIkZtjYLWvRRtqUFADzBg==",
+  "note": "구글 캘린더 연동(새 exe 필요)",
+  "date": "2026-11-09"
 }
