@@ -83,3 +83,13 @@ test('가져오기: 종일·시간 일정을 한국 시간으로, 앱이 만든 
     ['2026-11-13', '2026-11-14', '', '연수'],
   ])
 })
+
+test('연결 정보가 없으면 앱에 든 기본값을 넣고, 이미 있으면 그대로 둔다', async () => {
+  const { ensureGoogleClient } = await import('./google')
+  let client = false
+  const set: string[] = []
+  const g = { ...fakeGoogle([]).g, status: async () => ({ client, loggedIn: false }), setClient: async (j: string) => { set.push(j); client = true; return true } }
+  expect(await ensureGoogleClient(g, '{"installed":{}}')).toEqual({ client: true, loggedIn: false })
+  await ensureGoogleClient(g, '{"installed":{}}')
+  expect(set).toHaveLength(1)
+})

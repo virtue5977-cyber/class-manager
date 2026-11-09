@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
-import { getGoogle, lastGoogleSync, syncGoogle, APP_CALENDAR_NAME } from '../../lib/google/google'
+import { ensureGoogleClient, getGoogle, lastGoogleSync, syncGoogle, APP_CALENDAR_NAME } from '../../lib/google/google'
+import { BUILTIN_GOOGLE_CLIENT } from '../../lib/google/client-config'
 import { getCurrentClassId } from '../../lib/roster/roster'
 import { toYmd } from '../../lib/schoolDays'
 
@@ -15,7 +16,7 @@ export default function GoogleSettings() {
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
-    if (g) setSt(await g.status())
+    if (g) setSt(await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT).catch(() => g.status()))
     setLast(await lastGoogleSync(db))
   }, [db, g])
   useEffect(() => {
@@ -43,23 +44,9 @@ export default function GoogleSettings() {
       ) : (
         <>
           <div className="row">
-            <span>{!st ? '확인 중…' : !st.client ? '① 연결 파일이 없습니다.' : !st.loggedIn ? '② 연결 파일 있음 · 로그인 필요' : `연결됨${last ? ` · 마지막 동기화 ${new Date(last).toLocaleString('ko-KR')}` : ''}`}</span>
+            <span>{!st ? '확인 중…' : !st.client ? '연결 정보가 없습니다. 아래 "다른 연결 파일 쓰기"로 넣으세요.' : !st.loggedIn ? '로그인이 필요합니다.' : `연결됨${last ? ` · 마지막 동기화 ${new Date(last).toLocaleString('ko-KR')}` : ''}`}</span>
           </div>
           <div className="row">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                run('연결 파일 확인', async () => {
-                  const f = await fs.pickFileToRead('.json')
-                  if (!f) return
-                  await g.setClient(new TextDecoder().decode(f.bytes))
-                  return '연결 파일을 저장했습니다. 이제 "구글로 로그인"을 누르세요.'
-                })
-              }
-            >
-              {st?.client ? '연결 파일 바꾸기' : '연결 파일(JSON) 올리기'}
-            </button>
             <button type="button" className="primary" disabled={busy || !st?.client} onClick={() => run('브라우저에서 구글 로그인을 마치세요', async () => { await g.login(); return '구글에 연결했습니다. "지금 동기화"를 누르세요.' })}>
               구글로 로그인
             </button>
@@ -81,6 +68,25 @@ export default function GoogleSettings() {
               </button>
             )}
           </div>
+          <details>
+            <summary>다른 연결 파일 쓰기(직접 만든 Google Cloud 프로젝트)</summary>
+            <div className="row">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                run('연결 파일 확인', async () => {
+                  const f = await fs.pickFileToRead('.json')
+                  if (!f) return
+                  await g.setClient(new TextDecoder().decode(f.bytes))
+                  return '연결 파일을 저장했습니다. 이제 "구글로 로그인"을 누르세요.'
+                })
+              }
+            >
+              연결 파일(JSON) 올리기
+            </button>
+            </div>
+          </details>
           <p className="muted">앱을 켤 때마다 저절로 동기화합니다. 처음 로그인할 때 "확인하지 않은 앱" 경고가 뜨면 고급 → 담임업무(으)로 이동을 누르세요.</p>
         </>
       )}

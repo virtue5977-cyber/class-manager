@@ -151,3 +151,11 @@ export async function lastGoogleSync(db: AppDB): Promise<string | null> {
 export async function listGoogleEvents(db: AppDB, from: string, to: string): Promise<GoogleEventRec[]> {
   return (await db.google_events.where('date').between(from, to, true, true).toArray()).sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1))
 }
+
+/** 연결 정보가 아직 없으면 앱에 든 기본 연결 정보를 넣는다(로그인 버튼만 누르면 되게). */
+export async function ensureGoogleClient(g: GoogleBridge, builtin: string): Promise<{ client: boolean; loggedIn: boolean }> {
+  const st = await g.status()
+  if (st.client || !builtin) return st
+  await g.setClient(builtin)
+  return g.status()
+}

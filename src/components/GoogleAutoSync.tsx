@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useDb } from '../app/context'
-import { getGoogle, syncGoogle } from '../lib/google/google'
+import { ensureGoogleClient, getGoogle, syncGoogle } from '../lib/google/google'
+import { BUILTIN_GOOGLE_CLIENT } from '../lib/google/client-config'
 import { getCurrentClassId } from '../lib/roster/roster'
 import { toYmd } from '../lib/schoolDays'
 
@@ -12,7 +13,7 @@ export default function GoogleAutoSync() {
     if (!g) return
     const t = setTimeout(async () => {
       try {
-        if ((await g.status()).loggedIn) await syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db))
+        if ((await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT)).loggedIn) await syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db))
       } catch {
         /* 설정 > 구글 캘린더에서 직접 동기화하면 오류 문구를 볼 수 있다 */
       }
