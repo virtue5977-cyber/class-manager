@@ -284,11 +284,16 @@ let gAccess = null // { token, until }
 async function tokenRequest(params) {
   const c = readClient()
   if (!c) throw new Error('구글 연결 파일을 먼저 올리세요.')
-  const res = await net.fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: c.client_id, client_secret: c.client_secret, ...params }).toString(),
-  })
+  let res
+  try {
+    res = await net.fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: c.client_id, client_secret: c.client_secret, ...params }).toString(),
+    })
+  } catch {
+    throw new Error('구글에 연결하지 못했습니다. 인터넷 연결을 확인하세요.')
+  }
   const body = await res.json()
   if (!res.ok) throw new Error(body.error === 'invalid_grant' ? '구글 로그인이 만료되었습니다. 다시 로그인하세요.' : '구글 인증에 실패했습니다.')
   return body
@@ -331,6 +336,7 @@ handle('google:login', async () => {
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url')
   const state = crypto.randomBytes(16).toString('hex')
   const { code, redirect } = await new Promise((resolve, reject) => {
+    let port = 0 // 듣기 시작할 때 정해 둔다(서버를 닫은 뒤에는 주소를 읽을 수 없음)
     const server = http.createServer((req, res) => {
       const u = new URL(req.url, 'http://127.0.0.1')
       if (u.pathname !== '/callback') return res.writeHead(404).end()
@@ -339,7 +345,7 @@ handle('google:login', async () => {
       res.end(`<meta charset="utf-8"><p style="font:18px sans-serif;margin:40px">${ok ? '구글 연결이 끝났습니다. 이 창을 닫고 담임 업무로 돌아가세요.' : '연결하지 못했습니다. 앱에서 다시 시도하세요.'}</p>`)
       clearTimeout(timer)
       server.close()
-      if (ok) resolve({ code: u.searchParams.get('code'), redirect: `http://127.0.0.1:${server.address().port}/callback` })
+      if (ok) resolve({ code: u.searchParams.get('code'), redirect: `http://127.0.0.1:${port}/callback` })
       else reject(new Error(u.searchParams.get('error') === 'access_denied' ? '구글 로그인을 취소했습니다.' : '구글 로그인에 실패했습니다.'))
     })
     const timer = setTimeout(() => {
@@ -347,7 +353,7 @@ handle('google:login', async () => {
       reject(new Error('구글 로그인 시간이 지났습니다. 다시 시도하세요.'))
     }, 5 * 60000)
     server.listen(0, '127.0.0.1', () => {
-      const port = server.address().port
+      port = server.address().port
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
       url.search = new URLSearchParams({
         client_id: c.client_id,
