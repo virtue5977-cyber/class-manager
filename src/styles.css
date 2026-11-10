@@ -658,3 +658,7 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .small { font-size: 12px; }
 @media (max-width: 1100px) { .reflection-layout { grid-template-columns: 1fr; } .reflection-side { position: static; } }
 @media print { .paper-wrap { background: none; padding: 0; } .paper { box-shadow: none; zoom: 1 !important; } .paper-line.sel td { background: #fff; } }
+.cal-tag-개인 { background: var(--c-yellow-bg); color: var(--c-yellow-ink); }
+.cal-tag-업무 { background: var(--c-green-bg); color: var(--c-green); }
+.cal-add { border-top: 1px solid var(--line); padding-top: 8px; gap: 6px; }
+.cal-add input[aria-label='일정 제목'] { width: 100%; }
