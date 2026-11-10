@@ -33,7 +33,7 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
   return (
     <article className={`result-card status-${chat.status === '성공' ? 'ok' : chat.status === '실패' ? 'bad' : 'ask'}`} aria-label="결과">
       <div className="result-head">
-        <span className={`badge mode-${chat.mode}`}>{MODE_LABEL[chat.mode]}</span>
+        {chat.mode !== 'rule' && <span className={`badge mode-${chat.mode}`}>{MODE_LABEL[chat.mode]}</span>}
         <span className="result-summary pii">{chat.summary}</span>
       </div>
       {note && <p className="muted" role="status">{note}</p>}

@@ -81,7 +81,7 @@ test('처음에는 시작하기 단계가 보이고, 학급을 만들면 체크�
     </MemoryRouter>,
   )
   expect(await screen.findByText('시작하기 · 남은 단계 4개')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '✓. 학급 만들기' })).toHaveClass('done')
+  expect(screen.getByRole('link', { name: '✓ 학급 만들기' })).toHaveClass('done')
 })
 
 test('할 일에 없는 학생 @를 쓰면 추가하지 않고 알린다', async () => {
@@ -102,6 +102,19 @@ test('오늘 요약 출결 수는 바로 바뀐다', async () => {
   const s = await saveStudent(db, c.id, emptyStudent(1, '가'))
   show()
   expect(await screen.findByText('출결 0명')).toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 300)) // 처음 불러오기가 끝난 뒤에 바꾼다
   await saveAttendance(db, { student_id: s.id, date: '2026-11-10', kind: '결석', category: '질병', period: null, reason: '', evidence_type: null, memo: '' })
+  expect(await screen.findByText('출결 1명')).toBeInTheDocument()
+})
+
+test('홈 요약(출결 n명)은 명령 등으로 자료가 바뀌면 바로 갱신된다', async () => {
+  const { db, show } = await home()
+  const { getCurrentClassId, saveStudent, emptyStudent } = await import('../../lib/roster/roster')
+  const { saveAttendance } = await import('../../lib/attendance/attendance')
+  const st = await saveStudent(db, (await getCurrentClassId(db))!, emptyStudent(1, '가상학생'))
+  show()
+  expect(await screen.findByText('출결 0명')).toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 300)) // 처음 불러오기가 끝난 뒤에 바꾼다
+  await saveAttendance(db, { student_id: st.id, date: '2026-11-10', kind: '결석', category: '질병', period: null, reason: '', evidence_type: null, memo: '' } as never)
   expect(await screen.findByText('출결 1명')).toBeInTheDocument()
 })

@@ -219,7 +219,7 @@ ol.steps li.done .step-no { background: var(--accent); color: #fff; }
 .sidebar .side-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 .class-switch { margin: 0 4px 8px; }
 .class-switch select { width: 100%; font-weight: 600; background: var(--panel); }
-.content { padding: 24px 32px 48px; max-width: 1240px; width: 100%; }
+.content { padding: 24px 32px 48px; max-width: 1240px; width: 100%; margin-inline: auto; }
 .content h2 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.02em; }
 .card { border-radius: 8px; padding: 16px; border: 1px solid var(--line); box-shadow: none; }
 .card h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
@@ -301,7 +301,7 @@ ol.briefing-list li input:not([type]) { border-color: transparent; background: t
 ol.briefing-list li input:not([type]):hover { border-color: var(--line-input); }
 .steps-compact { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; }
 .steps-compact a { color: var(--ink); background: var(--c-gray-bg); padding: 4px 10px; border-radius: 9999px; text-decoration: none; }
-.steps-compact a.done { color: var(--c-green); background: var(--c-green-bg); text-decoration: line-through; }
+.steps-compact a.done { color: var(--c-green); background: var(--c-green-bg); text-decoration: none; }
 /* 상담 */
 .counsel-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; width: 100%; align-items: start; }
 ul.student-list.compact button { min-height: 0; padding: 6px 10px; border-radius: 6px; border: 0; background: transparent; width: 100%; display: flex; justify-content: space-between; }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLive } from '../../lib/ui/useLive'
 import { Link } from 'react-router-dom'
 import { useDb, useNeisEvents, useNetFetch } from '../../app/context'
 import type { TeacherTimetableRec } from '../../lib/db/types'
@@ -15,19 +16,21 @@ export default function TodaySummary({ today }: { today: string }) {
   const db = useDb()
   const { version } = useNeisEvents()
   const [open, setOpen] = useState(false)
-  const [timetable, setTimetable] = useState<TeacherTimetableRec[]>([])
-  const [att, setAtt] = useState(0)
-  const [reports, setReports] = useState(0)
-  useEffect(() => {
-    ;(async () => {
-      setTimetable((await listMyTimetable(db)).filter((t) => t.weekday === weekday(today)).sort((a, b) => a.period - b.period))
+  // 자료가 바뀌면(명령·다른 화면) 바로 다시 센다(liveQuery). 읽기만 한다.
+  const timetable = useLive<TeacherTimetableRec[]>(async () => (await listMyTimetable(db)).filter((t) => t.weekday === weekday(today)).sort((a, b) => a.period - b.period), [db, today, version], [])
+  const { att, reports } = useLive(
+    async () => {
       const cid = await getCurrentClassId(db)
-      if (!cid) return
+      if (!cid) return { att: 0, reports: 0 }
       const studs = await listStudents(db, cid, { includeInactive: false })
-      setAtt(new Set((await listAttendanceByDate(db, studs.map((s) => s.id), today)).filter((a) => !a.deleted).map((a) => a.student_id)).size)
-      setReports((await listReportsForMonth(db, cid, today.slice(0, 7))).filter((r) => !r.report.submitted).length)
-    })()
-  }, [db, today, version])
+      return {
+        att: new Set((await listAttendanceByDate(db, studs.map((s) => s.id), today)).filter((a) => !a.deleted).map((a) => a.student_id)).size,
+        reports: (await listReportsForMonth(db, cid, today.slice(0, 7))).filter((r) => !r.report.submitted).length,
+      }
+    },
+    [db, today, version],
+    { att: 0, reports: 0 },
+  )
   return (
     <div className="today-line">
       <button type="button" className="today-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>

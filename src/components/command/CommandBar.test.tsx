@@ -124,3 +124,15 @@ test('글을 치는 동안에는 커서를 옮기지 않는다(한글 조합 보
   await new Promise((r) => setTimeout(r, 50))
   expect(spy).not.toHaveBeenCalled()
 })
+
+test("'/'만 치거나 명령 이름을 치는 중에는 빨간 오류 대신 고르기 안내", async () => {
+  const user = userEvent.setup()
+  await setup()
+  const input = await screen.findByRole('combobox', { name: '명령 입력' })
+  await waitFor(() => expect(input).toBeEnabled())
+  await user.type(input, '/')
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.getByText('↑↓로 고르고 Enter')).toBeInTheDocument()
+  await user.type(input, '없는명령 ')
+  expect(await screen.findByRole('alert')).toHaveTextContent("'/없는명령' 명령을 모릅니다")
+})

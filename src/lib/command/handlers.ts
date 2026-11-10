@@ -124,7 +124,7 @@ export const HANDLERS: Record<string, Handler> = {
     needs: (p) => (!p.parts.length ? { message: '할 일을 쓰세요.' } : null),
     async run(p, _ctx, env) {
       const rec = await addTodo(env.db, p.parts, p.dateGiven ? p.date : null)
-      return { summary: `할 일 추가${rec.due ? ` · 마감 ${shortDate(rec.due)}` : ''}`, links: [{ label: '홈', to: '/' }], undo: () => deleteTodo(env.db, rec.id) }
+      return { summary: `할 일 추가${rec.due ? ` · 마감 ${shortDate(rec.due)}` : ''}`, links: [{ label: '할 일 보기', to: '/' }], undo: () => deleteTodo(env.db, rec.id) }
     },
   },
   search: {
@@ -145,7 +145,7 @@ export const HANDLERS: Record<string, Handler> = {
     needs: (p) => (!p.rest ? { message: '전달할 내용을 쓰세요.' } : null),
     async run(p, _ctx, env) {
       const rec = await addNotice(env.db, { text: p.rest, start_date: p.date })
-      return { summary: `전달사항 추가 · ${shortDate(p.date)}`, links: [{ label: '홈', to: '/' }], undo: async () => void (await deleteNotice(env.db, rec.id)) }
+      return { summary: `전달사항 추가 · ${shortDate(p.date)}`, links: [{ label: '전달사항 보기', to: '/?tab=notice' }], undo: async () => void (await deleteNotice(env.db, rec.id)) }
     },
   },
   note: {
