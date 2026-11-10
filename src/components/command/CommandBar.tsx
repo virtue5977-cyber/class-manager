@@ -31,16 +31,17 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
   const parsed = useMemo(() => (value.trim().startsWith('/') ? parseCommand(value, ctx, commandNames(), commandSubs()) : null), [value, ctx])
   const problem = parsed?.errors[0] ?? (parsed?.ambiguous[0] ? `'${parsed.ambiguous[0]}'에 맞는 학생이 여럿입니다 · @를 눌러 고르세요` : parsed?.missing[0] ? `'${parsed.missing[0]}' 학생을 찾지 못했습니다 · @를 눌러 고르세요` : null)
 
-  const set = (v: string, c = v.length) => {
+  /** 값 바꾸기. moveCaret은 후보 넣기·기록 불러오기 때만(입력 중에 커서를 옮기면 한글 조합이 깨진다). */
+  const set = (v: string, c = v.length, moveCaret = false) => {
     setValue(v)
     setCaret(c)
     setSel(0)
     setClosed(false)
-    requestAnimationFrame(() => ref.current?.setSelectionRange(c, c))
+    if (moveCaret) requestAnimationFrame(() => ref.current?.setSelectionRange(c, c))
   }
   const pick = (s: Suggestion) => {
     const r = applySuggestion(value, caret, s)
-    set(r.value, r.caret)
+    set(r.value, r.caret, true)
   }
   async function run() {
     if (!value.trim() || !env || busy) return
@@ -68,7 +69,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
       e.preventDefault()
       const h = Math.min(hist + 1, history.length - 1)
       setHist(h)
-      set(history[h])
+      set(history[h], history[h].length, true)
       setClosed(true)
     } else if ((e.key === 'Enter' || e.key === 'Tab') && list.length) {
       e.preventDefault()

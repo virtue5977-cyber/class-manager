@@ -89,9 +89,11 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
     const t = toks[i]
     if (t.kind === 'student') {
       const q = t.text.slice(1)
-      // 노트 제목(띄어쓰기 포함, 가장 긴 것) 먼저
+      // 번호·이름이 정확히 맞는 학생이 있으면 학생이 먼저(같은 이름의 노트가 있어도)
+      const exactStudent = ctx.students.some((s) => s.name === q || (/^\d+$/.test(q) && s.number === Number(q)))
+      // 그다음 노트 제목(띄어쓰기 포함, 가장 긴 것)
       let noteHit: { note: NoteRec; used: number } | null = null
-      for (const n of ctx.notes) {
+      if (!exactStudent) for (const n of ctx.notes) {
         if (n.deleted) continue
         const len = n.title.trim().split(/\s+/).length
         if ([q, ...words.slice(i + 1, i + len)].join(' ') === n.title.trim() && (!noteHit || len > noteHit.used)) noteHit = { note: n, used: len }
@@ -115,15 +117,27 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
       i++
       continue
     }
+    // 날짜·시각 말은 앞쪽(사유·내용이 시작되기 전)에서만 읽는다. 할 일·일정은 맨 끝의 날짜 말도 마감일·날짜로.
     const dt = parseDateWords(words, i, ctx.today)
-    if (dt.used) {
-      if (dt.date) {
-        p.date = dt.date
-        p.dateGiven = true
+    const isTodo = p.cmd === 'todo' || (p.cmd === 'event' && p.sub === '할일')
+    const atEnd = i + dt.used === toks.length
+    if (dt.used && (!restWords.length || ((isTodo || p.cmd === 'event') && atEnd))) {
+      if (dt.invalid) {
+        p.errors.push(`날짜가 올바르지 않습니다: ${dt.invalid}`)
+        i += dt.used
+        continue
       }
-      if (dt.time) p.time = dt.time
-      i += dt.used
-      continue
+      // 할 일은 시각을 쓰지 않으므로 시각 말은 글로 남긴다.
+      const used = isTodo && dt.time ? (dt.dateUsed ?? 0) : dt.used
+      if (used) {
+        if (dt.date) {
+          p.date = dt.date
+          p.dateGiven = true
+        }
+        if (dt.time && !isTodo) p.time = dt.time
+        i += used
+        continue
+      }
     }
     const w = t.text
     if (!p.kind && (KINDS as readonly string[]).includes(w)) p.kind = w

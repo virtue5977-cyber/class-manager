@@ -5,20 +5,36 @@ const pad = (n: number) => String(n).padStart(2, '0')
 /** 월=0 … 일=6 */
 const dow = (ymd: string) => (new Date(`${ymd}T00:00:00Z`).getUTCDay() + 6) % 7
 
+/** '월'·'월요일'. 한 글자 '일'은 '일(하루·일)'과 헷갈려 '일요일'만 받는다. */
 function weekdayWord(w: string): number {
   const m = /^([월화수목금토일])(요일)?$/.exec(w)
-  return m ? DAYS.indexOf(m[1]) : -1
+  if (!m || (m[1] === '일' && !m[2])) return -1
+  return DAYS.indexOf(m[1])
 }
 
-function oneDate(words: string[], i: number, today: string): { date: string; used: number } | null {
+/** 실제로 있는 날짜인지(2/30, 11/31 거절) */
+function realDate(y: number, m: number, d: number): string | null {
+  const t = new Date(Date.UTC(y, m - 1, d))
+  return t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${pad(m)}-${pad(d)}` : null
+}
+
+function oneDate(words: string[], i: number, today: string): { date?: string; invalid?: string; used: number } | null {
   const w = words[i]
   if (!w) return null
   const rel: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2, 어제: -1, 그제: -2, 그저께: -2 }
   if (w in rel) return { date: addDays(today, rel[w]), used: 1 }
+  const y = +today.slice(0, 4)
   let m = /^(\d{1,2})[/.](\d{1,2})\.?$/.exec(w)
-  if (m) return { date: `${today.slice(0, 4)}-${pad(+m[1])}-${pad(+m[2])}`, used: 1 }
+  // 13 이상의 '월'(37.5 같은 체온·점수)은 날짜로 보지 않는다.
+  if (m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) {
+    const d = realDate(y, +m[1], +m[2])
+    return d ? { date: d, used: 1 } : { invalid: w, used: 1 }
+  }
   m = /^(\d{1,2})일$/.exec(w)
-  if (m) return { date: `${today.slice(0, 7)}-${pad(+m[1])}`, used: 1 }
+  if (m && +m[1] >= 1 && +m[1] <= 31) {
+    const d = realDate(y, +today.slice(5, 7), +m[1])
+    return d ? { date: d, used: 1 } : { invalid: w, used: 1 }
+  }
   const monday = addDays(today, -dow(today))
   if (w === '다음주' || w === '이번주') {
     const k = weekdayWord(words[i + 1] ?? '')
@@ -66,12 +82,23 @@ function oneTime(words: string[], i: number): { time: string; used: number } | n
 }
 
 /** words[i]부터 날짜(와 이어지는 시각)를 읽는다. 못 읽으면 used 0. */
-export function parseDateWords(words: string[], i: number, today: string): { date?: string; time?: string; used: number } {
+export interface DateWords {
+  date?: string
+  time?: string
+  /** 날짜처럼 보이지만 없는 날(11/31) */
+  invalid?: string
+  used: number
+  /** 그중 날짜 말이 쓴 낱말 수 */
+  dateUsed?: number
+}
+export function parseDateWords(words: string[], i: number, today: string): DateWords {
   const d = oneDate(words, i, today)
-  const t = oneTime(words, i + (d?.used ?? 0))
-  const out: { date?: string; time?: string; used: number } = { used: (d?.used ?? 0) + (t?.used ?? 0) }
-  if (d) out.date = d.date
+  const t = d?.invalid ? null : oneTime(words, i + (d?.used ?? 0))
+  const out: DateWords = { used: (d?.used ?? 0) + (t?.used ?? 0) }
+  if (d?.date) out.date = d.date
+  if (d?.invalid) out.invalid = d.invalid
   if (t) out.time = t.time
+  if (d && t) out.dateUsed = d.used
   return out
 }
 

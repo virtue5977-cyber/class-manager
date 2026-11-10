@@ -59,3 +59,12 @@ test('한글 파일: 날짜·학번·이름·16줄이 들어가고 A4는 쪽 크
   const a4 = await JSZip.loadAsync(await buildReflectionHwpx({ date: '', no: '', name: '', t1: DEFAULT_T1, t2: DEFAULT_T2, lines, mode: 'A4' }))
   expect(await a4.file('Contents/section0.xml')!.async('string')).toContain(`width="${MODES.A4.pageW}" height="${MODES.A4.pageH}"`)
 })
+
+test('넓은 영문(W·M·m·w)은 넓게 잡고, 줄 글의 $&는 그대로 들어간다', async () => {
+  expect(charEm('W')).toBeGreaterThanOrEqual(0.9)
+  expect(charEm('m')).toBeGreaterThanOrEqual(0.8)
+  const lines = [...DEFAULT_LINES]
+  lines[3] = '가격 $& 표시'
+  const z = await JSZip.loadAsync(await buildReflectionHwpx({ date: '', no: '', name: '', t1: DEFAULT_T1, t2: DEFAULT_T2, lines, mode: 'B4' }))
+  expect(await z.file('Contents/section0.xml')!.async('string')).toContain('가격 $&amp; 표시')
+})

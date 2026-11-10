@@ -6,6 +6,8 @@ export function charEm(ch: string): number {
   const c = ch.codePointAt(0) ?? 0
   if ((c >= 0xac00 && c <= 0xd7a3) || (c >= 0x3130 && c <= 0x318f) || (c >= 0x1100 && c <= 0x11ff) || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xff00 && c <= 0xffef)) return 1
   if (ch === ' ') return 0.33
+  if (/[WM]/.test(ch)) return 0.95
+  if (/[mw]/.test(ch)) return 0.82
   if (/[0-9]/.test(ch)) return 0.55
   if (/[a-z]/.test(ch)) return 0.55
   if (/[A-Z]/.test(ch)) return 0.68

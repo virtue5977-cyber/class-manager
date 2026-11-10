@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('desktop', {
     list: (p) => ipcRenderer.invoke('folder:list', p),
   },
   pdf: {
+    sizes: ['A4', 'B4'],
     save: (name, opts) => ipcRenderer.invoke('pdf:save', name, opts),
   },
   agy: {

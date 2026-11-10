@@ -3,7 +3,7 @@ import Icon from '../../components/Icon'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDb, useFs } from '../../app/context'
 import type { NoteRec, TodoRec } from '../../lib/db/types'
-import { createNote, deleteNote, listNotes, noteText, saveNote } from '../../lib/notes/notes'
+import { createNote, deleteNote, listNotes, noteText, setPinned } from '../../lib/notes/notes'
 import { setTodoDone, todosLinkingNote } from '../../lib/todos/todos'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
@@ -22,7 +22,6 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
   const [params] = useSearchParams()
   const id = params.get('id')
   const notes = useLive<NoteRec[]>(() => listNotes(db), [db], [])
-  const files = useLive<Set<string>>(async () => new Set((await db.note_files.toArray()).filter((f) => !f.deleted).map((f) => f.note_id)), [db], new Set())
   const [q, setQ] = useState('')
   const [current, setCurrent] = useState<NoteRec | null>(null)
   useEffect(() => {
@@ -60,8 +59,8 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
             {shown.map((n) => (
               <li key={n.id} className={`note-item${n.id === id ? ' on' : ''}`}>
                 <Link to={`/notes?id=${n.id}`}>{n.title || '제목 없음'}</Link>
-                {files.has(n.id) && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
-                <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => saveNote(db, { ...n, pinned: !n.pinned })}>
+                {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
+                <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => setPinned(db, n.id, !n.pinned)}>
               <Icon name="pin" size={14} />
             </button>
                 <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={async () => { await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>×</button>

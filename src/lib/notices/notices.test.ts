@@ -52,3 +52,10 @@ test('옮기기는 다른 기기(백업 복원 후)에서 다시 돌아도 겹�
   expect(await migrateBriefings(db)).toBe(0)
   expect((await noticesOn(db, '2026-11-09')).map((n) => n.text)).toEqual(['교육'])
 })
+
+test('복원한 새 기기(표시 없음, 빈 전달사항)에서도 옮긴다', async () => {
+  const db = fresh()
+  await migrateBriefings(db) // 빈 상태에서 먼저 돌아도
+  await saveBriefingItems(db, '2026-11-09', '종례', [{ text: '체육복', order: 0, done: false }]) // 그 뒤 백업 복원
+  expect(await migrateBriefings(db)).toBe(1)
+})

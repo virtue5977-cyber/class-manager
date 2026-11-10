@@ -67,7 +67,9 @@ export async function buildReflectionHwpx(d: ReflectionDoc): Promise<Uint8Array>
     const v = d.lines[i] ?? ''
     const f = fitLine(v ? `${i + 1}. ${v}` : '', bodyOpts(d.mode, d.fitOpts))
     const text = v ? (i === 0 ? v : `${i + 1}. ${v}`) : ''
-    out[idx] = rows[idx].replace(/<hp:run charPrIDRef="\d+">(?:<hp:t>[\s\S]*?<\/hp:t>)?<\/hp:run>|<hp:run charPrIDRef="\d+"\/>/, run(getCp(14, f.pt, f.sp), text))
+    const r = run(getCp(14, f.pt, f.sp), text)
+    // 바꿀 글에 $&·$' 같은 것이 있어도 그대로 들어가게 함수로 넘긴다.
+    out[idx] = rows[idx].replace(/<hp:run charPrIDRef="\d+">(?:<hp:t>[\s\S]*?<\/hp:t>)?<\/hp:run>|<hp:run charPrIDRef="\d+"\/>/, () => r)
   }
   rows.forEach((r, i) => (sec = sec.replace(r, `\u0000${i}\u0000`)))
   sec = sec.replace(/\u0000(\d+)\u0000/g, (_m, i) => out[+i])

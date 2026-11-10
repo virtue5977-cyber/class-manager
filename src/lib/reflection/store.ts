@@ -47,16 +47,17 @@ export async function listReflections(db: AppDB, studentId?: string): Promise<Re
 
 export const deleteReflection = (db: AppDB, id: string) => softDelete(db.reflections, id)
 
-/** 좋은 문장 모음. 처음이면 기본 16문장을 넣는다(device_local 표시로 한 번만). */
+/** 좋은 문장 모음. 기본 16문장은 id를 정해(phrase-default-<n>) 넣어 기기·복원과 상관없이 한 번만. 뺀 기본 문장은 되살리지 않는다. */
 export async function listPhrases(db: AppDB): Promise<ReflectionPhraseRec[]> {
-  if (!(await db.device_local.get('reflectionPhrasesSeeded'))?.value) {
-    await db.transaction('rw', db.reflection_phrases, db.device_local, async () => {
-      const now = Date.now()
-      for (const [i, text] of DEFAULT_LINES.entries()) await db.reflection_phrases.add(newRecord({ text, starred_at: new Date(now - (16 - i) * 1000).toISOString() }) as ReflectionPhraseRec)
-      await db.device_local.put({ id: 'reflectionPhrasesSeeded', value: true })
-    })
-  }
-  return (await db.reflection_phrases.toArray()).filter((p) => !p.deleted).sort((a, b) => b.starred_at.localeCompare(a.starred_at))
+  await db.transaction('rw', db.reflection_phrases, async () => {
+    const now = Date.now()
+    for (const [i, text] of DEFAULT_LINES.entries()) {
+      const id = `phrase-default-${i}`
+      if (await db.reflection_phrases.get(id)) continue
+      await db.reflection_phrases.add({ ...newRecord({ text, starred_at: new Date(now - (16 - i) * 1000).toISOString() }), id } as ReflectionPhraseRec)
+    }
+  })
+  return readPhrases(db)
 }
 
 /** 별표: 같은 글이 이미 있으면 그대로. */

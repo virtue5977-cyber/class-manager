@@ -1,3 +1,4 @@
+import { vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -36,9 +37,12 @@ test('키보드만으로 /출결 → 카드·되돌리기·저장', async () => 
   expect(await screen.findByRole('option', { name: /\/출결/ })).toBeInTheDocument()
   await user.keyboard('{Enter}')
   expect(input).toHaveValue('/출결 ')
-  await user.type(input, '@ㅂㄷ')
+  await new Promise((r) => requestAnimationFrame(() => r(null)))
+  await user.type(input, '@ㅂㄷ', { skipClick: true })
   await user.keyboard('{Enter}')
-  await user.type(input, '결석 질병 감기')
+  await new Promise((r) => requestAnimationFrame(() => r(null)))
+  await user.type(input, '결석 질병 감기', { skipClick: true })
+  expect(input).toHaveValue('/출결 @박도윤 결석 질병 감기')
   expect(screen.getByRole('status')).toHaveTextContent('출결 · 3번 박도윤 · 11/10(화) · 결석(질병) · 사유: 감기')
   await user.keyboard('{Escape}{Enter}')
   const card = await screen.findByRole('article', { name: '결과' })
@@ -109,4 +113,14 @@ test('W 막대의 확인 카드 "이렇게 실행"은 그 명령을 실행한다
   )
   await user.click(await screen.findByRole('button', { name: '이렇게 실행' }))
   await waitFor(async () => expect((await db.todos.toArray()).length).toBe(1))
+})
+
+test('글을 치는 동안에는 커서를 옮기지 않는다(한글 조합 보호)', async () => {
+  await setup()
+  const input = (await screen.findByRole('combobox', { name: '명령 입력' })) as HTMLInputElement
+  await waitFor(() => expect(input).toBeEnabled())
+  const spy = vi.spyOn(input, 'setSelectionRange')
+  fireEvent.change(input, { target: { value: '/찾기 가' } })
+  await new Promise((r) => setTimeout(r, 50))
+  expect(spy).not.toHaveBeenCalled()
 })

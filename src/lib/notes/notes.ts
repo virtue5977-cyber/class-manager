@@ -15,11 +15,23 @@ export async function createNote(db: AppDB, title = '새 노트', blocks: NoteRe
 export const saveNote = (db: AppDB, rec: NoteRec) => save(db.notes, rec)
 
 /** 편집 저장: 최신 노트에 제목·블록만 바꾼다(그사이 바뀐 고정 표시는 지키고, 지운 노트는 되살리지 않음). */
-export async function saveNoteContent(db: AppDB, id: string, content: Pick<NoteRec, 'title' | 'blocks'>): Promise<void> {
+export async function saveNoteContent(db: AppDB, id: string, content: Pick<NoteRec, 'title' | 'blocks'>, now = Date.now()): Promise<void> {
   await db.transaction('rw', db.notes, async () => {
     const cur = await db.notes.get(id)
     if (!cur || cur.deleted) return
     await save(db.notes, { ...cur, title: content.title, blocks: content.blocks })
+  })
+  // 블록에서 빠진 지 1분 넘은 첨부는 내용을 비운다(백업이 커지지 않게). 막 붙인 파일은 블록이 저장되기 전일 수 있어 기다린다.
+  const used = new Set(content.blocks.filter((b) => b.file_id).map((b) => b.file_id))
+  for (const f of await db.note_files.where('note_id').equals(id).toArray())
+    if (!f.deleted && !used.has(f.id) && Date.parse(f.created_at) < now - 60_000) await dropFile(db, f.id)
+}
+
+/** 고정만 바꾼다(최신 노트 기준). */
+export async function setPinned(db: AppDB, id: string, pinned: boolean): Promise<void> {
+  await db.transaction('rw', db.notes, async () => {
+    const cur = await db.notes.get(id)
+    if (cur && !cur.deleted) await save(db.notes, { ...cur, pinned })
   })
 }
 
@@ -28,10 +40,16 @@ export async function listNotes(db: AppDB): Promise<NoteRec[]> {
   return (await db.notes.toArray()).filter((n) => !n.deleted).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at))
 }
 
+/** 첨부 지우기: 삭제 표시와 함께 내용(base64)을 비운다. */
+async function dropFile(db: AppDB, fileId: string): Promise<void> {
+  const f = await db.note_files.get(fileId)
+  if (f) await save(db.note_files, { ...f, deleted: true, data: '' })
+}
+
 export async function deleteNote(db: AppDB, id: string): Promise<void> {
   await db.transaction('rw', db.notes, db.note_files, async () => {
     await softDelete(db.notes, id)
-    for (const f of await db.note_files.where('note_id').equals(id).toArray()) if (!f.deleted) await softDelete(db.note_files, f.id)
+    for (const f of await db.note_files.where('note_id').equals(id).toArray()) if (!f.deleted || f.data) await dropFile(db, f.id)
   })
 }
 

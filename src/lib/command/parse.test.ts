@@ -49,3 +49,28 @@ test('모르는 명령은 오류', () => {
   expect(p('/없는명령 a').errors).toEqual(["'/없는명령' 명령을 모릅니다. /를 눌러 고르세요."])
   expect(p('그냥 문장').cmd).toBeNull()
 })
+
+test('사유 속 숫자·날짜 말은 날짜가 아니다(앞쪽 날짜 말만 읽음)', () => {
+  const a = p('/출결 @3 결석 질병 발열 37.5')
+  expect([a.date, a.rest]).toEqual(['2026-11-10', '발열 37.5'])
+  const b = p('/출결 @3 결석 출석인정 체험학습 3일')
+  expect([b.date, b.rest]).toEqual(['2026-11-10', '체험학습 3일'])
+  expect(p('/출결 @3 결석 질병 버스 일').rest).toBe('버스 일')
+  expect(p('/출결 @3 어제 결석 질병 감기').date).toBe('2026-11-09')
+})
+
+test('없는 날짜는 오류', () => {
+  expect(p('/출결 @3 31일 결석 질병').errors).toEqual(['날짜가 올바르지 않습니다: 31일'])
+  expect(p('/출결 @3 2/30 결석 질병').errors).toEqual(['날짜가 올바르지 않습니다: 2/30'])
+})
+
+test('할 일: 끝의 날짜 말은 마감일, 시각은 글로 남김', () => {
+  const t = p('/할일 3시 회의 준비 내일')
+  expect([t.rest, t.dateGiven, t.date]).toEqual(['3시 회의 준비', true, '2026-11-11'])
+})
+
+test('학생 이름과 같은 제목의 노트가 있어도 @이름은 학생', () => {
+  const n2 = { ...newRecord({ title: '박도윤', blocks: [], pinned: false }) } as NoteRec
+  const r = parseCommand('/출결 @박도윤 결석 질병', { ...ctx, notes: [note, n2] }, names, subs)
+  expect(r.students.map((s) => s.name)).toEqual(['박도윤'])
+})

@@ -26,3 +26,18 @@ test('편집 저장은 최신 노트에 제목·블록만 바꾸고, 지운 노�
   await saveNoteContent(db, n.id, { title: '다', blocks: [] })
   expect(await db.notes.get(n.id)).toMatchObject({ title: '나', deleted: true })
 })
+
+test('노트를 지우거나 파일 블록을 빼면 첨부 내용은 비운다(백업이 커지지 않게)', async () => {
+  const { saveNoteContent } = await import('./notes')
+  const db = createDb('test-' + crypto.randomUUID())
+  const n = await createNote(db, '가')
+  const f1 = await attachFile(db, n.id, { name: 'a', mime: '', bytes: new Uint8Array([1, 2, 3]) })
+  const f2 = await attachFile(db, n.id, { name: 'b', mime: '', bytes: new Uint8Array([4]) })
+  await saveNoteContent(db, n.id, { title: '가', blocks: [{ id: 'x', type: 'file', file_id: f1.id }] })
+  expect((await db.note_files.get(f2.id))!.deleted).toBe(false) // 막 붙인 파일은 1분 기다림
+  await saveNoteContent(db, n.id, { title: '가', blocks: [{ id: 'x', type: 'file', file_id: f1.id }] }, Date.now() + 61_000)
+  expect(await db.note_files.get(f2.id)).toMatchObject({ deleted: true, data: '' })
+  expect((await db.note_files.get(f1.id))!.data).not.toBe('')
+  await deleteNote(db, n.id)
+  expect(await db.note_files.get(f1.id)).toMatchObject({ deleted: true, data: '' })
+})

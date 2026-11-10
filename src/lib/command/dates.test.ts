@@ -28,7 +28,7 @@ test('시각 말', () => {
   expect(d('오후 3시 반')).toEqual({ time: '15:30', used: 3 })
   expect(d('3시 30분')).toEqual({ time: '15:30', used: 2 })
   expect(d('오전 9시')).toEqual({ time: '09:00', used: 2 })
-  expect(d('내일 15:30')).toEqual({ date: '2026-11-11', time: '15:30', used: 2 })
+  expect(d('내일 15:30')).toEqual({ date: '2026-11-11', time: '15:30', used: 2, dateUsed: 1 })
 })
 
 test('교시·구분', () => {
@@ -37,4 +37,10 @@ test('교시·구분', () => {
   expect(parsePeriod('5~7교시')).toBe('5~7')
   expect(parsePeriod('감기')).toBeNull()
   expect(CATEGORIES['인정']).toBe('출석인정')
+})
+
+test('없는 날짜는 invalid로 알린다', () => {
+  expect(parseDateWords(['31일'], 0, T)).toEqual({ used: 1, invalid: '31일' })
+  expect(parseDateWords(['37.5'], 0, T)).toEqual({ used: 0 })
+  expect(parseDateWords(['일'], 0, T)).toEqual({ used: 0 })
 })

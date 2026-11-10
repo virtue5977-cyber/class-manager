@@ -8,6 +8,7 @@ import { bodyOpts, fitLine, MODES, titleOpts, type PaperMode } from '../../lib/r
 import { distribute } from '../../lib/reflection/split'
 import { buildReflectionHwpx } from '../../lib/reflection/hwpx'
 import { fillByAi } from '../../lib/reflection/ai'
+import { getPrompt, resetPrompt, savePrompt } from '../../lib/ai/prompts'
 import { createNote, newBlockId } from '../../lib/notes/notes'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import { exportPdf } from '../../lib/export/pdf'
@@ -221,7 +222,8 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               })}>
                 {busy ? '만드는 중…' : 'AI로 16줄 채우기'}
               </button>
-              <p className="muted small">AI에는 사유만 보냅니다(학생 이름·학번은 보내지 않음). 지시문은 설정 &gt; AI에서 고칩니다.</p>
+              <p className="muted small">AI에는 사유만 보냅니다(학생 이름·학번은 보내지 않음).</p>
+              <PromptBox />
               <label className="wide">
                 붙여 넣을 글
                 <textarea rows={4} value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="반성문 전체를 붙여 넣으면 문장 단위로 16줄에 나눕니다." />
@@ -315,5 +317,24 @@ function PaperLine({ i, value, fit, selected, onFocus, onChange }: { i: number; 
         <td colSpan={6} />
       </tr>
     </>
+  )
+}
+
+/** 반성문 AI 지시문: 이 화면에서 고치고 기본으로 되돌린다(길이·출력 형식은 앱이 붙임). */
+function PromptBox() {
+  const db = useDb()
+  const [text, setText] = useState<string>()
+  const [msg, setMsg] = useState<string>()
+  return (
+    <details className="prompt-box" onToggle={async (e) => (e.currentTarget as HTMLDetailsElement).open && text === undefined && setText(await getPrompt(db, 'reflection'))}>
+      <summary>AI 지시문 고치기</summary>
+      <textarea aria-label="반성문 AI 지시문" rows={8} value={text ?? ''} onChange={(e) => setText(e.target.value)} />
+      <div className="row">
+        <button type="button" onClick={async () => { await savePrompt(db, 'reflection', text ?? ''); setMsg('저장했습니다.') }}>지시문 저장</button>
+        <button type="button" className="link" onClick={async () => { await resetPrompt(db, 'reflection'); setText(await getPrompt(db, 'reflection')); setMsg('기본으로 되돌렸습니다.') }}>기본으로 되돌리기</button>
+      </div>
+      {msg && <p className="muted small" role="status">{msg}</p>}
+      <p className="muted small">문장 길이(용지에 맞춘 글자 수)와 출력 형식은 앱이 따로 붙입니다.</p>
+    </details>
   )
 }

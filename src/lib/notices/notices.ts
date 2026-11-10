@@ -66,15 +66,14 @@ export async function moveNotice(db: AppDB, date: string, id: string, dir: -1 | 
 
 /**
  * 예전 조례·종례 항목을 그날 하루 전달사항으로 옮긴다(조례 먼저). briefings는 그대로 둔다.
- * id를 'brf-<브리핑id>-<순서>'로 정해 두어 다른 기기(백업 복원 뒤)에서 다시 돌아도 겹치지 않는다.
+ * id를 'brf-<브리핑id>-<순서>'로 정해 두어 켤 때마다 돌아도(백업 복원 뒤 포함) 겹치지 않는다. 지운 항목도 되살리지 않는다.
  */
 export async function migrateBriefings(db: AppDB): Promise<number> {
-  if ((await db.device_local.get('briefingsMigrated'))?.value) return 0
   const rows = (await db.briefings.toArray()).filter((b) => !b.deleted)
   rows.sort((a, b) => (a.target_date < b.target_date ? -1 : a.target_date > b.target_date ? 1 : a.slot === '조례' ? -1 : 1))
   let order = await nextOrder(db)
   let n = 0
-  await db.transaction('rw', db.notice_items, db.device_local, async () => {
+  await db.transaction('rw', db.notice_items, async () => {
     for (const b of rows)
       for (const [k, it] of [...b.items].sort((x, y) => x.order - y.order).entries()) {
         if (!it.text.trim()) continue
@@ -83,7 +82,6 @@ export async function migrateBriefings(db: AppDB): Promise<number> {
         await db.notice_items.add({ ...newRecord({ text: it.text.trim(), start_date: b.target_date, end_date: b.target_date, done: it.done, pinned: false, order: order++ }), id } as NoticeItemRec)
         n++
       }
-    await db.device_local.put({ id: 'briefingsMigrated', value: new Date().toISOString() })
   })
   return n
 }
