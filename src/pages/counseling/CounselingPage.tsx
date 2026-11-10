@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import PageHead from '../../components/PageHead'
 import ExportMenu from '../../components/ExportMenu'
 import { exportPdf } from '../../lib/export/pdf'
 import { useAi, useDb, useFs } from '../../app/context'
@@ -114,9 +115,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
 
   return (
     <section className="stack">
-      <div className="page-head">
-        <h2>상담일지</h2>
-        <div className="tools">
+      <PageHead title="상담일지">
         {classes && <ClassSelect classes={classes} classId={classId} onChange={(id) => { setSelected(undefined); choose(id) }} />}
         <form
           className="row"
@@ -136,8 +135,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
             </button>
           )}
         </form>
-        </div>
-      </div>
+      </PageHead>
       {aiOff && (
         <p className="banner" role="status">
           AI가 꺼져 있습니다. 연결 방식(Claude Code 또는 API 키)을 고르고 'AI 정리 사용'을 켜세요. <a href="#/settings?tab=ai">설정 &gt; AI 열기</a>

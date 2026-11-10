@@ -1,4 +1,5 @@
 import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import PageHead from '../../components/PageHead'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -94,9 +95,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
 
   return (
     <section className="stack">
-      <div className="page-head">
-        <h2>달력</h2>
-        <div className="tools">
+      <PageHead title="달력">
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
           <button type="button" onClick={() => { setMonth(today.slice(0, 7)); setPicked(today) }}>
             오늘
@@ -107,8 +106,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
             주말 보기
           </label>
           <ExportMenu items={[{ format: 'hwpx', run: () => exportCal('hwpx') }, { format: 'xlsx', run: () => exportCal('xlsx') }, { format: 'pdf', run: () => exportPdf(`달력_${month}.pdf`) }]} />
-        </div>
-      </div>
+      </PageHead>
       <div className="cal-layout">
         <div className="cal print-area" style={{ gridTemplateColumns: `repeat(${weekends ? 7 : 5}, minmax(0, 1fr))` }} role="grid" aria-label={`${month} 달력`}>
           {DAYS.slice(0, weekends ? 7 : 5).map((d) => (

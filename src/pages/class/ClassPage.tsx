@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useState, type FormEvent } from 'react'
+import PageHead from '../../components/PageHead'
 import { useDb } from '../../app/context'
 import type { ClassRec } from '../../lib/db/types'
 import { CLASS_EVENT, GlobalClassContext, notifyClassChange } from '../common/useClasses'
@@ -66,9 +67,7 @@ export default function ClassPage({ sub = 'roster' }: { sub?: ClassSub }) {
 
   return (
     <section className="stack">
-      <div className="page-head">
-      <h2>{CLASS_SUBS.find((x) => x.sub === sub)?.label ?? '학급'}</h2>
-      <div className="tools">
+      <PageHead title={CLASS_SUBS.find((x) => x.sub === sub)?.label ?? '학급'}>
         {classes && classes.length > 0 && !globalClass && (
           <label className="inline">
             학급 선택
@@ -82,8 +81,7 @@ export default function ClassPage({ sub = 'roster' }: { sub?: ClassSub }) {
         <button type="button" className="link" onClick={() => setAdding((v) => !v)}>
           학급 추가
         </button>
-      </div>
-      </div>
+      </PageHead>
 
       {adding && (
         <form className="card row" onSubmit={add} aria-label="학급 추가">

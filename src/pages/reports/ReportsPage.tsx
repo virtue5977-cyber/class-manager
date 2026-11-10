@@ -1,4 +1,5 @@
 import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import PageHead from '../../components/PageHead'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
@@ -77,12 +78,7 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
 
   return (
     <section className="stack">
-      <div className="page-head">
-        <div>
-          <h2>결석신고서</h2>
-          <span className="muted">{`전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}</span>
-        </div>
-        <div className="tools">
+      <PageHead title="결석신고서" summary={`전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}>
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
           <MonthPicker value={month} onChange={setMonth} />
           <label className="inline">
@@ -103,8 +99,7 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
               ]}
             />
           )}
-        </div>
-      </div>
+      </PageHead>
       {messages.length > 0 && (
         <div className="notice" role="status">
           {messages.map((m) => (

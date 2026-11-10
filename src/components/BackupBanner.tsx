@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useBackupEvents, useDb, useFs } from '../app/context'
 import { checkBackupStatus, runStartup, type StartupStatus } from '../app/startup'
 import { runBackup } from '../lib/backup/service'
+import { toYmd } from '../lib/schoolDays'
 
 const MESSAGES: Partial<Record<StartupStatus, string>> = {
   'needs-setup': '백업 암호구가 설정되지 않았습니다. 설정에서 백업을 켜 주세요.',
@@ -10,8 +11,17 @@ const MESSAGES: Partial<Record<StartupStatus, string>> = {
   'needs-permission': '백업 폴더 접근 허용이 필요합니다.',
 }
 
-export default function BackupBanner() {
+/** device_local 'backupBannerHidden' = 그만 보기를 누른 날짜(그날만 숨김). */
+export default function BackupBanner({ today = toYmd(new Date()) }: { today?: string }) {
   const db = useDb()
+  const [hidden, setHidden] = useState<boolean>()
+  useEffect(() => {
+    db.device_local.get('backupBannerHidden').then((r) => setHidden(r?.value === today))
+  }, [db, today])
+  const hideToday = () => {
+    setHidden(true)
+    db.device_local.put({ id: 'backupBannerHidden', value: today })
+  }
   const fs = useFs()
   const { version } = useBackupEvents()
   const started = useRef(false)
@@ -48,7 +58,7 @@ export default function BackupBanner() {
     }
   }
 
-  if (!status || status === 'done' || status === 'not-due') return null
+  if (hidden !== false || !status || status === 'done' || status === 'not-due') return null
   const text = status === 'failed' ? `자동 백업에 실패했습니다: ${error ?? ''}` : MESSAGES[status]
   return (
     <div className="banner" role="status">
@@ -60,6 +70,9 @@ export default function BackupBanner() {
       ) : (
         <Link to="/settings?tab=backup">설정으로 이동</Link>
       )}
+      <button type="button" className="link banner-dismiss" onClick={hideToday}>
+        오늘은 그만 보기
+      </button>
     </div>
   )
 }

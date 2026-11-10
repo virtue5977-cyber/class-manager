@@ -268,6 +268,7 @@ table.grid tbody tr:hover td { background: var(--row-hover); }
 .roster-item[aria-current="true"] { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
 .roster-item.inactive { color: var(--sub); }
 .roster-tab { width: 100%; }
+.banner .banner-dismiss { margin-left: auto; color: var(--sub); font-size: 12px; }
 .roster-list input[type="search"] { width: 100%; min-width: 0; }
 .roster-detail .detail { margin: 0; }
 .grid-form label.check { grid-column: 1 / -1; }

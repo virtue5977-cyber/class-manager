@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import PageHead from '../../components/PageHead'
 import { useDb } from '../../app/context'
 import type { AbsenceReportRec, AttendanceRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
@@ -78,17 +79,17 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
 
   return (
     <section className="stack">
-      <div className="page-head">
-        <div>
-          <h2>출결</h2>
+      <PageHead
+        title="출결"
+        summary={
           <div className="att-summary" aria-label="오늘 출결 요약">
             <span>{`재적 ${students.length}명`}</span>
             {counts.map(([k, n]) => (
               <span key={k} className={n ? `chip-${k}` : 'zero'}>{`${k} ${n}`}</span>
             ))}
           </div>
-        </div>
-        <div className="tools">
+        }
+      >
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
           <div className="date-bar">
             <button type="button" aria-label="전날" title="전 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(-1))}>
@@ -104,8 +105,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
               </button>
             )}
           </div>
-        </div>
-      </div>
+      </PageHead>
       {days && !days.isClassDay(date) && <p className="banner">수업일이 아닙니다(휴업일·주말).</p>}
       {days && !days.hasCalendarFor(date) && <p className="muted">학사일정을 가져오지 않아 공휴일 일부를 모를 수 있습니다.</p>}
       {notice && (
