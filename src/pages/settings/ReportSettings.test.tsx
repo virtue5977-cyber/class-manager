@@ -92,3 +92,25 @@ test('자리표시자 표를 펼쳐 볼 수 있다', async () => {
   await user.click(await screen.findByText('쓸 수 있는 자리표시자 보기'))
   expect(within(screen.getByRole('table', { name: '자리표시자 목록' })).getByText('{{이름}}')).toBeInTheDocument()
 })
+
+test('다른 학교 양식(표시 없음, 표 있음): 자리를 찾아 보여 주고, 바꾸고, 미리보기·저장', async () => {
+  const user = userEvent.setup()
+  const db = fresh()
+  const { fs } = renderWith(db)
+  const { buildTableHwpx } = await import('../../lib/docs/table-doc')
+  fs.nextFileToRead = { name: '옆학교.hwpx', bytes: await buildTableHwpx({ title: '결석계', header: ['성 명', '', '기 간', ''], rows: [['사 유', '', '작성일', '']] }) }
+  await user.click(await screen.findByRole('button', { name: '새 양식 올리기' }))
+  const t = await screen.findByRole('table', { name: '찾은 자리' })
+  expect(within(t).getByRole('combobox', { name: '학생 이름 자리' })).toHaveDisplayValue(/1행 2열/)
+  expect(within(t).getByRole('combobox', { name: '사유 자리' })).toHaveDisplayValue(/1행 2열|2행 2열/)
+  await user.selectOptions(within(t).getByRole('combobox', { name: '일수 자리' }), '(없음)')
+  await user.click(screen.getByRole('button', { name: '가상 학생으로 미리보기' }))
+  await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['옆학교_미리보기.hwpx']))
+  const JSZip = (await import('jszip')).default
+  const sec = await (await JSZip.loadAsync(fs.downloads[0].bytes)).file('Contents/section0.xml')!.async('string')
+  expect(sec).toContain('가상학생')
+  expect(sec).not.toContain('{{')
+  await user.click(screen.getByRole('button', { name: '이 양식으로 저장' }))
+  expect(await screen.findByText('현재 양식: 옆학교 v1')).toBeInTheDocument()
+  expect(screen.queryByRole('table', { name: '찾은 자리' })).toBeNull()
+})

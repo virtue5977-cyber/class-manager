@@ -1,3 +1,6 @@
+import JSZip from 'jszip'
+import FormScan from './FormScan'
+import { scanCells, type FormCell } from '../../lib/hwpx/absence/scan'
 import { CATEGORIES } from '../../lib/stats'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
@@ -8,7 +11,7 @@ import { reconcileAll } from '../../lib/absenceReports/reconcile'
 import { listClasses } from '../../lib/roster/roster'
 import { ABSENCE_PLACEHOLDERS } from '../../lib/hwpx/absence/build'
 import {
-  activateTemplate, buildPlaceholderGuideHwpx, defaultTemplateBytes, getActiveTemplate, installTemplate, listTemplates, useDefaultTemplate,
+  activateTemplate, buildPlaceholderGuideHwpx, defaultTemplateBytes, getActiveTemplate, inspectTemplate, installTemplate, listTemplates, useDefaultTemplate,
 } from '../../lib/hwpx/absence/template'
 
 const KINDS: AttendanceKind[] = ['결석', '지각', '조퇴', '결과']
@@ -24,6 +27,7 @@ export default function ReportSettings() {
   const [templates, setTemplates] = useState<HwpxTemplateRec[]>([])
   const [active, setActive] = useState('')
   const [notice, setNotice] = useState<string[]>([])
+  const [scan, setScan] = useState<{ name: string; bytes: Uint8Array; cells: FormCell[] } | null>(null)
 
   const load = useCallback(async () => {
     const cur = await getSettings(db)
@@ -69,7 +73,18 @@ export default function ReportSettings() {
     const f = await fs.pickFileToRead('.hwpx', { maxBytes: 20 * 1024 * 1024 })
     if (!f) return
     if (f.tooBig) return setNotice(['양식 파일이 너무 큽니다(20MB까지).'])
-    const r = await installTemplate(db, f.name.replace(/\.hwpx$/i, ''), f.bytes)
+    const name = f.name.replace(/\.hwpx$/i, '')
+    // {{표시}}가 하나도 없고 표가 있으면 다른 학교 양식으로 보고 칸을 읽는다
+    const check = await inspectTemplate(f.bytes)
+    if (!check.ok && !check.found.length && !check.unknown.length && !check.error?.includes('hwpx 파일이 아닙니다')) {
+      const zip = await JSZip.loadAsync(f.bytes)
+      const cells = scanCells(await zip.file('Contents/section0.xml')!.async('string'))
+      if (cells.length) {
+        setNotice([])
+        return setScan({ name, bytes: f.bytes, cells })
+      }
+    }
+    const r = await installTemplate(db, name, f.bytes)
     const msgs = r.ok ? ['새 양식을 적용했습니다.', `찾은 표시 ${r.found.length}개`] : [r.error ?? '양식을 적용하지 못했습니다.']
     if (r.unknown.length) msgs.push(`알 수 없는 표시: ${r.unknown.map((u) => `{{${u}}}`).join(', ')}`)
     await load() // 현재 양식 표시를 먼저 갱신한 뒤 안내
@@ -133,6 +148,7 @@ export default function ReportSettings() {
         <button type="button" className="primary" onClick={upload}>
           새 양식 올리기
         </button>
+        <span className="muted">{'{{표시}}를 넣은 양식은 바로, 다른 학교 양식(표시 없음)은 칸을 읽어 자리를 찾습니다.'}</span>
         <button type="button" onClick={async () => { await useDefaultTemplate(db); await load(); setNotice(['기본 양식으로 되돌렸습니다.']) }} >
           기본 양식으로 되돌리기
         </button>
@@ -143,6 +159,20 @@ export default function ReportSettings() {
           자리표시자 안내 내려받기
         </button>
       </div>
+      {scan && (
+        <FormScan
+          name={scan.name}
+          bytes={scan.bytes}
+          cells={scan.cells}
+          aiOn={!!s.ai_enabled}
+          onCancel={() => setScan(null)}
+          onDone={async (msgs) => {
+            setScan(null)
+            await load()
+            setNotice(msgs)
+          }}
+        />
+      )}
       {templates.length > 0 && (
         <ul className="plain">
           {templates.map((t) => (
