@@ -1,3 +1,4 @@
+import LayoutSettings from './LayoutSettings'
 import SttSettings from './SttSettings'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -71,7 +72,12 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
           </>
         )}
         {tab === 'google' && <GoogleSettings />}
-        {tab === 'screen' && <AppearanceSettings />}
+        {tab === 'screen' && (
+          <>
+            <AppearanceSettings />
+            <LayoutSettings />
+          </>
+        )}
         {tab === 'update' && <UpdateSettings />}
       </div>
     </section>

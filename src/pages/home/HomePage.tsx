@@ -1,3 +1,5 @@
+import { useLayoutPrefs } from '../../lib/ui/layoutPrefs'
+import { TodayMeal } from './TodaySummary'
 import { useLayoutEffect, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useDb } from '../../app/context'
@@ -62,6 +64,7 @@ function useFitHeight(chat: React.RefObject<HTMLDivElement | null>, bar: React.R
 export default function HomePage({ today = toYmd(new Date()) }: { today?: string }) {
   const db = useDb()
   const [classDay, setClassDay] = useState<boolean>()
+  const prefs = useLayoutPrefs()
   const [params, setParams] = useSearchParams()
   const [tab, setTab] = useState<'chat' | 'notice'>(params.get('tab') === 'notice' ? 'notice' : 'chat')
   // 결과 카드의 '전달사항 보기'(/?tab=notice)
@@ -150,9 +153,9 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
         </div>
         <div className="resize-v" role="separator" aria-orientation="vertical" aria-label="오른쪽 폭 조절" onPointerDown={drag('sideW')} />
         <aside className="home-side">
-          <TodoList ctx={ctx} />
-          <Upcoming today={today} />
-          <NoteBox notes={ctx.notes} />
+          {prefs.panels.filter((x) => !x.hidden).map((x) =>
+            x.key === 'todo' ? <TodoList key="todo" ctx={ctx} /> : x.key === 'upcoming' ? <Upcoming key="up" today={today} /> : x.key === 'notes' ? <NoteBox key="notes" notes={ctx.notes} /> : <TodayMeal key="meal" today={today} panel />,
+          )}
         </aside>
       </div>
     </section>

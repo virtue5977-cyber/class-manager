@@ -1,3 +1,4 @@
+import { useLayoutPrefs } from './lib/ui/layoutPrefs'
 import NotesPage from './pages/notes/NotesPage'
 import { useMemo } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
@@ -38,7 +39,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
       <PinGate>
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <GlobalClassContext.Provider value={true}>
-        <div className="layout">
+        <LayoutFrame>
           <button type="button" className="skip-link" onClick={() => document.getElementById('main')?.focus()}>본문으로</button>
           <Shortcuts />
           <StartupTasks />
@@ -51,11 +52,21 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
             <AppRoutes backupIterations={props.backupIterations} />
           </main>
           <WButton />
-        </div>
+        </LayoutFrame>
         </GlobalClassContext.Provider>
       </HashRouter>
       </PinGate>
     </AppProviders>
+  )
+}
+
+/** 전체 틀: 왼쪽 메뉴 너비는 설정 > 화면에서(이 기기) */
+function LayoutFrame({ children }: { children: React.ReactNode }) {
+  const p = useLayoutPrefs()
+  return (
+    <div className="layout" style={{ ['--side-w' as string]: `${p.sidebarW}px` }}>
+      {children}
+    </div>
   )
 }
 
