@@ -38,6 +38,8 @@ export interface StudentRec extends BaseRecord {
   /** 예: 어머니 */
   guardian_relation?: string
   active: boolean
+  /** 명단 양식에 더한 칸 값(열쇠 x_…) */
+  extra?: Record<string, string>
 }
 
 export interface AttendanceRec extends BaseRecord {
@@ -220,6 +222,8 @@ export interface AppSettingsRec extends BaseRecord {
   report_rules: string[]
   diagnosis_days: number
   student_code_format: string
+  /** 명단 양식(칸 순서·보이기·추가 칸). 없으면 기본 */
+  roster_fields?: RosterField[]
 }
 
 export type SchoolKind = '초등학교' | '중학교' | '고등학교' | ''
@@ -322,4 +326,12 @@ export interface ReflectionRec extends BaseRecord {
 export interface ReflectionPhraseRec extends BaseRecord {
   text: string
   starred_at: string
+}
+
+/** 명단 양식 한 칸. builtin이면 key는 학생 글 칸 이름, 아니면 x_… (값은 StudentRec.extra) */
+export interface RosterField {
+  key: string
+  label: string
+  builtin: boolean
+  visible: boolean
 }

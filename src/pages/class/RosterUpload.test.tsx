@@ -23,7 +23,8 @@ test('나이스 명렬표 올리기 → 양식 내려받기(명단 채워짐) �
   await user.click(screen.getByRole('button', { name: '양식 내려받기' }))
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['명렬표_양식_1학년5반.xlsx']))
   const sheet = await readFirstSheet(fs.downloads[0].bytes)
-  expect(sheet[0]).toEqual(['번호', '이름', '성별', '생년월일', '전화번호', '보호자 이름', '보호자 관계', '보호자 연락처'])
+  // 양식은 명단 양식(기본 13칸)을 따른다
+  expect(sheet[0]).toEqual(['번호', '이름', '성별', '생년월일', '전화번호', '보호자 이름', '보호자 관계', '보호자 연락처', '주소', '졸업학교', '취미', '특기', '통학방법', '교우관계', '참고사항'])
   sheet[1][5] = '김보호'
   sheet[1][6] = '어머니'
   sheet[1][7] = '01011112222'

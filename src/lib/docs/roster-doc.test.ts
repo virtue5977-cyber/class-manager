@@ -82,3 +82,16 @@ test('학생 36명은 행 높이를 줄여 한 쪽에 맞춘다', () => {
 test('학생이 너무 많으면 기본 높이로 두고 쪽을 나눈다', () => {
   expect(rosterRowHeight(11, 71)).toBe(1980)
 })
+
+test('명렬표 칸 더하기: 이름 뒤에 고른 칸 값(추가 칸 포함), 열 너비 합은 그대로', async () => {
+  const { c, students } = await classWith(1, () => ({ phone: '010-1111-2222', extra: { x_aaaaaaaa: '땅콩' } }))
+  const fields = [
+    { key: 'phone', label: '전화번호', builtin: true, visible: true },
+    { key: 'x_aaaaaaaa', label: '알레르기', builtin: false, visible: true },
+  ]
+  const t = rosterTable(students, { ...defaultRosterDocOptions(c), blankColumns: 2, fields })
+  expect(t[0]).toEqual(['번호', '이름', '전화번호', '알레르기', '', ''])
+  expect(t[1].slice(2, 4)).toEqual(['010-1111-2222', '땅콩'])
+  for (const [b, d] of [[2, 2], [0, 2], [3, 0]]) expect(rosterColumnWidths(b, d).reduce((x, y) => x + y, 0)).toBe(51026)
+  expect(rosterColumnWidths(2, 2)).toHaveLength(6)
+})

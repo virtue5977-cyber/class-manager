@@ -1,3 +1,5 @@
+import type { RosterField } from '../db/types'
+import { fieldValue } from '../roster/fields'
 import type { ClassRec, StudentRec } from '../db/types'
 import { classLabel } from '../roster/roster'
 import { buildHwpx } from '../hwpx/package'
@@ -10,6 +12,8 @@ export interface RosterDocOptions {
   blankColumns: number
   fontSizePt: number
   includeInactive: boolean
+  /** 이름 뒤에 넣을 명단 칸(양식 고치기의 칸) */
+  fields?: RosterField[]
 }
 
 /** A4 세로 본문 폭: 59528 - 4251*2 */
@@ -27,17 +31,19 @@ export function defaultRosterDocOptions(c: ClassRec): RosterDocOptions {
 
 export function rosterTable(students: StudentRec[], opts: RosterDocOptions): string[][] {
   const blanks = Array.from({ length: opts.blankColumns }, () => '')
-  const rows = students.filter((s) => opts.includeInactive || s.active).map((s) => [String(s.number), s.name, ...blanks])
-  return [['번호', '이름', ...blanks], ...rows]
+  const fields = opts.fields ?? []
+  const rows = students.filter((s) => opts.includeInactive || s.active).map((s) => [String(s.number), s.name, ...fields.map((f) => fieldValue(s, f)), ...blanks])
+  return [['번호', '이름', ...fields.map((f) => f.label), ...blanks], ...rows]
 }
 
-/** 번호 4000, 이름 9000, 나머지는 빈 열에 균등(나머지는 마지막 열). 빈 열 0이면 이름이 나머지 전부. */
-export function rosterColumnWidths(blankColumns: number): number[] {
+/** 번호 4000, 이름 9000, 나머지는 더한 칸·빈 열에 균등(나머지는 마지막 열). 둘 다 0이면 이름이 나머지 전부. */
+export function rosterColumnWidths(blankColumns: number, dataColumns = 0): number[] {
   const rest = A4_PORTRAIT_BODY_WIDTH - NUMBER_COL
-  if (blankColumns <= 0) return [NUMBER_COL, rest]
-  const each = Math.floor((rest - NAME_COL) / blankColumns)
-  const widths = [NUMBER_COL, NAME_COL, ...Array.from({ length: blankColumns }, () => each)]
-  widths[widths.length - 1] += rest - NAME_COL - each * blankColumns
+  const n = Math.max(0, blankColumns) + Math.max(0, dataColumns)
+  if (n <= 0) return [NUMBER_COL, rest]
+  const each = Math.floor((rest - NAME_COL) / n)
+  const widths = [NUMBER_COL, NAME_COL, ...Array.from({ length: n }, () => each)]
+  widths[widths.length - 1] += rest - NAME_COL - each * n
   return widths
 }
 
@@ -65,7 +71,7 @@ export async function buildRosterHwpx(students: StudentRec[], opts: RosterDocOpt
     paragraphXml('', { charPr: bodyCp }) +
     tableXml({
       rows: table.map((row, r) => row.map((text) => ({ text, charPr: r === 0 ? headCp : bodyCp }))),
-      colWidths: rosterColumnWidths(opts.blankColumns),
+      colWidths: rosterColumnWidths(opts.blankColumns, opts.fields?.length ?? 0),
       rowHeights: table.map(() => rowHeight),
       repeatHeader: true,
     })

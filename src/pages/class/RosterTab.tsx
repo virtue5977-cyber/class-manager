@@ -4,7 +4,9 @@ import { useDb, useFs } from '../../app/context'
 import type { StudentRec } from '../../lib/db/types'
 import { listStudents, upsertRosterRows } from '../../lib/roster/roster'
 import { parseTsv, rosterTemplate, toRosterRows, type PasteResult } from '../../lib/roster/paste'
-import { ROSTER_COLUMNS } from '../../lib/roster/columns'
+import { DEFAULT_FIELDS, loadFields, templateColumns } from '../../lib/roster/fields'
+import { useLive } from '../../lib/ui/useLive'
+import RosterFieldsEditor from './RosterFieldsEditor'
 import { readFirstSheet } from '../../lib/xlsx/read'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import StudentDetail from './StudentDetail'
@@ -21,6 +23,9 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string>()
   const [renameOk, setRenameOk] = useState(false)
+  const [editFields, setEditFields] = useState(false)
+  const fields = useLive(() => loadFields(db), [db], DEFAULT_FIELDS)
+  const cols = useMemo(() => templateColumns(fields), [fields])
 
   const reload = useCallback(async () => setStudents(await listStudents(db, classId)), [db, classId])
   useEffect(() => {
@@ -34,7 +39,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
   const shown = q ? ordered.filter((s) => s.name.includes(q) || String(s.number) === q) : ordered
   const current = (selected && selected !== 'new' ? students.find((s) => s.id === selected) : undefined) ?? shown[0] ?? ordered[0]
 
-  const parsed = useMemo(() => fileRows?.result ?? toRosterRows(parseTsv(pasteText)), [pasteText, fileRows])
+  const parsed = useMemo(() => fileRows?.result ?? toRosterRows(parseTsv(pasteText), cols), [pasteText, fileRows, cols])
   /** 번호는 같은데 이름이 다른 행: 기존 학생 기록이 다른 아이 이름으로 바뀐다. */
   const renames = useMemo(() => {
     const byNumber = new Map(students.map((s) => [s.number, s.name]))
@@ -60,7 +65,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
         <button
           type="button"
           onClick={async () => {
-            const bytes = await writeSimpleXlsx('명렬표', rosterTemplate(students))
+            const bytes = await writeSimpleXlsx('명렬표', rosterTemplate(students, cols))
             const name = `명렬표_양식${classLabel ? '_' + classLabel.replace(/\s+/g, '') : ''}.xlsx`
             fs.downloadFile(name, bytes)
             setNotice(`${name} 파일을 받았습니다. 채운 칸만 반영되니 아는 정보만 넣어 올리세요.`)
@@ -77,7 +82,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
             if (f.tooBig) return setNotice('명렬표 파일이 너무 큽니다(10MB까지).')
             try {
               const cells = /\.(csv|txt)$/i.test(f.name) ? parseTsv(new TextDecoder().decode(f.bytes).replace(/,/g, '\t')) : await readFirstSheet(f.bytes)
-              setFileRows({ name: f.name, result: toRosterRows(cells) })
+              setFileRows({ name: f.name, result: toRosterRows(cells, cols) })
               setPasteOpen(true)
               setRenameOk(false)
             } catch (e) {
@@ -90,6 +95,9 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
         <button type="button" onClick={() => { setPasteOpen(true); setFileRows(null); setNotice(undefined) }}>
           엑셀에서 붙여넣기
         </button>
+        <button type="button" onClick={() => setEditFields(true)}>
+          양식 고치기
+        </button>
           </div>
         </details>
         <button type="button" className="primary" onClick={() => setSelected('new')}>
@@ -97,6 +105,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
         </button>
       </HeadTools>
       {notice && <p className="notice" role="status">{notice}</p>}
+      {editFields && <RosterFieldsEditor fields={fields} onClose={() => setEditFields(false)} />}
 
       {pasteOpen && (
         <div className="card stack">
@@ -108,18 +117,18 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
               <textarea rows={6} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setRenameOk(false) }} />
             </label>
           )}
-          <p className="muted">{`열 순서: ${ROSTER_COLUMNS.map((c) => c.label).join(', ')}. 첫 줄이 머리글이면 머리글로 열을 찾습니다(나이스 명렬표 그대로 가능). 빈 칸은 기존 값을 그대로 둡니다.`}</p>
+          <p className="muted">{`열 순서: ${cols.map((c) => c.label).join(', ')}. 첫 줄이 머리글이면 머리글로 열을 찾습니다(나이스 명렬표 그대로 가능). 빈 칸은 기존 값을 그대로 둡니다.`}</p>
           {parsed.rows.length > 0 && (
             <table className="grid" aria-label="붙여넣기 미리보기">
               <thead>
-                <tr>{ROSTER_COLUMNS.map((c) => <th key={c.key}>{c.label}</th>)}<th>변경</th></tr>
+                <tr>{cols.map((c) => <th key={c.key}>{c.label}</th>)}<th>변경</th></tr>
               </thead>
               <tbody>
                 {parsed.rows.map((r) => (
                   <tr key={r.number} className={renames.has(r.number) ? 'warn-row' : undefined}>
                     <td>{r.number}</td>
-                    {ROSTER_COLUMNS.slice(1).map((c) => {
-                      const v = r.fields[c.key as Exclude<typeof c.key, 'number'>] ?? ''
+                    {cols.slice(1).map((c) => {
+                      const v = (c.builtin ? (r.fields as Record<string, string | undefined>)[c.key] : r.fields.extra?.[c.key]) ?? ''
                       return <td key={c.key} className={v ? undefined : 'muted'}>{v || '-'}</td>
                     })}
                     <td>{renames.has(r.number) ? `이름 변경: ${renames.get(r.number)} → ${r.fields.name}` : students.some((s) => s.number === r.number) ? '갱신' : r.fields.name ? '새 학생' : '건너뜀(이름 없음)'}</td>
@@ -172,9 +181,9 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
           </div>
           <div className="roster-detail">
             {selected === 'new' ? (
-              <StudentDetail key="new" classId={classId} onDone={() => { setSelected(null); reload() }} />
+              <StudentDetail key="new" classId={classId} fields={fields} onDone={() => { setSelected(null); reload() }} />
             ) : current ? (
-              <StudentDetail key={current.id + current.updated_at} classId={classId} student={current} closable={false} onDone={() => reload()} />
+              <StudentDetail key={current.id + current.updated_at} classId={classId} fields={fields} student={current} closable={false} onDone={() => reload()} />
             ) : null}
           </div>
         </div>

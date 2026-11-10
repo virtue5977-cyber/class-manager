@@ -743,3 +743,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .mini-att { font-size: 11px; color: var(--c-red, #d1242f); }
 .mini-events li { display: flex; gap: 6px; align-items: center; font-size: 13px; }
 .col-pick fieldset { border: 0; padding: 2px 0; margin: 0; display: flex; gap: 8px; align-items: center; } .col-pick legend { float: left; width: 36px; font-weight: 600; font-size: 13px; }
+/* 명단 양식 고치기 */
+.fields-list li { gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.fields-list .fields-name { min-width: 120px; }
+.fields-list input:not([type='checkbox']) { width: 160px; }

@@ -76,7 +76,10 @@ export async function upsertRosterRows(db: AppDB, classId: string, rows: RosterR
     const now = new Date()
     for (const r of rows) {
       const given = Object.fromEntries(Object.entries(r.fields).filter(([, v]) => typeof v === 'string' && v.trim() !== '')) as RosterPatch
+      // 추가 칸: 채운 값만, 있던 다른 추가 칸 값은 그대로
+      const extra = Object.fromEntries(Object.entries(r.fields.extra ?? {}).filter(([, v]) => v.trim() !== ''))
       const prev = byNumber.get(r.number)
+      if (Object.keys(extra).length) given.extra = { ...prev?.extra, ...extra }
       if (prev) {
         if (!Object.keys(given).length) continue
         await save(db.students, { ...prev, ...given }, now)

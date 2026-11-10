@@ -70,3 +70,12 @@ test('빈 열 개수를 바꾸면 미리보기 열 수가 바뀐다', async () =
   await user.type(screen.getByLabelText('빈 열 개수'), '1')
   expect(within(screen.getByRole('table', { name: '명렬표 미리보기' })).getAllByRole('columnheader')).toHaveLength(3)
 })
+
+test('칸 더하기: 고른 명단 칸이 이름 뒤에 들어간다', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await user.click(screen.getByText('칸 더하기 ▾'))
+  await user.click(screen.getByRole('checkbox', { name: '전화번호' }))
+  const table = screen.getByRole('table', { name: '명렬표 미리보기' })
+  await waitFor(() => expect(within(table).getAllByRole('columnheader').map((h) => h.textContent).slice(0, 3)).toEqual(['번호', '이름', '전화번호']))
+})

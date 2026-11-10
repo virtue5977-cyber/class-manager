@@ -1,26 +1,11 @@
+import type { RosterField } from '../../lib/db/types'
+import { DEFAULT_FIELDS, fieldValue, setFieldValue } from '../../lib/roster/fields'
 import { useState, type FormEvent } from 'react'
 import { useDb } from '../../app/context'
 import type { StudentRec } from '../../lib/db/types'
 import { deleteStudent, emptyStudent, saveStudent, type StudentFields } from '../../lib/roster/roster'
 
-type TextKey = Exclude<keyof StudentFields, 'number' | 'active'>
 
-const TEXT_FIELDS: [TextKey, string][] = [
-  ['name', '이름'],
-  ['gender', '성별'],
-  ['birth_date', '생년월일'],
-  ['phone', '전화번호'],
-  ['guardian_name', '보호자 이름'],
-  ['guardian_relation', '보호자 관계'],
-  ['guardian_phone', '보호자 연락처'],
-  ['address', '주소'],
-  ['prev_school', '졸업학교'],
-  ['hobby', '취미'],
-  ['talent', '특기'],
-  ['commute', '통학방법'],
-  ['friends', '교우관계'],
-  ['memo', '참고사항'],
-]
 
 function toFields(s?: StudentRec): StudentFields {
   if (!s) return emptyStudent(0, '')
@@ -29,7 +14,7 @@ function toFields(s?: StudentRec): StudentFields {
 }
 
 /** closable=false: 명단 오른쪽에 늘 열려 있는 상세(닫기 버튼 없음). */
-export default function StudentDetail({ classId, student, onDone, closable = true }: { classId: string; student?: StudentRec; onDone: () => void; closable?: boolean }) {
+export default function StudentDetail({ classId, student, onDone, closable = true, fields = DEFAULT_FIELDS }: { classId: string; student?: StudentRec; onDone: () => void; closable?: boolean; fields?: RosterField[] }) {
   const db = useDb()
   const [f, setF] = useState<StudentFields>(() => toFields(student))
   const [num, setNum] = useState(student ? String(student.number) : '')
@@ -63,10 +48,14 @@ export default function StudentDetail({ classId, student, onDone, closable = tru
           번호
           <input inputMode="numeric" value={num} onChange={(e) => setNum(e.target.value)} />
         </label>
-        {TEXT_FIELDS.map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <input value={(f[key] as string | undefined) ?? ""} onChange={(e) => setF({ ...f, [key]: e.target.value })} />
+        <label>
+          이름
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+        </label>
+        {fields.filter((x) => x.visible).map((x) => (
+          <label key={x.key}>
+            {x.label}
+            <input value={fieldValue(f, x)} onChange={(e) => setF(setFieldValue(f, x, e.target.value))} />
           </label>
         ))}
         <label className="check">

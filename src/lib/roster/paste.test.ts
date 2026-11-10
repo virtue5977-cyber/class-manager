@@ -63,3 +63,19 @@ test('값 다듬기·양식', () => {
     ['1', '가', '', '', '', '', '', ''],
   ])
 })
+
+test('양식 칸으로 읽기: 추가 칸은 extra, 기본 칸 별칭과 같은 추가 칸 이름은 기본 칸이 이김', async () => {
+  const { addField, DEFAULT_FIELDS, templateColumns } = await import('./fields')
+  let fl = addField(DEFAULT_FIELDS, '방과후')
+  fl = addField(fl, '연락처') // 기본 '전화번호'의 별칭과 같다
+  const cols = templateColumns(fl)
+  const after = fl[fl.length - 2].key
+  const r = toRosterRows([['번호', '이름', '방과후', '성별', '연락처', '주소'], ['1', '가나', '로봇반', '남자', '01012345678', '서울']], cols)
+  expect(r.errors).toEqual([])
+  expect(r.rows[0].fields).toMatchObject({ name: '가나', gender: '남', phone: '010-1234-5678', address: '서울', extra: { [after]: '로봇반' } })
+  expect(Object.keys(r.rows[0].fields.extra!)).toEqual([after])
+  const t = rosterTemplate([{ number: 1, name: '가나', gender: '남', birth_date: '', phone: '', guardian_name: '', guardian_phone: '', extra: { [after]: '로봇반' } } as never], cols)
+  expect(t[0].slice(0, 3)).toEqual(['번호', '이름', '성별'])
+  expect(t[0]).toContain('방과후')
+  expect(t[1][t[0].indexOf('방과후')]).toBe('로봇반')
+})
