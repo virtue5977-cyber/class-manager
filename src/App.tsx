@@ -1,3 +1,4 @@
+import NotesPage from './pages/notes/NotesPage'
 import { useMemo } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
@@ -77,6 +78,7 @@ export function AppRoutes(props: { backupIterations?: number }) {
       <Route path="/attendance/reports" element={<ReportsPage />} />
       <Route path="/attendance/stats" element={<StatsPage />} />
       <Route path="/counseling" element={<CounselingPage />} />
+      <Route path="/notes" element={<NotesPage />} />
       <Route path="/class" element={<Moved to="/class/roster" />} />
       <Route path="/class/:sub" element={<ClassRoute />} />
       <Route path="/settings" element={<SettingsPage backupIterations={props.backupIterations} />} />
