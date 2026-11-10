@@ -31,6 +31,8 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
   async function add() {
     if (!text.trim()) return
     const p = parseCommand(`/할일 ${text}`, ctx, commandNames(), commandSubs())
+    const bad = p.missing[0] ?? p.ambiguous[0]
+    if (bad !== undefined) return setErr(p.missing.length ? `'${bad}' 학생이나 노트를 찾지 못했습니다.` : `'${bad}'에 맞는 학생이 여럿입니다. @를 눌러 고르세요.`)
     try {
       await addTodo(db, p.parts, p.dateGiven ? p.date : null)
       setText('')

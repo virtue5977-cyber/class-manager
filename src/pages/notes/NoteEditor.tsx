@@ -27,6 +27,9 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const [slashSel, setSlashSel] = useState(0)
   const [msg, setMsg] = useState<string>()
   const [menuFor, setMenuFor] = useState<string>()
+  /** 전달사항으로 보낼 블록(또는 'all' = 노트 전체)과 기간 */
+  const [sendFor, setSendFor] = useState<string>()
+  const [range, setRange] = useState({ start: today, end: today })
   const [dragId, setDragId] = useState<string>()
   const [fileInfo, setFileInfo] = useState<Record<string, { name: string; size: number }>>({})
   const [folderList, setFolderList] = useState<Record<string, { name: string; dir: boolean }[]>>({})
@@ -174,14 +177,26 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     setMenuFor(undefined)
     if (act === 'notice') {
       if (!(b.text ?? '').trim()) return setMsg('보낼 글이 없습니다.')
-      await addNotice(db, { text: b.text!, start_date: today })
-      setMsg('오늘 전달사항으로 보냈습니다.')
+      setRange({ start: today, end: today })
+      setSendFor(b.id)
     } else if (act === 'copy') {
       setBlocks((bs) => {
         const i = bs.findIndex((x) => x.id === b.id)
         return [...bs.slice(0, i + 1), { ...b, id: newBlockId() }, ...bs.slice(i + 1)]
       })
     } else setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))
+  }
+
+  /** 기간을 정해 보내기: 블록 하나 또는 노트 전체(글이 있는 블록마다 한 항목) */
+  async function sendNotices() {
+    const targets = sendFor === 'all' ? blocks.filter((x) => (x.text ?? '').trim() && x.type !== 'h1' && x.type !== 'h2') : blocks.filter((x) => x.id === sendFor)
+    try {
+      for (const x of targets) await addNotice(db, { text: x.text!.trim(), start_date: range.start, end_date: range.end })
+      setMsg(`전달사항 ${targets.length}개를 보냈습니다.`)
+      setSendFor(undefined)
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    }
   }
 
   const onDrop = (e: DragEvent) => {
@@ -197,6 +212,19 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     <section className="note-editor" aria-label="노트 편집" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
       {msg && <p className="notice" role="status">{msg}</p>}
+      <div className="row note-tools">
+        <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+      </div>
+      {sendFor && (
+        <div className="row card send-range" role="group" aria-label="전달사항 기간">
+          <span>{sendFor === 'all' ? '노트 전체(글 블록마다 한 항목)' : '이 블록'}을 전달사항으로:</span>
+          <input type="date" aria-label="시작" value={range.start} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
+          ~
+          <input type="date" aria-label="끝" value={range.end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
+          <button type="button" className="primary" onClick={sendNotices}>보내기</button>
+          <button type="button" className="link" onClick={() => setSendFor(undefined)}>취소</button>
+        </div>
+      )}
       <div className="note-blocks">
         {blocks.map((b, i) => {
           const lv = b.indent ?? 0

@@ -106,3 +106,16 @@ test('반성문 지시문을 화면에서 고치고 기본으로 되돌린다', 
   await waitFor(async () => expect(await getPrompt(db, 'reflection')).toBe(DEFAULT_PROMPTS.reflection))
   expect(screen.getByLabelText('반성문 AI 지시문')).toHaveValue(DEFAULT_PROMPTS.reflection)
 })
+
+test('저장하지 않고 다른 학생을 누르면 먼저 묻는다', async () => {
+  const user = userEvent.setup()
+  const { db, c } = await setup()
+  await saveStudent(db, c.id, emptyStudent(4, '최하은'))
+  await user.click(await screen.findByRole('button', { name: '3번 박도윤' }))
+  await user.type(screen.getByLabelText('사유'), '지각')
+  await user.click(await screen.findByRole('button', { name: '4번 최하은' }))
+  expect(screen.getByRole('alertdialog', { name: '저장하지 않은 반성문' })).toBeInTheDocument()
+  expect(screen.getByLabelText('사유')).toHaveValue('지각')
+  await user.click(screen.getByRole('button', { name: '버리고 바꾸기' }))
+  expect(screen.getByLabelText('사유')).toHaveValue('')
+})

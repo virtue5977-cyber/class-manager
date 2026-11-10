@@ -71,3 +71,9 @@ test('/전달 학생은 AI를 쓰지 않으므로 규칙으로 기록', async ()
   expect(r.chat.mode).toBe('rule')
   expect(sent).toHaveLength(0)
 })
+
+test('전출 학생 이름도 가린다(maskNames)', async () => {
+  const { env, ctx, sent } = await setup(() => '{"command":""}')
+  await executeInput('김전출 학부모께 연락', { ...ctx, maskNames: ['김전출'] }, env, aiFallback)
+  expect(JSON.stringify(sent)).not.toContain('김전출')
+})

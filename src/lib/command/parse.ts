@@ -14,6 +14,8 @@ export interface ParseCtx {
   students: StudentRec[]
   notes: NoteRec[]
   today: string
+  /** AI에 보낼 때 가릴 이름(전출 학생 포함). 없으면 students의 이름 */
+  maskNames?: string[]
 }
 
 export interface Parsed {

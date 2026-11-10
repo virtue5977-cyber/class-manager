@@ -676,3 +676,13 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .paper-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .paper-mode button { border: 0; border-radius: 0; background: transparent; padding: 6px 10px; color: var(--sub); }
 .paper-mode button.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+/* 인쇄·PDF: 고치는 단추·입력 틀은 빼고 내용만 */
+@media print {
+  button, .menu, details.menu, .export-menu, input[type='search'], .command-bar, .home-tabs, .resize-h, .resize-v, .home-side, .chat-menu, .chat-clear, .note-tools, .nb-hint, .nb-handle, .log-toolbar, .todo-add, .cal-add, .notice-add, .seg { display: none !important; }
+  input, select, textarea { border: 0 !important; background: none !important; box-shadow: none !important; resize: none; }
+  .home-body { display: block !important; }
+  .home-chat { height: auto !important; border: 0; overflow: visible; }
+}
+.confirm-inline { gap: 6px; font-size: 12px; }
+.send-range { gap: 6px; flex-wrap: wrap; align-items: center; padding: 8px 10px; }
+.note-tools { justify-content: flex-end; font-size: 12px; }

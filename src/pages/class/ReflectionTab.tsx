@@ -45,6 +45,11 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [panel, setPanel] = useState<'main' | 'phrases' | 'fit'>('main')
+  // 저장하지 않은 고침이 있는지: 불러온(또는 저장한) 때와 비교
+  const snap = () => JSON.stringify({ date, reason, lines, t1, t2 })
+  const [baseline, setBaseline] = useState(() => JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1: DEFAULT_T1, t2: DEFAULT_T2 }))
+  const dirty = snap() !== baseline
+  const [pendingSid, setPendingSid] = useState<string>()
   // 종이는 실제 크기(mm·pt)로 그리고, 화면 폭에 맞게 줄여 보인다(글자 맞춤과 같은 기준).
   const wrap = useRef<HTMLElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -89,6 +94,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     }
   }
   function open(r: ReflectionRec) {
+    setBaseline(JSON.stringify({ date: r.date, reason: r.reason, lines: r.lines, t1: r.t1, t2: r.t2 }))
     setEditId(r.id)
     setDate(r.date)
     setReason(r.reason)
@@ -98,6 +104,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     setMode(r.mode)
   }
   function fresh() {
+    setBaseline(JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1, t2 }))
     setEditId(undefined)
     setDate(today)
     setReason('')
@@ -122,6 +129,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           <button type="button" className="primary" disabled={!student} onClick={() => act(async () => {
             const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode }, editId)
             setEditId(r.id)
+            setBaseline(snap())
             setMsg('저장했습니다.')
           })}>
             저장
@@ -145,13 +153,25 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
         </div>
       </div>
       {msg && <p className="notice" role="status">{msg}</p>}
+      {pendingSid && (
+        <div className="banner row" role="alertdialog" aria-label="저장하지 않은 반성문">
+          <span>저장하지 않은 내용이 있습니다. 버리고 다른 학생으로 바꿀까요?</span>
+          <button type="button" className="danger" onClick={() => { setSid(pendingSid); setPendingSid(undefined); fresh() }}>버리고 바꾸기</button>
+          <button type="button" className="link" onClick={() => setPendingSid(undefined)}>취소</button>
+        </div>
+      )}
       <div className="reflection-layout">
         <div className="roster-list stack">
           <input type="search" aria-label="학생 찾기" placeholder="이름·번호 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
           <ul className="plain" aria-label="학생 목록">
             {shown.map((s) => (
               <li key={s.id}>
-                <button type="button" className="roster-item" aria-current={s.id === sid ? 'true' : undefined} onClick={() => { setSid(s.id); fresh() }}>
+                <button type="button" className="roster-item" aria-current={s.id === sid ? 'true' : undefined} onClick={() => {
+                  if (s.id === sid) return
+                  if (dirty) return setPendingSid(s.id)
+                  setSid(s.id)
+                  fresh()
+                }}>
                   <span className="pii">{`${s.number}번 ${s.name}`}</span>
                 </button>
               </li>

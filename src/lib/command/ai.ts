@@ -27,7 +27,7 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
   if (!p.cmd && input.startsWith('/')) return null
   const s = await aiReady(env)
   if (!s) return AI_OFF
-  const names = effectiveMask(s) ? ctx.students.map((x) => x.name) : []
+  const names = effectiveMask(s) ? (ctx.maskNames ?? ctx.students.map((x) => x.name)) : []
 
   if (p.cmd === 'counselDraft') {
     if (p.students.length !== 1) return { summary: '학생을 @로 한 명 고르세요.', links: [], pending: true }
