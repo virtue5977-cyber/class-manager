@@ -38,7 +38,7 @@ export default function GoogleSettings() {
   return (
     <div className="card stack wide" aria-label="구글 캘린더">
       <h3>구글 캘린더</h3>
-      <p className="muted">{`학사일정과 결석신고서 정리 알림을 구글의 "${APP_CALENDAR_NAME}" 캘린더로 보내고, 구글 기본 캘린더의 일정을 달력·홈으로 가져옵니다. 구글에서 넣은 일정은 구글에서 고치세요.`}</p>
+      <p className="muted">{`학사일정·내 일정(학생 이름은 ○○로 가림)과 결석신고서 정리 알림(번호만)을 구글의 "${APP_CALENDAR_NAME}" 캘린더로 보내고, 구글 기본 캘린더의 일정을 달력·홈으로 가져옵니다. 구글에서 넣은 일정은 구글에서 고치세요.`}</p>
       {!g ? (
         <p className="warn">exe 버전에서만 됩니다(새 exe가 필요할 수 있습니다).</p>
       ) : (

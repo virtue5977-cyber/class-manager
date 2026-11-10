@@ -24,7 +24,7 @@ test('편집 저장은 최신 노트에 제목·블록만 바꾸고, 지운 노�
   expect(await db.notes.get(n.id)).toMatchObject({ title: '나', pinned: true })
   await deleteNote(db, n.id)
   await saveNoteContent(db, n.id, { title: '다', blocks: [] })
-  expect(await db.notes.get(n.id)).toMatchObject({ title: '나', deleted: true })
+  expect(await db.notes.get(n.id)).toMatchObject({ title: '', deleted: true }) // 지우면 글을 비우고, 그 뒤 저장도 되살리지 않음
 })
 
 test('노트를 지우거나 파일 블록을 빼면 첨부 내용은 비운다(백업이 커지지 않게)', async () => {

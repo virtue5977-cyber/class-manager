@@ -1,6 +1,6 @@
 import type { AppDB } from '../db/schema'
 import type { NoteFileRec, NoteRec } from '../db/types'
-import { newRecord, save, softDelete } from '../db/records'
+import { newRecord, save, scrubDelete } from '../db/records'
 
 export const MAX_FILE = 50 * 1024 * 1024
 
@@ -48,7 +48,7 @@ async function dropFile(db: AppDB, fileId: string): Promise<void> {
 
 export async function deleteNote(db: AppDB, id: string): Promise<void> {
   await db.transaction('rw', db.notes, db.note_files, async () => {
-    await softDelete(db.notes, id)
+    await scrubDelete(db.notes, id, { title: '', blocks: [] })
     for (const f of await db.note_files.where('note_id').equals(id).toArray()) if (!f.deleted || f.data) await dropFile(db, f.id)
   })
 }

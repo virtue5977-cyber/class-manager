@@ -1,6 +1,6 @@
 import type { AppDB } from '../db/schema'
 import type { ReflectionPhraseRec, ReflectionRec, BaseRecord } from '../db/types'
-import { newRecord, softDelete } from '../db/records'
+import { newRecord, scrubDelete, softDelete } from '../db/records'
 
 /** 반성문 양식 기본 16문장(보내 주신 생성기 그대로) */
 export const DEFAULT_LINES: string[] = [
@@ -45,7 +45,7 @@ export async function listReflections(db: AppDB, studentId?: string): Promise<Re
   return rows.filter((r) => !r.deleted).sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at))
 }
 
-export const deleteReflection = (db: AppDB, id: string) => softDelete(db.reflections, id)
+export const deleteReflection = (db: AppDB, id: string) => scrubDelete(db.reflections, id, { reason: '', lines: [] }).then(() => undefined)
 
 /** 좋은 문장 모음. 기본 16문장은 id를 정해(phrase-default-<n>) 넣어 기기·복원과 상관없이 한 번만. 뺀 기본 문장은 되살리지 않는다. */
 export async function listPhrases(db: AppDB): Promise<ReflectionPhraseRec[]> {
