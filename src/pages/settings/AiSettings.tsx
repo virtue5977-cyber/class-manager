@@ -63,7 +63,7 @@ export default function AiSettings() {
       {provider === 'antigravity' ? (
         <div className="stack">
           <p className="muted">
-            노트북에 설치한 구글 Antigravity CLI(agy)로 정리합니다. 키 없이 구글 계정 로그인만 하면 됩니다. 설치 후 명령 창에서 <code>agy</code>를 한 번 실행해 로그인하세요. 새 Watson exe에서만 됩니다.
+            노트북에 설치한 구글 Antigravity CLI(agy)로 정리합니다. 키 없이 구글 계정 로그인만 하면 됩니다. 설치 후 명령 창에서 <code>agy</code>를 한 번 실행해 로그인하세요. 새 설치형(Windows 앱)에서만 됩니다.
           </p>
           <p className="muted">agy는 보낼 글을 명령줄로 받습니다. 정리하는 동안(몇 초) 같은 노트북의 다른 프로그램이 그 글을 볼 수 있으니, 학교 공용 노트북보다 내 노트북에서 쓰세요.</p>
           <p className="banner">
@@ -87,14 +87,14 @@ export default function AiSettings() {
             >
               Antigravity 연결 확인
             </button>
-            {!agy && <span className="warn">지금 버전에서는 쓸 수 없습니다. 새 Watson exe가 필요합니다.</span>}
+            {!agy && <span className="muted">지금 버전에서는 쓸 수 없습니다. 새 설치형(Windows 앱)이 필요합니다.</span>}
             {cc && <span role="status">{cc}</span>}
           </div>
         </div>
       ) : provider === 'claude-code' ? (
         <div className="stack">
           <p className="muted">
-            노트북에 설치·로그인된 Claude Code로 정리합니다. 키가 필요 없고 Pro 요금제 사용 한도 안에서 쓰입니다(추가 요금 없음). exe 버전에서만 됩니다.
+            노트북에 설치·로그인된 Claude Code로 정리합니다. 키가 필요 없고 Pro 요금제 사용 한도 안에서 쓰입니다(추가 요금 없음). 설치형(Windows 앱)에서만 됩니다.
           </p>
           <div className="row">
             <button
@@ -108,7 +108,7 @@ export default function AiSettings() {
             >
               Claude Code 연결 확인
             </button>
-            {!bridge && <span className="warn">지금은 브라우저(HTML) 버전이라 쓸 수 없습니다. API 키를 고르세요.</span>}
+            {!bridge && <span className="muted">지금은 브라우저(HTML) 버전이라 쓸 수 없습니다. API 키를 고르세요.</span>}
             {cc && <span role="status">{cc}</span>}
           </div>
         </div>
@@ -129,7 +129,7 @@ export default function AiSettings() {
           >
             키 저장
           </button>
-          {!isDesktopApp() && <p className="banner wide">브라우저(HTML) 버전은 같은 노트북의 다른 HTML 파일이 앱 자료를 읽을 수 있어 AI 키를 저장하지 않습니다. 창을 열 때마다 넣거나 exe 버전을 쓰세요.</p>}
+          {!isDesktopApp() && <p className="banner wide">브라우저(HTML) 버전은 같은 노트북의 다른 HTML 파일이 앱 자료를 읽을 수 있어 AI 키를 저장하지 않습니다. 창을 열 때마다 넣거나 설치형(Windows 앱)을 쓰세요.</p>}
           <span className="muted">키 사용료는 Pro 요금과 따로 콘솔 충전금에서 나갑니다. Claude 콘솔에서 월 지출 한도를 꼭 걸어 두세요.</span>
         </div>
       )}

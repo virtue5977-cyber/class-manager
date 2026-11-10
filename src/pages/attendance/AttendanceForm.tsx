@@ -1,3 +1,4 @@
+import { CATEGORIES } from '../../lib/stats'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useDb } from '../../app/context'
 import type { AbsenceReportRec, AttendanceCategory, AttendanceKind, AttendanceRec, RecognizedEvidence, StudentRec } from '../../lib/db/types'
@@ -5,7 +6,7 @@ import { deleteAttendance, saveAttendance, type AttendanceInput } from '../../li
 import { impactOfChange, reconcileStudent } from '../../lib/absenceReports/reconcile'
 
 const KINDS: AttendanceKind[] = ['결석', '지각', '조퇴', '결과']
-const CATS: AttendanceCategory[] = ['미인정', '질병', '출석인정']
+const CATS: AttendanceCategory[] = CATEGORIES
 const EVIDENCE: RecognizedEvidence[] = ['법정전염병', '경조사 참석', '기타']
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
 export const periodText = (r: { start_date: string; end_date: string }) => (r.start_date === r.end_date ? md(r.start_date) : `${md(r.start_date)}~${md(r.end_date)}`)

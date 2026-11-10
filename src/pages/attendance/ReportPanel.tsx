@@ -124,7 +124,7 @@ function ReportCard({ report, onSaved, open }: { report: AbsenceReportRec; onSav
           학생 성명 칸에 이름 인쇄
         </label>
         <button type="button" className="primary" onClick={exportHwpx}>
-          hwpx로 내보내기
+          한글로 받기
         </button>
       </div>
       {messages.length > 0 && (

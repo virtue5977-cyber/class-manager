@@ -103,7 +103,7 @@ export function createRoutedAiCaller(
     if (provider === 'api-key') return keyCaller(req)
     if (provider === 'antigravity') {
       const g = agy()
-      if (!g) throw new AiError('Antigravity 연결은 새 Watson exe에서만 됩니다. 설정 > AI에서 다른 연결을 고르세요.', 'NO-BRIDGE')
+      if (!g) throw new AiError('Antigravity 연결은 새 설치형(Windows 앱)에서만 됩니다. 설정 > AI에서 다른 연결을 고르세요.', 'NO-BRIDGE')
       try {
         const text = await g.ask(`${req.system}\n\n# 입력\n${req.user}\n\n위 지시와 출력 형식만 따르고, 도구를 쓰거나 다른 설명을 붙이지 마세요.`)
         if (!text.trim()) throw new AiError('AI 응답이 비어 있습니다.', 'EMPTY')
@@ -112,7 +112,7 @@ export function createRoutedAiCaller(
         throw e instanceof AiError ? e : cleanIpcError(e)
       }
     }
-    if (!bridge) throw new AiError('Claude Code 연결은 exe 버전에서만 됩니다. 설정 > AI에서 "API 키"를 고르거나 exe 버전을 쓰세요.', 'NO-BRIDGE')
+    if (!bridge) throw new AiError('Claude Code 연결은 설치형(Windows 앱)에서만 됩니다. 설정 > AI에서 "API 키"를 고르거나 설치형(Windows 앱)을 쓰세요.', 'NO-BRIDGE')
     try {
       const text = await bridge.ask(req)
       if (!text.trim()) throw new AiError('AI 응답이 비어 있습니다.', 'EMPTY')

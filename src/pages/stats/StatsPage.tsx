@@ -9,7 +9,7 @@ import type { StudentRec } from '../../lib/db/types'
 import { listStudents, classLabel } from '../../lib/roster/roster'
 import { listAttendanceByStudent } from '../../lib/attendance/attendance'
 import { loadReportContext } from '../../lib/absenceReports/reconcile'
-import { computeAttendanceStats, statsTable } from '../../lib/stats'
+import { CATEGORIES, computeAttendanceStats, statsTable } from '../../lib/stats'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
@@ -96,7 +96,7 @@ export default function StatsPage() {
               </tr>
               <tr>
                 {['결석', '지각', '조퇴', '결과'].flatMap((k) =>
-                  ['질병', '미인정', '출석인정'].map((c) => <th key={k + c}>{c === '출석인정' ? '인정' : c}</th>),
+                  CATEGORIES.map((c) => <th key={k + c}>{c}</th>),
                 )}
               </tr>
             </thead>

@@ -64,7 +64,7 @@ test('아무것도 고르지 않으면 선택 버튼 줄이 숨고, 위에 "미�
   const { fs } = await setup()
   await screen.findByText('1번 가나')
   expect(screen.queryByRole('button', { name: '선택 제출로 표시' })).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: '미제출 2건 hwpx' }))
+  await user.click(screen.getByRole('button', { name: '미제출 2건 한글로 받기' }))
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['결석신고서_2026-11-09_2명.hwpx']))
 })
 

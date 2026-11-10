@@ -24,7 +24,9 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
   // 학급을 읽어 입력 칸이 켜진 뒤에 커서를 둔다.
   const ready = !!env
   useEffect(() => {
-    if (autoFocus && ready) ref.current?.focus()
+    // 다른 칸에 이미 쓰고 있으면 초점을 빼앗지 않는다
+    const busyElsewhere = document.activeElement && document.activeElement !== document.body && document.activeElement !== ref.current
+    if (autoFocus && ready && !busyElsewhere) ref.current?.focus()
   }, [autoFocus, ready, ref])
 
   const list: Suggestion[] = useMemo(() => (closed || !value ? [] : suggest(value, caret, { ...ctx, commands: COMMAND_META })), [value, caret, ctx, closed])

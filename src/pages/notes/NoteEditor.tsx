@@ -27,6 +27,27 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const [slashSel, setSlashSel] = useState(0)
   const [msg, setMsg] = useState<string>()
   const [menuFor, setMenuFor] = useState<string>()
+  // 블록 메뉴: Esc(손잡이로 초점 돌림)·바깥 누르기로 닫기
+  useEffect(() => {
+    if (!menuFor) return undefined
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      document.querySelector<HTMLButtonElement>(`[data-handle="${menuFor}"]`)?.focus()
+      setMenuFor(undefined)
+    }
+    const down = (e: MouseEvent) => {
+      const t = e.target as Element | null
+      if (t?.closest('.nb-menu') || t?.closest(`[data-handle="${menuFor}"]`)) return
+      setMenuFor(undefined)
+    }
+    document.addEventListener('keydown', key)
+    document.addEventListener('mousedown', down)
+    return () => {
+      document.removeEventListener('keydown', key)
+      document.removeEventListener('mousedown', down)
+    }
+  }, [menuFor])
   /** 전달사항으로 보낼 블록(또는 'all' = 노트 전체)과 기간 */
   const [sendFor, setSendFor] = useState<string>()
   const [range, setRange] = useState({ start: today, end: today })
@@ -255,7 +276,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                 setDragId(undefined)
               }}
             >
-              <button type="button" className="nb-handle" aria-label="블록 메뉴" draggable onDragStart={() => setDragId(b.id)} onDragEnd={() => setDragId(undefined)} onClick={() => setMenuFor(menuFor === b.id ? undefined : b.id)}>
+              <button type="button" className="nb-handle" data-handle={b.id} aria-label="블록 메뉴" aria-haspopup="menu" aria-expanded={menuFor === b.id} draggable onDragStart={() => setDragId(b.id)} onDragEnd={() => setDragId(undefined)} onClick={() => setMenuFor(menuFor === b.id ? undefined : b.id)}>
                 ⋮⋮
               </button>
               {menuFor === b.id && (

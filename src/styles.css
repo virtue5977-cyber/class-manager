@@ -714,3 +714,9 @@ p button.link, li button.link.inline { text-decoration: underline; }
 .page-head { align-items: center; }
 .page-head .head-slot { display: contents; }
 .page-head .page-title { display: flex; flex-direction: column; gap: 2px; }
+/* 초점 표시: 키보드로 옮길 때 진하게(파란 단추 위에서도 보이게) */
+button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus-visible, [role='radio']:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+.nb-handle { font-size: 13px; padding: 4px 4px; min-width: 20px; min-height: 24px; }
+.nb:focus-within .nb-handle { opacity: .6; }
+.skip-link { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--panel); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.skip-link:focus { left: 8px; }

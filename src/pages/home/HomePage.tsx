@@ -142,7 +142,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
           </div>
           <div className="resize-h" role="separator" aria-orientation="horizontal" aria-label="대화 높이 조절" title="끌어서 높이 조절 · 두 번 누르면 화면에 맞춤" onPointerDown={drag('chatH')} onDoubleClick={() => setLayout((l) => ({ ...l, chatH: 0 }))} />
           <div ref={barRef}>
-            <CommandBar inputRef={input} today={today} onRan={() => setTab('chat')} />
+            <CommandBar inputRef={input} autoFocus today={today} onRan={() => setTab('chat')} />
           </div>
         </div>
         <div className="resize-v" role="separator" aria-orientation="vertical" aria-label="오른쪽 폭 조절" onPointerDown={drag('sideW')} />

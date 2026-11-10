@@ -78,7 +78,7 @@ test('폴더 블록: 옛 exe·HTML판이면 새 exe 안내', async () => {
   await user.click(blocks()[0])
   await user.keyboard('/폴')
   await user.keyboard('{Enter}')
-  expect(await screen.findByText('폴더 연결은 새 Watson exe에서만 됩니다.')).toBeInTheDocument()
+  expect(await screen.findByText('폴더 연결은 새 설치형(Windows 앱)에서만 됩니다.')).toBeInTheDocument()
 })
 
 test('개요: 번호 목록에서 Tab이면 한 칸 들어가 "가."로', async () => {
@@ -132,4 +132,20 @@ test('블록·노트 전체를 기간을 정해 전달사항으로', async () =>
   await user.type(within(dlg).getByLabelText('끝'), '2026-11-12')
   await user.click(within(dlg).getByRole('button', { name: '보내기' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-12')).map((x) => x.text)).toEqual(['체육복 지참']))
+})
+
+test('블록 메뉴는 Esc나 바깥을 누르면 닫히고, Esc면 손잡이로 초점이 돌아간다', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  const handle = screen.getAllByRole('button', { name: '블록 메뉴' })[0]
+  await user.click(handle)
+  expect(screen.getByRole('menu')).toBeInTheDocument()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(handle).toHaveFocus()
+  await user.click(handle)
+  expect(screen.getByRole('menu')).toBeInTheDocument()
+  await user.click(screen.getByRole('list', { name: '노트 목록' }))
+  expect(screen.queryByRole('menu')).toBeNull()
 })

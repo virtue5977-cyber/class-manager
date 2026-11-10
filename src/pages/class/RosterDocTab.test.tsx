@@ -29,7 +29,7 @@ test('기본 제목과 빈 열 3이 채워져 있다', async () => {
   expect(screen.getByLabelText('글자 크기')).toHaveValue('11')
 })
 
-test('hwpx로 내보내기 → 파일명 "1학년5반_명렬표.hwpx", 첫 바이트 PK', async () => {
+test('한글로 받기 → 파일명 "1학년5반_명렬표.hwpx", 첫 바이트 PK', async () => {
   const user = userEvent.setup()
   const { fs } = await setup()
   await pickExport(user, '한글(hwpx)')

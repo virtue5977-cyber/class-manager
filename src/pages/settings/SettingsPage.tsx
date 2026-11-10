@@ -53,7 +53,7 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
           <>
             {!isDesktopApp() && (
               <p className="banner" role="note">
-                브라우저(HTML) 버전입니다. 이 방식은 같은 노트북에서 연 다른 HTML 파일이 앱 자료를 읽을 수 있어 학생 자료 보호가 약합니다. 학생 자료는 exe 버전에서 쓰고, HTML 버전은 잠깐 볼 때만 쓰세요.
+                브라우저(HTML) 버전입니다. 이 방식은 같은 노트북에서 연 다른 HTML 파일이 앱 자료를 읽을 수 있어 학생 자료 보호가 약합니다. 학생 자료는 설치형(Windows 앱)에서 쓰고, HTML 버전은 잠깐 볼 때만 쓰세요.
               </p>
             )}
             <PinSettings />

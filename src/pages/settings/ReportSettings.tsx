@@ -1,3 +1,4 @@
+import { CATEGORIES } from '../../lib/stats'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { AppSettingsRec, AttendanceCategory, AttendanceKind, HwpxTemplateRec } from '../../lib/db/types'
@@ -11,7 +12,7 @@ import {
 } from '../../lib/hwpx/absence/template'
 
 const KINDS: AttendanceKind[] = ['결석', '지각', '조퇴', '결과']
-const CATS: AttendanceCategory[] = ['미인정', '질병', '출석인정']
+const CATS: AttendanceCategory[] = CATEGORIES
 
 export default function ReportSettings() {
   const db = useDb()

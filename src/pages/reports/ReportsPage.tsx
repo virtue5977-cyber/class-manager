@@ -87,7 +87,7 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
           </label>
           {openRows.length > 0 && (
             <button type="button" className="primary" onClick={() => exportRows(openRows, 'one')}>
-              {`미제출 ${openRows.length}건 hwpx`}
+              {`미제출 ${openRows.length}건 한글로 받기`}
             </button>
           )}
           {shown.length > 0 && (
