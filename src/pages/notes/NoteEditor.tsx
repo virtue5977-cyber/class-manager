@@ -73,7 +73,9 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   }, [db, blocks, fileInfo])
 
   const update = (id: string, patch: Partial<NoteBlock>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...patch } : b)))
-  const slashOf = (b: NoteBlock) => (/^\/(\S*)$/.exec(b.text ?? '')?.[1] ?? null)
+  const [slashOff, setSlashOff] = useState<string>()
+  /** 블록 글이 '/…'(12자까지, 띄어쓰기 포함)이면 블록 메뉴 거르기 글. Esc로 닫은 블록은 '/'를 지울 때까지 닫힘. */
+  const slashOf = (b: NoteBlock) => (slashOff === b.id ? null : (/^\/([^\n]{0,12})$/.exec(b.text ?? '')?.[1] ?? null))
 
   async function addFiles(files: File[], afterId?: string) {
     setMsg(undefined)
@@ -144,7 +146,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         return
       }
       if (e.key === 'Escape') {
-        update(b.id, { text: (b.text ?? '') + ' ' })
+        setSlashOff(b.id)
         return
       }
     }
@@ -257,6 +259,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                     onChange={(e) => {
                       update(b.id, { text: e.target.value })
                       setSlashSel(0)
+                      if (slashOff === b.id && !e.target.value.startsWith('/')) setSlashOff(undefined)
                       e.target.style.height = 'auto'
                       e.target.style.height = `${e.target.scrollHeight}px`
                     }}

@@ -92,3 +92,18 @@ test('개요: 번호 목록에서 Tab이면 한 칸 들어가 "가."로', async 
   expect(screen.getByText('가.')).toBeInTheDocument()
   await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.map((b) => [b.type, b.text, b.indent ?? 0])).toEqual([['number', '목적', 0], ['number', '세부', 1]]), { timeout: 3000 })
 })
+
+test('/ 메뉴는 띄어쓴 이름(제목 1)도 거르고, Esc로 닫으면 글로 남는다', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('/제목 1')
+  expect(await screen.findByRole('option', { name: '제목 1' })).toBeInTheDocument()
+  await user.keyboard('{Enter}')
+  expect(blocks()[0]).toHaveValue('')
+  expect(blocks()[0].closest('.nb')).toHaveClass('nb-h1')
+  await user.keyboard('/없는것{Escape}')
+  expect(screen.queryByRole('listbox', { name: '블록 고르기' })).not.toBeInTheDocument()
+  expect(blocks()[0]).toHaveValue('/없는것')
+})
