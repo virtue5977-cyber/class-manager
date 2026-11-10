@@ -11,6 +11,7 @@ import { gridNext } from '../../lib/ui/gridNav'
 import { ymdParam } from '../../lib/ui/hashParam'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import AttendanceForm from './AttendanceForm'
+import MiniCalendar from './MiniCalendar'
 import ReportPanel from './ReportPanel'
 
 const label = (r: AttendanceRec) => `${r.kind}${r.period ? ` ${r.period}교시` : ''}(${r.category})`
@@ -134,7 +135,12 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
           })}
         </ul>
         <div className="att-side">
-          {!student && <div className="card muted">학생을 누르면 여기에서 출결을 입력합니다. 방향키로 옮겨 다닐 수 있습니다.</div>}
+          {!student && (
+            <>
+              <MiniCalendar date={date} today={today} classId={classId ?? undefined} onPick={setDate} />
+              <p className="muted">학생을 누르면 여기에서 출결을 입력합니다. 방향키로 옮겨 다닐 수 있습니다.</p>
+            </>
+          )}
           {student && ready && (
             <AttendanceForm
               key={`${student.id}-${date}-${dayRecords.filter((r) => r.student_id === student.id).map((r) => r.id + r.updated_at).join()}`}

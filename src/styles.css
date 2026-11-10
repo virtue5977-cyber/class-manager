@@ -728,3 +728,17 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .nb-slash .slash-txt small { font-size: 12px; color: var(--sub); }
 .nb-slash .slash-foot { position: sticky; bottom: 0; font-size: 12px; color: var(--sub); padding: 6px 10px; border-top: 1px solid var(--line); background: var(--panel); cursor: default; }
 .content { padding-bottom: 96px; } /* W 단추가 마지막 단추를 가리지 않게 */
+/* 출결 오른쪽 이달 달력 */
+.mini-cal { gap: 10px; }
+.mini-cal h4 { margin: 0; font-size: 14px; }
+.mini-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
+.mini-wd { text-align: center; font-size: 12px; color: var(--sub); }
+.mini-day { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 48px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 12px; text-align: left; }
+.mini-day.out { opacity: .45; }
+.mini-day.today .mini-num { font-weight: 700; color: var(--accent); }
+.mini-day.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.mini-dots { display: flex; gap: 2px; min-height: 6px; }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--sub); }
+.dot.tag-school { background: var(--accent); } .dot.tag-google { background: var(--sub); } .dot.tag-personal { background: var(--c-yellow-ink, #b7791f); } .dot.tag-work { background: var(--c-green, #2f855a); }
+.mini-att { font-size: 11px; color: var(--c-red, #d1242f); }
+.mini-events li { display: flex; gap: 6px; align-items: center; font-size: 13px; }
