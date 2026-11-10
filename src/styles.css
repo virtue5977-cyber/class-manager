@@ -400,7 +400,8 @@ a { color: var(--accent-soft-ink); }
 .dot-school { background: var(--c-blue); }
 .dot-google { background: var(--c-purple); }
 /* ===== 2차 정리: 전 화면 공통 ===== */
-.layout { background: linear-gradient(to right, var(--bg) 224px, var(--panel) 224px); }
+.layout { background: var(--panel); }
+.layout > .sidebar { background: var(--bg); }
 .card p, .card .notice { margin: 0; }
 .row { align-items: center; }
 .row:has(> label:not(.inline)) > button { align-self: flex-end; }
@@ -804,3 +805,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .good-list input { font-weight: 600; }
 .good-first { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media print { .reflection-side, .paper-tools, .roster-list { display: none !important; } }
+/* 반성문 좋은 글 모음: 칸 안에 맞게 */
+.reflection-side section, .reflection-side .good-list, .reflection-side .good-list li { min-width: 0; max-width: 100%; }
+.reflection-side input:not([type='checkbox']):not([type='radio']), .reflection-side textarea { width: 100%; box-sizing: border-box; min-width: 0; }
+/* 달력 일정 추가: 날짜 두 칸 한 줄 */
+.cal-add .row { flex-wrap: wrap; gap: 6px; align-items: center; }
+.cal-add input[type='date'] { width: 140px; min-width: 0; }

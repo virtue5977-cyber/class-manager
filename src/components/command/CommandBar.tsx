@@ -126,8 +126,8 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
         </button>
       </div>
       {/* 명령 이름을 아직 치는 중(후보가 열림)이면 오류 대신 안내 */}
-      {list.length > 0 && !parsed?.cmd && /^\/\S*$/.test(value.trim()) ? (
-        <p className="command-preview muted">↑↓로 고르고 Enter</p>
+      {!parsed?.cmd && /^\/\S*$/.test(value.trim()) && (list.length > 0 || Object.keys(commandNames()).some((n) => `/${n}`.startsWith(value.trim()))) ? (
+        <p className="command-preview muted">{list.length ? '↑↓로 고르고 Enter' : '명령 이름을 이어 쓰거나 칸을 눌러 고르세요'}</p>
       ) : problem ? (
         <p className="command-problem" role="alert">{problem}</p>
       ) : parsed?.cmd ? (
