@@ -1,9 +1,9 @@
 {
-  "version": "0.6.0",
+  "version": "0.7.0",
   "shell": 1,
-  "bundle": "bundle-0.6.0.zip",
-  "sha256": "2aa1f9d13f6f88a3bf2cd1e5be0b6e13810b7115473fafd410bc8c3277d171ba",
-  "sig": "/+/+Z0Sjh4y+kY9NdkVcV3GiAkjHvVSljzOpINnrxAxjyHpy5p8PFE50ekR4IctEJNi6nOEWNxk+fy3U5A9qDQ==",
-  "note": "Watson 0.6.0: 명령 입력 홈·노트함·전달사항·반성문",
+  "bundle": "bundle-0.7.0.zip",
+  "sha256": "a606b8e10dae849ddb74a19544e0eae11c9412e2fd944750fc2b3912740bd69e",
+  "sig": "6rQJzNgqCpD9PlKsDaOtysNqB9zOGYPaICKtgfz46piNKtoht/AzT+DQq4siCKLjWUqoxck7todCwoLW7WlzCg==",
+  "note": "0.7.0: 출결 이달 달력, 통계 칸 고르기·신고서 칸, 명단 양식 고치기, 다른 학교 결석신고서 양식 읽기, 음성 받아쓰기(새 설치형), 보안·화면 다듬기",
   "date": "2026-11-10"
 }
