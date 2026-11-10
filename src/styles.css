@@ -673,9 +673,9 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .cal-tag-업무 { background: var(--c-green-bg); color: var(--c-green); }
 .cal-add { border-top: 1px solid var(--line); padding-top: 8px; gap: 6px; }
 .cal-add input[aria-label='일정 제목'] { width: 100%; }
-.paper-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.paper-mode button { border: 0; border-radius: 0; background: transparent; padding: 6px 10px; color: var(--sub); }
-.paper-mode button.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+.paper-mode, .paper-tools .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.paper-mode button, .paper-tools .seg button { border: 0; border-radius: 0; background: transparent; padding: 6px 10px; color: var(--sub); }
+.paper-mode button.on, .paper-tools .seg button.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
 /* 인쇄·PDF: 고치는 단추·입력 틀은 빼고 내용만 */
 @media print {
   button, .menu, details.menu, .export-menu, input[type='search'], .command-bar, .home-tabs, .resize-h, .resize-v, .home-side, .chat-menu, .chat-clear, .note-tools, .nb-hint, .nb-handle, .log-toolbar, .todo-add, .cal-add, .notice-add, .seg { display: none !important; }
@@ -686,3 +686,14 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .confirm-inline { gap: 6px; font-size: 12px; }
 .send-range { gap: 6px; flex-wrap: wrap; align-items: center; padding: 8px 10px; }
 .note-tools { justify-content: flex-end; font-size: 12px; }
+/* 반성문 미리보기 크기·고른 줄 크게 고치기 */
+.paper-col { min-width: 0; gap: 8px; display: flex; flex-direction: column; align-items: stretch; }
+.paper-col > .paper-wrap { width: 100%; box-sizing: border-box; }
+.paper-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.paper-big { flex: 1; display: flex !important; flex-direction: row !important; gap: 8px; align-items: center; min-width: 260px; }
+.paper-big input { flex: 1; min-width: 0; font-size: 15px; }
+.paper-big input[aria-invalid='true'] { border-color: var(--c-red, #d1242f); }
+@media print { .paper-tools { display: none !important; } }
+:root[data-theme="dark"] .paper { filter: brightness(.9); }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] .paper { filter: brightness(.9); } }
+@media print { .paper { filter: none !important; } }

@@ -52,12 +52,29 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
   const [pendingSid, setPendingSid] = useState<string>()
   // 종이는 실제 크기(mm·pt)로 그리고, 화면 폭에 맞게 줄여 보인다(글자 맞춤과 같은 기준).
   const wrap = useRef<HTMLElement>(null)
-  const [zoom, setZoom] = useState(1)
+  const [fitZoom, setFitZoom] = useState(1)
+  /** 미리보기 크기: 맞춤(폭에 맞게 줄임) · 100% · 125%(넘치면 옆으로 밀어 봄). 이 기기에 기억. */
+  const [size, setSize] = useState<'fit' | '1' | '1.25'>(() => {
+    try {
+      const v = localStorage.getItem('watson.refl.size')
+      return v === '1' || v === '1.25' ? v : 'fit'
+    } catch {
+      return 'fit'
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('watson.refl.size', size)
+    } catch {
+      /* 기억 못 해도 그대로 */
+    }
+  }, [size])
+  const zoom = size === 'fit' ? fitZoom : Number(size)
   useEffect(() => {
     const el = wrap.current
     if (!el || typeof ResizeObserver === 'undefined') return undefined
     const mmPx = 96 / 25.4
-    const ro = new ResizeObserver(() => setZoom(Math.min(1, (el.clientWidth - 24) / (MODES[mode].pw * mmPx))))
+    const ro = new ResizeObserver(() => setFitZoom(Math.min(1, (el.clientWidth - 24) / (MODES[mode].pw * mmPx))))
     ro.observe(el)
     return () => ro.disconnect()
   }, [mode])
@@ -189,6 +206,26 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           )}
         </div>
 
+        <div className="paper-col stack">
+        <div className="paper-tools">
+          <div className="seg" role="radiogroup" aria-label="미리보기 크기">
+            {([['fit', '맞춤'], ['1', '100%'], ['1.25', '125%']] as const).map(([v, label]) => (
+              <button key={v} type="button" role="radio" aria-checked={size === v} className={size === v ? 'on' : undefined} onClick={() => setSize(v)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="paper-big">
+            <span className="muted">{`${sel + 1}번 줄`}</span>
+            <input
+              aria-label={`고른 줄(${sel + 1}번) 크게 고치기`}
+              aria-invalid={fits[sel]?.over ? 'true' : undefined}
+              value={lines[sel] ?? ''}
+              onChange={(e) => setLine(sel, e.target.value)}
+            />
+            <span className={fits[sel]?.over ? 'error' : 'muted'}>{fits[sel]?.over ? `${fits[sel].overChars}자 넘침` : `${(lines[sel] ?? '').length}자`}</span>
+          </label>
+        </div>
         <section className="paper-wrap" aria-label="반성문 양식" ref={wrap}>
           <div className={`paper print-area paper-${mode}`} style={{ width: `${MODES[mode].pw}mm`, minHeight: `${MODES[mode].ph}mm`, zoom }}>
             <table className="paper-table" style={{ width: `${(65174 * MODES[mode].k) / 100}pt` }}>
@@ -214,6 +251,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
             </table>
           </div>
         </section>
+        </div>
 
         <aside className="reflection-side stack">
           <div className="seg" role="tablist" aria-label="도구">
