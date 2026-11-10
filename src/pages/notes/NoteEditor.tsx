@@ -328,10 +328,15 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                   {items.length > 0 && (
                     <ul className="suggest nb-slash" role="listbox" aria-label="블록 고르기">
                       {items.map((it, k) => (
-                        <li key={it.type} role="option" aria-selected={k === slashSel} className={k === slashSel ? 'on' : undefined} onMouseDown={(e) => (e.preventDefault(), chooseSlash(b, it.type))}>
-                          {it.label}
+                        <li key={it.type} role="option" aria-label={it.label} aria-selected={k === slashSel} className={k === slashSel ? 'on' : undefined} ref={k === slashSel ? (el) => el?.scrollIntoView?.({ block: 'nearest' }) : undefined} onMouseDown={(e) => (e.preventDefault(), chooseSlash(b, it.type))}>
+                          <span className="slash-ico" aria-hidden="true">{it.icon}</span>
+                          <span className="slash-txt">
+                            <b>{it.label}</b>
+                            <small>{it.hint}</small>
+                          </span>
                         </li>
                       ))}
+                      <li className="slash-foot" aria-hidden="true">↑↓ 고르기 · Enter 넣기 · Esc 닫기</li>
                     </ul>
                   )}
                 </>

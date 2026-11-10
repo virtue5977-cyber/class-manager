@@ -720,3 +720,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .nb:focus-within .nb-handle { opacity: .6; }
 .skip-link { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--panel); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; }
 .skip-link:focus { left: 8px; }
+.nb-slash { max-height: min(360px, 50vh); overflow-y: auto; min-width: 240px; z-index: 20; }
+.nb-slash li[role='option'] { display: flex; gap: 10px; align-items: center; padding: 6px 10px; }
+.nb-slash .slash-ico { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; color: var(--sub); background: var(--panel); }
+.nb-slash .slash-txt { display: flex; flex-direction: column; line-height: 1.25; }
+.nb-slash .slash-txt b { font-weight: 500; color: var(--ink); }
+.nb-slash .slash-txt small { font-size: 12px; color: var(--sub); }
+.nb-slash .slash-foot { position: sticky; bottom: 0; font-size: 12px; color: var(--sub); padding: 6px 10px; border-top: 1px solid var(--line); background: var(--panel); cursor: default; }
+.content { padding-bottom: 96px; } /* W 단추가 마지막 단추를 가리지 않게 */

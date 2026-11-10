@@ -4,16 +4,16 @@ import { newBlockId } from './notes'
 
 const LIST: NoteBlockType[] = ['check', 'bullet', 'number']
 
-export const SLASH_ITEMS: { type: NoteBlockType; label: string; keywords: string }[] = [
-  { type: 'p', label: '문단', keywords: '글 텍스트' },
-  { type: 'h1', label: '제목 1', keywords: '큰제목 헤딩' },
-  { type: 'h2', label: '제목 2', keywords: '작은제목 헤딩' },
-  { type: 'check', label: '체크 목록', keywords: '할일 체크박스 todo' },
-  { type: 'bullet', label: '글머리 목록', keywords: '점 목록' },
-  { type: 'number', label: '번호 목록', keywords: '숫자' },
-  { type: 'divider', label: '구분선', keywords: '선 줄' },
-  { type: 'file', label: '파일', keywords: '첨부 붙이기' },
-  { type: 'folder', label: '폴더', keywords: '연결 탐색기' },
+export const SLASH_ITEMS: { type: NoteBlockType; label: string; keywords: string; icon: string; hint: string }[] = [
+  { type: 'p', label: '문단', keywords: '글 텍스트', icon: '¶', hint: '보통 글' },
+  { type: 'h1', label: '제목 1', keywords: '큰제목 헤딩', icon: 'H1', hint: '큰 제목' },
+  { type: 'h2', label: '제목 2', keywords: '작은제목 헤딩', icon: 'H2', hint: '작은 제목' },
+  { type: 'check', label: '체크 목록', keywords: '할일 체크박스 todo', icon: '☑', hint: '할 일처럼 체크' },
+  { type: 'bullet', label: '글머리 목록', keywords: '점 목록', icon: '•', hint: '점으로 나열' },
+  { type: 'number', label: '번호 목록', keywords: '숫자', icon: '1.', hint: '1. 가. 1) 순서' },
+  { type: 'divider', label: '구분선', keywords: '선 줄', icon: '—', hint: '가로줄' },
+  { type: 'file', label: '파일', keywords: '첨부 붙이기', icon: '📎', hint: '파일 붙이기(50MB까지)' },
+  { type: 'folder', label: '폴더', keywords: '연결 탐색기', icon: '📁', hint: '노트북 폴더 연결' },
 ]
 
 export function filterSlash(q: string) {
