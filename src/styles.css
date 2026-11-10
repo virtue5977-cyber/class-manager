@@ -477,3 +477,14 @@ button.pill.status-나이스 { background: var(--c-green-bg); color: var(--c-gre
 .hide-names-bar { position: sticky; top: 0; z-index: 30; background: var(--c-purple-bg); color: var(--c-purple); border-radius: 8px; padding: 6px 12px; margin-bottom: 12px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
 kbd { font: 600 12px/1.4 ui-monospace, Consolas, monospace; background: var(--c-gray-bg); border: 1px solid var(--line-input); border-radius: 4px; padding: 1px 6px; }
 @media print { .hide-names-bar { display: none; } }
+.export-menu { position: relative; display: inline-block; }
+.export-menu .menu-list { right: 0; left: auto; }
+div.menu .menu-list { position: absolute; z-index: 20; top: calc(100% + 4px); min-width: 160px; display: flex; flex-direction: column; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+div.menu .menu-list > button { border: 0; text-align: left; background: transparent; }
+div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible { background: var(--hover); }
+/* 인쇄·PDF: 화면 틀과 도구는 빼고 내용만 */
+@media print {
+  .sidebar, .page-head .tools, .export-menu, .banner, .w-button, .select-bar, .att-side .row { display: none !important; }
+  .layout { display: block; }
+  .content { padding: 0; max-width: none; }
+}

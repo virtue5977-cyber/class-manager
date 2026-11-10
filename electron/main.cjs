@@ -307,6 +307,16 @@ handle('ai:agy:ask', async (prompt) => {
   return r.text
 })
 
+// ---- PDF: 지금 화면을 A4 PDF로 저장(인쇄용 CSS 적용) ----
+handle('pdf:save', async (name) => {
+  const base = String(name || 'Watson.pdf').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120)
+  const r = await dialog.showSaveDialog(win, { title: 'PDF로 저장', defaultPath: path.join(app.getPath('documents'), base.endsWith('.pdf') ? base : base + '.pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] })
+  if (r.canceled || !r.filePath) return false
+  const data = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } })
+  await fs.writeFile(r.filePath, data)
+  return true
+})
+
 handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION }))
 handle('update:check', async () => {
   try {
