@@ -1,9 +1,9 @@
 {
-  "version": "0.4.0",
+  "version": "0.4.1",
   "shell": 1,
-  "bundle": "bundle-0.4.0.zip",
-  "sha256": "1006060f5161efe533c5f1ffcf313c1f2be140c259f6398d3b1f70c72ebcc914",
-  "sig": "qVL+VbhiXSIOAQ1+ZKDzUxLdSzSrpbq4VDqxPhiUBO4sWwUJBk80oUfhAWP+Aor2+Pqes6+jtmW7j2qQvX1IBQ==",
-  "note": "디자인 새 단장: 테마·글자 크기, 출결 격자, 설정 탭",
-  "date": "2026-11-09"
+  "bundle": "bundle-0.4.1.zip",
+  "sha256": "9715e2836a20cd97aaa3e093fda87aec94eb45b335dba68fa36fd2b77c08ae30",
+  "sig": "JL10lWXaCvW4MVezH/FyRmPJPlmlHzbPOkkQmZZ1sB5u6TOOet+aYMt5vQSC6g+oYUIDFwWvPbDCZIijrjGkDA==",
+  "note": "출결 키보드 입력·상담 목록 정리·신고서 제출 표시·설정 정리",
+  "date": "2026-11-10"
 }
