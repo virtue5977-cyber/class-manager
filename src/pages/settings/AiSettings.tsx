@@ -72,7 +72,13 @@ export default function AiSettings() {
               onClick={async () => {
                 setCc('확인 중…')
                 const st = await agy!.status()
-                setCc(st.installed ? `Antigravity ${st.version ?? ''} 연결됨` : 'Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.')
+                setCc(
+                  !st.installed
+                    ? 'Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'
+                    : st.loggedIn === false
+                      ? `Antigravity ${st.version ?? ''} 설치됨 · ${st.message ?? '로그인이 필요합니다.'}`
+                      : `Antigravity ${st.version ?? ''} 연결됨`,
+                )
               }}
             >
               Antigravity 연결 확인

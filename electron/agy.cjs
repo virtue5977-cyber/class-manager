@@ -20,9 +20,53 @@ function parseAgyOutput(stdout) {
   }
 }
 
-/** Windows의 .cmd를 셸 없이 부를 때 쓰는 인용(cmd.exe 규칙: " → "", % → %%). */
+/**
+ * cmd.exe /d /s /c 에 넘길 한 줄(바깥 따옴표 포함). 글이 세 번 읽힌다: cmd(% 펼치기) → .cmd의 %* → 프로그램의 인자 나누기.
+ * - " → "" (cmd 따옴표 상태가 깨지지 않고, 인자 나누기에서는 글자 ")
+ * - " 앞과 끝의 \ 는 두 배(인자 나누기 규칙)
+ * - % → %%cd:~,% (환경 변수 %USERNAME% 등이 펼쳐지지 않게; 결과는 글자 %)
+ * - 줄바꿈은 cmd 한 줄에 실을 수 없어 글자 \n 으로
+ */
 function quoteCmdArg(a) {
-  return '"' + String(a).replace(/"/g, '""').replace(/%/g, '%%').replace(/[\r\n]+/g, ' ') + '"'
+  const s = String(a).replace(/\r\n|\r|\n/g, '\\n')
+  let out = '"'
+  let bs = 0
+  for (const c of s) {
+    if (c === '\\') { bs++; continue }
+    if (c === '"') { out += '\\'.repeat(bs * 2) + '""'; bs = 0; continue }
+    out += '\\'.repeat(bs)
+    bs = 0
+    out += c === '%' ? '%%cd:~,%' : c
+  }
+  return out + '\\'.repeat(bs * 2) + '"'
+}
+function cmdLine(file, args) {
+  return '"' + [file, ...args].map(quoteCmdArg).join(' ') + '"'
 }
 
-module.exports = { agyArgs, parseAgyOutput, quoteCmdArg, MAX_PROMPT, LOGIN_MSG }
+/** `where agy` 출력에서 고르기: .exe → .cmd/.bat. 확장자 없는 것(npm의 sh 스크립트)은 cmd가 못 돌린다. */
+function pickAgyPath(whereOut) {
+  const lines = String(whereOut || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+  const exe = lines.find((x) => /\.exe$/i.test(x))
+  if (exe) return { file: exe, viaCmd: false }
+  const cmd = lines.find((x) => /\.(cmd|bat)$/i.test(x))
+  return cmd ? { file: cmd, viaCmd: true } : null
+}
+
+/** 시간 초과 때 끝내는 명령. Windows는 cmd.exe 아래 node/agy까지(/t). */
+function killCommand(platform, pid) {
+  return platform === 'win32' ? ['taskkill', ['/pid', String(pid), '/t', '/f']] : null
+}
+
+/** 연결 확인 결과: --version 출력 + 짧은 시험 질문의 parseAgyOutput 결과. */
+function statusFrom(versionOut, probe) {
+  const v = String(versionOut || '').trim()
+  if (!v) return { installed: false }
+  const version = v.split(/\s+/).pop()
+  if (probe && probe.error) return { installed: true, version, loggedIn: false, message: probe.error }
+  return { installed: true, version, loggedIn: true }
+}
+
+const PROBE_PROMPT = 'OK 라고만 답하세요.'
+
+module.exports = { agyArgs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, PROBE_PROMPT, MAX_PROMPT, LOGIN_MSG }

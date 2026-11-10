@@ -68,7 +68,8 @@ export function extractJson<T>(text: string): T {
 
 /** exe의 preload가 넣어 주는 Claude Code 연결 */
 export interface ClaudeCodeApi {
-  status(): Promise<{ installed: boolean; version?: string }>
+  /** loggedIn·message: 짧은 시험 질문 결과(새 exe). 옛 exe는 installed·version만. */
+  status(): Promise<{ installed: boolean; version?: string; loggedIn?: boolean; message?: string }>
   ask(req: AiRequest): Promise<string>
 }
 
@@ -78,7 +79,8 @@ export function getClaudeCode(): ClaudeCodeApi | undefined {
 
 /** exe(SHELL 3)의 preload가 넣어 주는 Antigravity CLI 연결(구글 로그인) */
 export interface AntigravityApi {
-  status(): Promise<{ installed: boolean; version?: string }>
+  /** loggedIn·message: 짧은 시험 질문 결과(새 exe). 옛 exe는 installed·version만. */
+  status(): Promise<{ installed: boolean; version?: string; loggedIn?: boolean; message?: string }>
   ask(prompt: string): Promise<string>
 }
 export function getAntigravity(): AntigravityApi | undefined {

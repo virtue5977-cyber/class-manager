@@ -200,6 +200,16 @@ handle('backup:delete', async (name) => {
 // ---- AI: 노트북에 설치·로그인된 Claude Code에 맡기기(Pro 구독의 프로그램용 크레딧 사용) ----
 // 지시문·메모는 표준 입력으로만 넘기고, 빈 작업 폴더에서 도구 없이 한 번만 답하게 한다.
 const AI_DIR = () => path.join(os.tmpdir(), 'damim-ai')
+/** 시간 초과 때: Windows에서는 셸(cmd.exe)만 끝내면 그 아래 node·claude·agy가 학생 글을 든 채 남으므로 프로세스 나무째 끝낸다. */
+function killTree(child) {
+  const k = require('./agy.cjs').killCommand(process.platform, child.pid)
+  if (!k) return child.kill()
+  try {
+    require('node:child_process').execFileSync(k[0], k[1], { windowsHide: true, stdio: 'ignore' })
+  } catch {
+    child.kill()
+  }
+}
 function runClaude(args, input, timeoutMs) {
   return new Promise((resolve, reject) => {
     fsSync.mkdirSync(AI_DIR(), { recursive: true })
@@ -207,7 +217,7 @@ function runClaude(args, input, timeoutMs) {
     let out = ''
     let err = ''
     const timer = setTimeout(() => {
-      child.kill()
+      killTree(child)
       reject(new Error('Claude Code 응답이 너무 늦습니다. 잠시 뒤 다시 시도하세요.'))
     }, timeoutMs)
     child.stdout.on('data', (d) => (out += d))
@@ -254,20 +264,17 @@ const agyLib = require('./agy.cjs')
 function findAgy() {
   if (process.platform !== 'win32') return { file: 'agy', viaCmd: false }
   try {
-    const out = require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true })
-    const first = out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
-    const exe = first.find((x) => /\.exe$/i.test(x))
-    if (exe) return { file: exe, viaCmd: false }
-    if (first[0]) return { file: first[0], viaCmd: true }
-  } catch {}
-  return null
+    return agyLib.pickAgyPath(require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true }))
+  } catch {
+    return null
+  }
 }
 function runAgy(args, timeoutMs) {
   return new Promise((resolve, reject) => {
     const found = findAgy()
     if (!found) return reject(new Error('Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'))
     fsSync.mkdirSync(AI_DIR(), { recursive: true })
-    const line = '"' + [found.file, ...args].map(agyLib.quoteCmdArg).join(' ') + '"'
+    const line = agyLib.cmdLine(found.file, args)
     // cmd.exe 한 줄은 8,191자까지라 그보다 길면 나눠 달라고 한다.
     if (found.viaCmd && line.length > 8000) return reject(new Error('AI에 보낼 글이 너무 깁니다. 내용을 나눠서 정리하세요.'))
     const child = found.viaCmd
@@ -276,7 +283,7 @@ function runAgy(args, timeoutMs) {
     let out = ''
     let err = ''
     const timer = setTimeout(() => {
-      child.kill()
+      killTree(child)
       reject(new Error('Antigravity 응답이 너무 늦습니다. 잠시 뒤 다시 시도하세요.'))
     }, timeoutMs)
     child.stdout.on('data', (d) => (out += d))
@@ -295,7 +302,16 @@ function runAgy(args, timeoutMs) {
 handle('ai:agy:status', async () => {
   try {
     const { out } = await runAgy(['--version'], 20000)
-    return out.trim() ? { installed: true, version: out.trim().split(/\s+/).pop() } : { installed: false }
+    if (!out.trim()) return { installed: false }
+    // 버전만으로는 로그인 여부를 모르므로 아주 짧은 시험 질문을 한 번 보낸다(학생 자료 없음).
+    let probe
+    try {
+      const r = await runAgy(agyLib.agyArgs(agyLib.PROBE_PROMPT), 45000)
+      probe = agyLib.parseAgyOutput(r.out || r.err)
+    } catch (e) {
+      probe = { error: e instanceof Error ? e.message : String(e) }
+    }
+    return agyLib.statusFrom(out, probe)
   } catch {
     return { installed: false }
   }

@@ -146,3 +146,26 @@ test('새 기록을 저장하면 입력 칸이 닫히고 그 기록이 잠깐 �
   const fresh = (await screen.findAllByRole('article')).find((x) => x.textContent?.includes('새 메모'))!
   expect(fresh).toHaveClass('flash')
 })
+
+test('이름 가림 중에는 내보낸 파일 이름에 학생 이름 대신 번호만', async () => {
+  const { setHideNames } = await import('../../components/HideNames')
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const s = await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  await saveLog(db, { student_id: s.id, date: '2026-11-02', place: '교실', content: '진로 고민' })
+  const fs = createMemoryFsAdapter()
+  setHideNames(true)
+  try {
+    render(
+      <AppProviders db={db} fs={fs}>
+        <CounselingPage />
+      </AppProviders>,
+    )
+    await user.click(await screen.findByRole('button', { name: /^1번/ }))
+    await pickExport(user, '엑셀(xlsx)')
+    await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1번_상담일지.xlsx']))
+  } finally {
+    setHideNames(false)
+  }
+})

@@ -79,9 +79,10 @@ table.roster-sheet td:first-child, table.roster-sheet th:first-child { width: 4e
 @media print {
   @page { size: A4 portrait; margin: 15mm; }
   body { background: #fff; color: #000; }
-  body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
-  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  /* 따로 인쇄 영역(.print-area)이 있는 화면만 그 부분만 찍는다. 없으면 화면 내용 그대로(틀·도구는 아래에서 뺌). */
+  body:has(.print-area) * { visibility: hidden; }
+  body:has(.print-area) .print-area, body:has(.print-area) .print-area * { visibility: visible; }
+  body:has(.print-area) .print-area { position: absolute; left: 0; top: 0; width: 100%; }
   table.grid th, table.grid td { border-color: #000; color: #000; background: #fff; }
 }
 table.roster-sheet th:nth-child(2), table.roster-sheet td:nth-child(2) { width: 18%; }
@@ -502,3 +503,7 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
   .layout { display: block; }
   .content { padding: 0; max-width: none; }
 }
+.export-menu { position: relative; }
+.export-menu .export-error { position: absolute; right: 0; top: calc(100% + 4px); z-index: 21; white-space: nowrap; font-size: 12px; background: var(--panel); padding: 4px 8px; border-radius: 6px; }
+/* PDF에 화면 제목을 남긴다(자리배치처럼 따로 인쇄 제목이 있는 화면은 그것만). */
+@media print { body:not(:has(.print-title)) .page-head h2 { display: block !important; } }

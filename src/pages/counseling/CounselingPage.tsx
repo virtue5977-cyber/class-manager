@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHead from '../../components/PageHead'
 import ExportMenu from '../../components/ExportMenu'
 import { exportPdf } from '../../lib/export/pdf'
+import { isHideNames } from '../../components/HideNames'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
@@ -98,14 +99,17 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
     setBusy(false)
   }
 
+  /** 파일 이름: 이름 가림 중이면 번호만(저장 창에 이름이 비치지 않게). */
+  const fileStem = () => (student ? (isHideNames() ? `${student.number}번_상담일지` : `${student.number}번_${student.name}_상담일지`) : '상담일지')
   async function exportLogs(kind: 'hwpx' | 'xlsx') {
     if (!student) return
     const header = ['날짜', '장소', '대상·방법·분야', '누가기록(정리본 또는 원문)']
     const rows = logs.map((l) => [nugaHeader(l.date, '').replace(/\s\|.*$/, ''), l.place, [l.target, l.method, l.topic].filter(Boolean).join(' · '), l.nuga_text || l.content])
     const title = `${student.number}번 ${student.name} 상담일지`
     const bytes = kind === 'hwpx' ? await buildTableHwpx({ title, header, rows, colRatios: [3, 3, 3, 10], fontSizePt: 10 }) : await writeSimpleXlsx('상담일지', [header, ...rows])
-    fs.downloadFile(`${title.replace(/\s+/g, '_')}.${kind}`, bytes)
-    setMessages([`${title}.${kind} 파일을 만들었습니다.`])
+    const name = `${fileStem()}.${kind}`
+    fs.downloadFile(name, bytes)
+    setMessages([`${name} 파일을 만들었습니다.`])
   }
 
   const shown = logs
@@ -242,7 +246,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
                 <button type="button" disabled={busy || !unorganized.length} onClick={() => organize(unorganized)}>
                   {busy ? '정리 중…' : `미정리 ${unorganized.length}건 누가기록으로 정리`}
                 </button>
-                {logs.length > 0 && <ExportMenu items={[{ format: 'hwpx', run: () => exportLogs('hwpx') }, { format: 'xlsx', run: () => exportLogs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${student.number}번_${student.name}_상담일지.pdf`) }]} />}
+                {logs.length > 0 && <ExportMenu items={[{ format: 'hwpx', run: () => exportLogs('hwpx') }, { format: 'xlsx', run: () => exportLogs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${fileStem()}.pdf`) }]} />}
               </div>
               {shown.length === 0 && <p className="muted">{logs.length ? '해당하는 기록이 없습니다.' : '아직 기록이 없습니다.'}</p>}
               {[...shown].reverse().map((l) => (
