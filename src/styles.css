@@ -474,3 +474,6 @@ button.pill.status-나이스 { background: var(--c-green-bg); color: var(--c-gre
 .subnav a.active { color: var(--ink); font-weight: 600; background: var(--selected); }
 .nav a .badge { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--c-orange); background: var(--c-orange-bg); border-radius: 9999px; padding: 0 6px; }
 .side-bottom .version { font-size: 11px; color: var(--faint); padding: 0 8px; }
+.hide-names-bar { position: sticky; top: 0; z-index: 30; background: var(--c-purple-bg); color: var(--c-purple); border-radius: 8px; padding: 6px 12px; margin-bottom: 12px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+kbd { font: 600 12px/1.4 ui-monospace, Consolas, monospace; background: var(--c-gray-bg); border: 1px solid var(--line-input); border-radius: 4px; padding: 1px 6px; }
+@media print { .hide-names-bar { display: none; } }

@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'rea
 import { AppProviders } from './app/context'
 import Sidebar from './components/Sidebar'
 import Shortcuts from './components/Shortcuts'
+import HideNamesBar from './components/HideNames'
 import BackupBanner from './components/BackupBanner'
 import PinGate from './components/PinGate'
 import UpdateBanner from './components/UpdateBanner'
@@ -38,6 +39,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
           <Shortcuts />
           <Sidebar />
           <main className="content">
+            <HideNamesBar />
             <UpdateBanner />
             <GoogleAutoSync />
             <BackupBanner />
