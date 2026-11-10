@@ -260,6 +260,19 @@ table.grid tbody tr:hover td { background: var(--row-hover); }
 .hide-names-btn { margin-top: 0; width: 100%; justify-content: flex-start; display: flex; gap: 8px; align-items: center; border-color: transparent; background: transparent; color: var(--sub); }
 .hide-names-btn.on { background: var(--c-blue-bg); color: var(--c-blue); }
 /* 출결: 학생 격자 */
+.roster-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; width: 100%; align-items: start; }
+.roster-list { position: sticky; top: 12px; gap: 8px; align-items: stretch; }
+.roster-list ul { max-height: calc(100vh / var(--zoom, 1) - 220px); overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 4px; }
+.roster-item { width: 100%; display: flex; gap: 4px; align-items: center; text-align: left; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; font-size: 14px; }
+.roster-item:hover { background: var(--row-hover); }
+.roster-item[aria-current="true"] { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+.roster-item.inactive { color: var(--sub); }
+.roster-tab { width: 100%; }
+.roster-list input[type="search"] { width: 100%; min-width: 0; }
+.roster-detail .detail { margin: 0; }
+.grid-form label.check { grid-column: 1 / -1; }
+.grid-form input[type="checkbox"] { width: auto; }
+@media (max-width: 720px) { .roster-layout { grid-template-columns: 1fr; } .roster-list { position: static; } }
 .att-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; width: 100%; align-items: start; }
 .att-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh / var(--zoom, 1) - 32px); overflow: auto; }
 ul.student-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }

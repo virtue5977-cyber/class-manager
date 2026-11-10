@@ -28,7 +28,8 @@ function toFields(s?: StudentRec): StudentFields {
   return f
 }
 
-export default function StudentDetail({ classId, student, onDone }: { classId: string; student?: StudentRec; onDone: () => void }) {
+/** closable=false: 명단 오른쪽에 늘 열려 있는 상세(닫기 버튼 없음). */
+export default function StudentDetail({ classId, student, onDone, closable = true }: { classId: string; student?: StudentRec; onDone: () => void; closable?: boolean }) {
   const db = useDb()
   const [f, setF] = useState<StudentFields>(() => toFields(student))
   const [num, setNum] = useState(student ? String(student.number) : '')
@@ -81,9 +82,11 @@ export default function StudentDetail({ classId, student, onDone }: { classId: s
             삭제
           </button>
         )}
-        <button type="button" onClick={onDone}>
-          닫기
-        </button>
+        {closable && (
+          <button type="button" onClick={onDone}>
+            {student ? '닫기' : '취소'}
+          </button>
+        )}
       </div>
       {confirmDelete && (
         <div className="row confirm">
