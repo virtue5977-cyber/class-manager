@@ -5,7 +5,7 @@ import { COMMAND_META, commandLabel, commandNames, commandSubs } from '../../lib
 import { executeInput, type Executed } from '../../lib/command/run'
 import { aiFallback } from '../../lib/command/ai'
 import { useCommandCtx } from './useCommandCtx'
-import { remember } from './session'
+import { remember, undoLast } from './session'
 
 const history: string[] = []
 
@@ -18,6 +18,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
   const [caret, setCaret] = useState(0)
   const [sel, setSel] = useState(0)
   const [closed, setClosed] = useState(false)
+  const [undoNote, setUndoNote] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [hist, setHist] = useState(-1)
 
@@ -39,6 +40,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
     setCaret(c)
     setSel(0)
     setClosed(false)
+    setUndoNote(undefined)
     if (moveCaret) requestAnimationFrame(() => ref.current?.setSelectionRange(c, c))
   }
   const pick = (s: Suggestion) => {
@@ -61,6 +63,12 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
   }
   function onKey(e: KeyboardEvent<HTMLInputElement>) {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    // 입력 칸이 비었을 때 Ctrl+Z: 방금 실행한 명령 되돌리기(글 쓰는 중에는 보통 되돌리기)
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !value) {
+      e.preventDefault()
+      void undoLast().then((sum) => setUndoNote(sum ? `되돌렸습니다: ${sum}` : '되돌릴 명령이 없습니다(10초가 지났거나 이미 되돌림).'))
+      return
+    }
     if (e.key === 'ArrowDown' && list.length) {
       e.preventDefault()
       setSel((i) => (i + 1) % list.length)
@@ -107,6 +115,8 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
           onChange={(e) => set(e.target.value, e.target.selectionStart ?? e.target.value.length)}
           onSelect={(e) => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
           onKeyDown={onKey}
+          onBlur={() => setClosed(true)}
+          onFocus={() => setClosed(false)}
           role="combobox"
           aria-expanded={list.length > 0}
           aria-autocomplete="list"
@@ -122,6 +132,8 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
         <p className="command-problem" role="alert">{problem}</p>
       ) : parsed?.cmd ? (
         <p className="command-preview" role="status">{describe(parsed, commandLabel)}</p>
+      ) : undoNote ? (
+        <p className="command-preview" role="status">{undoNote}</p>
       ) : (
         <p className="command-preview" aria-hidden="true">{'\u00a0'}</p>
       )}

@@ -4,6 +4,8 @@ import { useDb } from '../../app/context'
 import type { ChatRec, StudentRec, AttendanceRec, CounselingLogRec } from '../../lib/db/types'
 import type { SearchHit } from '../../lib/command/handlers'
 import { addNotice } from '../../lib/notices/notices'
+import { createNote, newBlockId } from '../../lib/notes/notes'
+import type { NoteBlock } from '../../lib/db/types'
 import { useRecall } from './session'
 import FloatingForm from './FloatingForm'
 
@@ -30,6 +32,19 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
   }, [left])
 
   const card = r?.card
+  /** 대답을 노트로: 입력 · 요약 · 카드 내용(초안 글·나눈 전달사항·찾은 것) · 링크 */
+  async function toNote() {
+    const b = (type: NoteBlock['type'], text: string): NoteBlock => ({ id: newBlockId(), type, text })
+    const body: NoteBlock[] = [b('p', `입력: ${chat.input}`), b('p', chat.summary)]
+    const d = card?.data as { kind?: string; text?: string; items?: string[] } | SearchHit[] | undefined
+    if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'message' && d.text) body.push(...d.text.split('\n').map((t) => b('p', t)))
+    if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'notices') body.push(...(d.items ?? []).map((t) => b('bullet', t)))
+    if (card?.kind === 'search' && Array.isArray(d)) body.push(...d.map((h) => b('bullet', `${h.label} ${h.detail}`.trim())))
+    body.push(...chat.links.map((l) => b('bullet', `${l.label}: #${l.to}`)))
+    body.push(b('p', `— 홈 대화(${new Date(chat.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })})에서`))
+    await createNote(db, chat.summary.slice(0, 40), body)
+    setNote('노트로 보냈습니다.')
+  }
   return (
     <article className={`result-card status-${chat.status === '성공' ? 'ok' : chat.status === '실패' ? 'bad' : 'ask'}`} aria-label="결과">
       <div className="result-head">
@@ -66,7 +81,7 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
           <button type="button" className="primary" onClick={() => onRun?.((card.data as { command: string }).command)}>이렇게 실행</button>
         </div>
       )}
-      {(chat.links.length > 0 || (live?.undo && left > 0)) && (
+      {(chat.links.length > 0 || (live?.undo && left > 0) || chat.mode !== 'rule' || !!card) && (
         <div className="row result-actions">
           {chat.links.map((l) => (
             <Link key={l.to + l.label} to={l.to}>{l.label}</Link>
@@ -74,6 +89,11 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
           {live?.undo && left > 0 && (
             <button type="button" className="link" onClick={async () => { setNote((await live.undo!.undo()) ? '되돌렸습니다.' : '되돌릴 수 없습니다.'); setLeft(0) }}>
               {`되돌리기 ${left}초`}
+            </button>
+          )}
+          {(chat.mode !== 'rule' || !!card) && (
+            <button type="button" className="link" onClick={toNote}>
+              노트로
             </button>
           )}
         </div>

@@ -65,11 +65,27 @@ test('AI가 꺼져 있으면 실패 + 설정 링크, 규칙 명령은 그대로'
   expect(await db.attendance.count()).toBe(1)
 })
 
-test('/전달 학생은 AI를 쓰지 않으므로 규칙으로 기록', async () => {
-  const { env, ctx, sent } = await setup(() => '')
+test('/전달 학생 → AI가 학생에게 맞게 고쳐 전달사항으로(되돌리기), 이름은 가림', async () => {
+  const { db, env, ctx, sent } = await setup(() => '{"text":"내일 체육복을 꼭 가져오세요."}')
+  const r = await executeInput('/전달 학생 박도윤 포함 다들 낼 체육복 챙겨', ctx, env, aiFallback)
+  expect(r.chat.mode).toBe('hybrid')
+  expect(r.chat.status).toBe('성공')
+  const items = (await db.notice_items.toArray()).filter((n) => !n.deleted)
+  expect(items.map((n) => n.text)).toEqual(['내일 체육복을 꼭 가져오세요.'])
+  expect(JSON.stringify(sent)).not.toContain('박도윤')
+  expect(JSON.stringify(sent)).toContain('학생')
+  await r.result!.undo!()
+  expect((await db.notice_items.toArray()).filter((n) => !n.deleted)).toHaveLength(0)
+})
+
+test('/전달(대상 없음)은 AI 없이 그대로 기록, AI가 꺼져 있으면 /전달 학생도 그대로', async () => {
+  const { db, env, ctx, sent } = await setup(() => '')
+  expect((await executeInput('/전달 체육복', ctx, env, aiFallback)).chat.mode).toBe('rule')
+  expect(sent).toHaveLength(0)
+  await updateSettings(db, { ai_enabled: false })
   const r = await executeInput('/전달 학생 체육복', ctx, env, aiFallback)
   expect(r.chat.mode).toBe('rule')
-  expect(sent).toHaveLength(0)
+  expect((await db.notice_items.toArray()).map((n) => n.text)).toContain('체육복')
 })
 
 test('전출 학생 이름도 가린다(maskNames)', async () => {

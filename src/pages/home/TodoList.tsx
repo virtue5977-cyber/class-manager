@@ -20,7 +20,10 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
   const [sel, setSel] = useState(0)
   const [err, setErr] = useState<string>()
   const ref = useRef<HTMLInputElement>(null)
-  const list = text.slice(0, caret).match(/@\S*$/) ? suggest(text, caret, { ...ctx, commands: [] }) : []
+  // 할 일의 @는 노트만(학생 이름은 후보에 넣지 않는다)
+  const noteCtx = useMemo(() => ({ ...ctx, students: [] }), [ctx])
+  const [open, setOpen] = useState(true)
+  const list = open && text.slice(0, caret).match(/@\S*$/) ? suggest(text, caret, { ...noteCtx, commands: [] }).filter((x) => x.kind === 'note') : []
   const pick = (i: number) => {
     const r = applySuggestion(text, caret, list[i])
     setText(r.value)
@@ -30,9 +33,9 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
   }
   async function add() {
     if (!text.trim()) return
-    const p = parseCommand(`/할일 ${text}`, ctx, commandNames(), commandSubs())
+    const p = parseCommand(`/할일 ${text}`, noteCtx, commandNames(), commandSubs())
     const bad = p.missing[0] ?? p.ambiguous[0]
-    if (bad !== undefined) return setErr(p.missing.length ? `'${bad}' 학생이나 노트를 찾지 못했습니다.` : `'${bad}'에 맞는 학생이 여럿입니다. @를 눌러 고르세요.`)
+    if (bad !== undefined) return setErr(`'${bad}' 노트를 찾지 못했습니다.`)
     try {
       await addTodo(db, p.parts, p.dateGiven ? p.date : null)
       setText('')
@@ -75,7 +78,7 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
       </ul>
       <div className="todo-add">
         {list.length > 0 && (
-          <ul className="suggest" role="listbox" aria-label="연결할 학생·노트">
+          <ul className="suggest" role="listbox" aria-label="연결할 노트">
             {list.map((s, i) => (
               <li key={s.kind + s.label} role="option" aria-selected={i === sel} className={i === sel ? 'on' : undefined} onMouseDown={(e) => (e.preventDefault(), pick(i))}>
                 <span className="sg-kind" aria-hidden="true">{s.kind === 'note' ? '📄' : '@'}</span>
@@ -89,9 +92,12 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
           role="combobox"
           aria-label="할 일 추가"
           aria-expanded={list.length > 0}
-          placeholder="할 일 — @로 노트·학생 연결, '내일'은 마감일"
+          placeholder="할 일 — @로 노트 연결, '내일'은 마감일"
           value={text}
+          onBlur={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
           onChange={(e) => {
+            setOpen(true)
             setText(e.target.value)
             setCaret(e.target.selectionStart ?? e.target.value.length)
             setSel(0)

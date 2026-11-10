@@ -753,3 +753,32 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .audio-drop progress { flex: 1; }
 details.menu .menu-list.col-pick { min-width: 250px; right: 0; left: auto; }
 .seg[role='radiogroup'] { align-self: flex-start; }
+/* 체크박스·라디오: 글 입력 칸 꾸밈(안쪽 여백·최소 높이)을 받지 않게 → 글과 높이가 맞는다 */
+input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0; flex: none; accent-color: var(--accent); vertical-align: middle; }
+.todo-list li { align-items: center; gap: 8px; }
+.todo-list li .todo-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 전달사항 줄: 긴 글은 줄바꿈, 단추는 오른쪽 끝에 두고 마우스를 올리거나 초점이 있을 때만 보임 */
+.notice-row { align-items: flex-start; flex-wrap: nowrap; }
+.notice-row > input[type="checkbox"] { margin-top: 9px; }
+.notice-row .notice-text { resize: none; overflow: hidden; min-height: 32px; line-height: 1.45; padding: 6px 8px; }
+.notice-row .notice-period { margin-top: 6px; white-space: nowrap; }
+.notice-row .row-tools { display: inline-flex; gap: 2px; margin-left: auto; margin-top: 4px; opacity: 0; transition: opacity .12s; }
+.notice-row:hover .row-tools, .notice-row:focus-within .row-tools, .notice-row.pinned .row-tools .on { opacity: 1; }
+.notice-row.pinned:not(:hover):not(:focus-within) .row-tools { opacity: 1; }
+.notice-row.pinned:not(:hover):not(:focus-within) .row-tools > :not(.on) { opacity: 0; }
+@media (hover: none) { .notice-row .row-tools { opacity: 1; } }
+.nb-check input[type='checkbox'] { margin-top: 10px; }
+/* 좁은 창(노트북 창 줄임): 사이드바·여백을 줄이고, 홈 오른쪽 칸은 아래로 */
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 172px 1fr; }
+  .content { padding: 16px 20px 96px; }
+  .home-body { grid-template-columns: 1fr !important; }
+  .home-body .resize-v { display: none; }
+  .home-side { padding-left: 0; margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-items: start; }
+  .home-main { padding-right: 0; }
+}
+.banner { flex-wrap: wrap; }
+.banner > a, .banner > button { white-space: nowrap; }
+/* 홈: 오른쪽 칸 첫 상자를 대화 상자 윗줄에 맞춘다(탭 줄 높이만큼 내림) */
+.home-tabs { min-height: 36px; box-sizing: border-box; }
+@media (min-width: 1101px) { .home-body:has(.home-tabs) .home-side { padding-top: 44px; } }

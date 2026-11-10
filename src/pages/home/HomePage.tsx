@@ -83,8 +83,11 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   useEffect(() => {
     loadReportContext(db).then(({ days }) => setClassDay(days.isClassDay(today)))
   }, [db, today])
+  // 전달사항을 다 지웠을 때만 대화로(방금 넣어 아직 목록이 안 읽힌 때는 그대로)
+  const prevNotices = useRef(notices.length)
   useEffect(() => {
-    if (!notices.length && tab === 'notice') setTab('chat')
+    if (prevNotices.current > 0 && !notices.length && tab === 'notice') setTab('chat')
+    prevNotices.current = notices.length
   }, [notices.length, tab])
   useEffect(() => {
     try {
@@ -142,7 +145,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
           </div>
           <div className="resize-h" role="separator" aria-orientation="horizontal" aria-label="대화 높이 조절" title="끌어서 높이 조절 · 두 번 누르면 화면에 맞춤" onPointerDown={drag('chatH')} onDoubleClick={() => setLayout((l) => ({ ...l, chatH: 0 }))} />
           <div ref={barRef}>
-            <CommandBar inputRef={input} autoFocus today={today} onRan={() => setTab('chat')} />
+            <CommandBar inputRef={input} autoFocus today={today} onRan={(r) => setTab(r.result?.links?.some((l) => l.to === '/?tab=notice') ? 'notice' : 'chat')} />
           </div>
         </div>
         <div className="resize-v" role="separator" aria-orientation="vertical" aria-label="오른쪽 폭 조절" onPointerDown={drag('sideW')} />

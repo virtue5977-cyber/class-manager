@@ -29,10 +29,10 @@ const rows = () => within(screen.getByRole('list', { name: '전달사항 목록'
 test('기간 안 항목이 보이고, 고정하면 맨 위, 체크·지우기·되돌리기', async () => {
   const user = userEvent.setup()
   const { db } = await setup()
-  await waitFor(() => expect(rows().map((r) => r.querySelector('input[type=text]')?.getAttribute('value'))).toEqual(['동의서 걷기', '체육복']))
+  await waitFor(() => expect(rows().map((r) => (r.querySelector('textarea.notice-text') as HTMLTextAreaElement | null)?.value)).toEqual(['동의서 걷기', '체육복']))
   expect(within(rows()[0]).getByText('11/10~11/12')).toBeInTheDocument()
   await user.click(within(rows()[1]).getByRole('button', { name: '체육복 고정' }))
-  await waitFor(() => expect(rows()[0].querySelector('input[type=text]')).toHaveValue('체육복'))
+  await waitFor(() => expect(rows()[0].querySelector('textarea.notice-text')).toHaveValue('체육복'))
   await user.click(within(rows()[1]).getByRole('checkbox', { name: '동의서 걷기 완료' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).find((n) => n.text === '동의서 걷기')!.done).toBe(true))
   await user.click(within(rows()[0]).getByRole('button', { name: '체육복 지우기' }))

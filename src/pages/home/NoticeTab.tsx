@@ -17,6 +17,13 @@ const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
 const period = (n: NoticeItemRec) => (n.start_date === n.end_date ? md(n.start_date) : `${md(n.start_date)}~${md(n.end_date)}`)
 
 /** 그날 전달사항: 체크 · 고정 · 순서 · 기간 · 지우기(되돌리기) · 직접 추가 · AI로 나누기 · 노트로 보내기 · 내보내기. */
+/** 글 길이에 맞춰 칸 높이를 늘린다(잘리지 않게) */
+const grow = (el: HTMLTextAreaElement | null) => {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
 export default function NoticeTab({ date }: { date: string }) {
   const db = useDb()
   const fs = useFs()
@@ -115,16 +122,34 @@ export default function NoticeTab({ date }: { date: string }) {
         {list.map((n, i) => (
           <li key={n.id} className={`notice-row${n.done ? ' done' : ''}${n.pinned ? ' pinned' : ''}`}>
             <input type="checkbox" aria-label={`${n.text} 완료`} checked={n.done} onChange={(e) => act(() => updateNotice(db, n.id, { done: e.target.checked }))} />
-            <input type="text" className="notice-text" aria-label={`${i + 1}번 내용`} defaultValue={n.text} key={n.text} onBlur={(e) => e.target.value.trim() !== n.text && act(() => updateNotice(db, n.id, { text: e.target.value }))} />
+            <textarea
+              rows={1}
+              className="notice-text"
+              aria-label={`${i + 1}번 내용`}
+              defaultValue={n.text}
+              key={n.text}
+              ref={grow}
+              onInput={(e) => grow(e.currentTarget)}
+              onKeyDown={(e) => {
+                // Enter는 저장(줄바꿈은 Shift+Enter)
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  e.currentTarget.blur()
+                }
+              }}
+              onBlur={(e) => e.target.value.trim() !== n.text && act(() => updateNotice(db, n.id, { text: e.target.value }))}
+            />
             <button type="button" className="notice-period link" aria-label={`${n.text} 기간 고치기`} onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>
               {period(n)}
             </button>
+            <span className="row-tools">
             <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.text} 고정`} aria-pressed={n.pinned} onClick={() => act(() => updateNotice(db, n.id, { pinned: !n.pinned }))}>
               <Icon name="pin" size={14} />
             </button>
             <button type="button" className="icon-btn" aria-label={`${n.text} 위로`} disabled={i === 0} onClick={() => act(() => moveNotice(db, date, n.id, -1))}>↑</button>
             <button type="button" className="icon-btn" aria-label={`${n.text} 아래로`} disabled={i === list.length - 1} onClick={() => act(() => moveNotice(db, date, n.id, 1))}>↓</button>
             <button type="button" className="icon-btn" aria-label={`${n.text} 지우기`} onClick={() => act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))}>×</button>
+            </span>
             {rangeFor === n.id && (
               <span className="row notice-range">
                 <input type="date" aria-label="시작" defaultValue={n.start_date} onChange={(e) => e.target.value && act(() => updateNotice(db, n.id, { start_date: e.target.value }))} />

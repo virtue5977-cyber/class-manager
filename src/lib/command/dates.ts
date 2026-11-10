@@ -24,31 +24,37 @@ function oneDate(words: string[], i: number, today: string, prefer: Prefer): { d
   const rel: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2, 어제: -1, 그제: -2, 그저께: -2 }
   if (w in rel) return { date: addDays(today, rel[w]), used: 1 }
   const y = +today.slice(0, 4)
-  let m = /^(\d{1,2})[/.](\d{1,2})\.?$/.exec(w)
-  // 13 이상의 '월'(37.5 같은 체온·점수)은 날짜로 보지 않는다.
+  // 연도를 쓰지 않으면 올해(사용자 요청: 지난해·다음 해로 넘기지 않는다)
+  const ymd = (yy: number, mm: number, dd: number, used: number) => {
+    const d = realDate(yy, mm, dd)
+    return d ? { date: d, used } : { invalid: words.slice(i, i + used).join(' '), used }
+  }
+  // 2026-11-11 · 2026.11.11 · 2026/11/11
+  let m = /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})\.?$/.exec(w)
+  if (m) return ymd(+m[1], +m[2], +m[3], 1)
+  // 2026년11월11일 · 11월11일 (붙여 씀)
+  m = /^(?:(\d{4})년)?(\d{1,2})월(\d{1,2})일$/.exec(w)
+  if (m && +m[2] >= 1 && +m[2] <= 12) return ymd(m[1] ? +m[1] : y, +m[2], +m[3], 1)
+  // 2026년 11월 11일 · 11월 11일 (띄어 씀)
+  const yw = /^(\d{4})년$/.exec(w)
+  const j0 = yw ? 1 : 0
+  const mw = /^(\d{1,2})월$/.exec(words[i + j0] ?? '')
+  const dw = /^(\d{1,2})일$/.exec(words[i + j0 + 1] ?? '')
+  if (mw && dw && +mw[1] >= 1 && +mw[1] <= 12) return ymd(yw ? +yw[1] : y, +mw[1], +dw[1], j0 + 2)
+  const mdw = yw && /^(\d{1,2})월(\d{1,2})일$/.exec(words[i + 1] ?? '')
+  if (mdw) return ymd(+yw![1], +mdw[1], +mdw[2], 2)
+  // 11/12 · 11.12 · 1112 · 0305 (13 이상의 '월'·37.5 같은 체온은 날짜가 아님)
+  m = /^(\d{1,2})[/.](\d{1,2})\.?$/.exec(w) ?? /^(\d{2})(\d{2})$/.exec(w)
   if (m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) {
-    // 출결·상담(past): 오늘보다 뒤면 지난해. 일정·할 일(future): 오늘보다 앞이면 다음 해.
-    let yy = y
-    const md = `${pad(+m[1])}-${pad(+m[2])}`
-    if (prefer === 'past' && md > today.slice(5)) yy = y - 1
-    if (prefer === 'future' && md < today.slice(5)) yy = y + 1
-    const d = realDate(yy, +m[1], +m[2])
-    return d ? { date: d, used: 1 } : { invalid: w, used: 1 }
+    void prefer
+    return ymd(y, +m[1], +m[2], 1)
   }
   m = /^(\d{1,2})일$/.exec(w)
   if (m && +m[1] >= 1 && +m[1] <= 31) {
-    let yy = y
     let mm = +today.slice(5, 7)
-    // 출결·상담: 오늘보다 뒤의 날이면 지난달
-    if (prefer === 'past' && +m[1] > +today.slice(8, 10)) {
-      mm -= 1
-      if (mm === 0) {
-        mm = 12
-        yy -= 1
-      }
-    }
-    const d = realDate(yy, mm, +m[1])
-    return d ? { date: d, used: 1 } : { invalid: w, used: 1 }
+    // 출결·상담: 오늘보다 뒤의 날이면 지난달(해는 넘기지 않음)
+    if (prefer === 'past' && +m[1] > +today.slice(8, 10) && mm > 1) mm -= 1
+    return ymd(y, mm, +m[1], 1)
   }
   const monday = addDays(today, -dow(today))
   if (w === '다음주' || w === '이번주') {

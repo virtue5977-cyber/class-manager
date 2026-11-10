@@ -49,6 +49,22 @@ test('지난 날짜 우선(출결·상담): 요일·날짜·해 넘김', () => {
   const past = (s: string, today: string) => parseDateWords(s.split(' '), 0, today, 'past')
   expect(past('월요일', '2026-11-11').date).toBe('2026-11-09')
   expect(past('30일', '2026-11-02').date).toBe('2026-10-30')
-  expect(past('12/22', '2027-01-05').date).toBe('2026-12-22')
+  expect(past('12/22', '2027-01-05').date).toBe('2027-12-22') // 연도를 안 쓰면 올해(사용자 요청 11/11)
   expect(parseDateWords(['월요일'], 0, '2026-11-11').date).toBe('2026-11-16') // 일정·할 일은 앞으로
+})
+
+test('여러 날짜 꼴: 11월11일·11월 11일·1111·0305·연도 붙은 꼴, 연도를 안 쓰면 올해', () => {
+  expect(d('11월11일')).toEqual({ date: '2026-11-11', used: 1 })
+  expect(d('11월 11일')).toEqual({ date: '2026-11-11', used: 2 })
+  expect(d('1111')).toEqual({ date: '2026-11-11', used: 1 })
+  expect(d('0305').date).toBe('2026-03-05') // 지난 날짜여도 올해
+  expect(d('3/5').date).toBe('2026-03-05')
+  expect(d('2025-12-01').date).toBe('2025-12-01')
+  expect(d('2027.1.5').date).toBe('2027-01-05')
+  expect(d('2025년 12월 1일')).toEqual({ date: '2025-12-01', used: 3 })
+  expect(d('2025년12월1일').date).toBe('2025-12-01')
+  expect(d('1503').date).toBeUndefined() // 15월은 날짜가 아님(학번 등)
+  expect(d('1131')).toEqual({ invalid: '1131', used: 1 })
+  expect(d('2026').date).toBeUndefined()
+  expect(parseDateWords(['31일'], 0, '2026-01-05', 'past').date).toBe('2026-01-31') // 해를 넘기지 않음
 })

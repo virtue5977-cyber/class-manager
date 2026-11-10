@@ -5,6 +5,7 @@ import { getPrompt } from '../ai/prompts'
 import { buildBriefingPrompt } from '../briefing/briefing'
 import { listLogsByStudent, updateNuga } from '../counseling/counseling'
 import { runNuga } from '../counseling/nuga'
+import { addNotice, deleteNotice } from '../notices/notices'
 import { effectiveMask, getSettings } from '../settings'
 import type { RunEnv, RunResult } from './handlers'
 import { describe, parseCommand, type ParseCtx } from './parse'
@@ -24,10 +25,12 @@ async function aiReady(env: RunEnv) {
 export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Promise<RunResult | null> {
   const p = parseCommand(input, ctx, commandNames(), commandSubs())
   const isMessage = p.cmd === 'notice' && (p.sub === '학부모' || p.sub === '교사')
-  if (p.cmd && p.cmd !== 'counselDraft' && !isMessage) return null
+  // /전달 학생 …: AI가 학생에게 맞게 고쳐 전달사항으로. AI가 꺼져 있으면 규칙(글 그대로)
+  const isStudentNotice = p.cmd === 'notice' && p.sub === '학생' && !!p.rest
+  if (p.cmd && p.cmd !== 'counselDraft' && !isMessage && !isStudentNotice) return null
   if (!p.cmd && input.startsWith('/')) return null
   const s = await aiReady(env)
-  if (!s) return AI_OFF
+  if (!s) return isStudentNotice ? null : AI_OFF
   const names = effectiveMask(s) ? [...new Set([...(ctx.maskNames ?? ctx.students.map((x) => x.name)), ...(await allStudentNames(env.db))])] : []
 
   if (p.cmd === 'counselDraft') {
@@ -45,6 +48,21 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
         for (const b of before) await updateNuga(env.db, b.id, { nuga_text: b.nuga_text, nuga_status: b.nuga_status })
       },
     }
+  }
+
+  if (isStudentNotice) {
+    const m = maskText(p.rest, names)
+    const reply = extractJson<{ text?: string }>(
+      await env.ai!({
+        system:
+          '담임이 학생들에게 알릴 전달사항을 학생이 바로 알아듣게 고쳐 쓴다. 한두 문장, 해야 할 일·때·준비물을 분명히, "~하세요" 꼴의 존댓말. 없는 내용을 지어내지 않는다. 학생A 같은 가명은 그대로 둔다.\n\n# 출력 형식\nJSON {"text": "전달사항"} 만.',
+        user: `대상: 학생\n날짜: ${p.date}\n원래 글: ${m.text}`,
+        maxTokens: 400,
+      }),
+    )
+    const text = unmaskText(String(reply.text ?? '').trim(), m.map) || p.rest
+    const rec = await addNotice(env.db, { text, start_date: p.date })
+    return { summary: `학생용으로 고쳐 전달사항 추가 · ${text}`, links: [{ label: '전달사항 보기', to: '/?tab=notice' }], undo: async () => void (await deleteNotice(env.db, rec.id)) }
   }
 
   if (isMessage) {
