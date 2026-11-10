@@ -150,3 +150,13 @@ test('학생을 고르지 않으면 오른쪽에 이달 달력: 날짜를 누르
   await user.click(screen.getByRole('button', { name: '닫기' }))
   expect(await screen.findByRole('region', { name: '이달 달력' })).toBeInTheDocument()
 })
+
+test('?sid= 로 열면 그 학생 입력 칸이 열려 있다', async () => {
+  const { db, s1 } = await setup()
+  window.location.hash = `#/attendance?date=2026-11-06&sid=${s1.id}`
+  renderAt(db, '2026-11-10')
+  expect(await screen.findByLabelText('날짜')).toHaveValue('2026-11-06')
+  expect(await screen.findByRole('button', { name: '닫기' })).toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: '이달 달력' })).toBeNull()
+  window.location.hash = ''
+})

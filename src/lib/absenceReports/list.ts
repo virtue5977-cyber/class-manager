@@ -26,6 +26,14 @@ export async function listReportsForMonth(db: AppDB, classId: string, ym: string
     .sort((x, y) => x.student.number - y.student.number || (x.report.start_date < y.report.start_date ? -1 : x.report.start_date > y.report.start_date ? 1 : 0))
 }
 
+/** 한 학생의 모든 신고서(통계에서 그 학생만 볼 때). 시작일 순. */
+export async function listReportsForStudent(db: AppDB, studentId: string): Promise<ReportRow[]> {
+  const student = await db.students.get(studentId)
+  if (!student || student.deleted) return []
+  const reports = (await db.absence_reports.where('student_id').equals(studentId).toArray()).filter((r) => !r.deleted)
+  return reports.sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0)).map((report) => ({ report, student }))
+}
+
 export async function setSubmittedMany(db: AppDB, ids: string[], on: boolean): Promise<void> {
   const at = on ? new Date().toISOString() : null
   await db.transaction('rw', db.absence_reports, async () => {

@@ -742,3 +742,4 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .dot.tag-school { background: var(--accent); } .dot.tag-google { background: var(--sub); } .dot.tag-personal { background: var(--c-yellow-ink, #b7791f); } .dot.tag-work { background: var(--c-green, #2f855a); }
 .mini-att { font-size: 11px; color: var(--c-red, #d1242f); }
 .mini-events li { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.col-pick fieldset { border: 0; padding: 2px 0; margin: 0; display: flex; gap: 8px; align-items: center; } .col-pick legend { float: left; width: 36px; font-weight: 600; font-size: 13px; }

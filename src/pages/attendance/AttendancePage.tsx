@@ -8,7 +8,7 @@ import { listAttendanceByDate } from '../../lib/attendance/attendance'
 import { listReportsByStudents, loadReportContext } from '../../lib/absenceReports/reconcile'
 import { addDays, toYmd, type SchoolDays } from '../../lib/schoolDays'
 import { gridNext } from '../../lib/ui/gridNav'
-import { ymdParam } from '../../lib/ui/hashParam'
+import { hashParam, ymdParam } from '../../lib/ui/hashParam'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import AttendanceForm from './AttendanceForm'
 import MiniCalendar from './MiniCalendar'
@@ -24,7 +24,8 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
   const [records, setRecords] = useState<AttendanceRec[]>([])
   const [reports, setReports] = useState<Record<string, AbsenceReportRec[]>>({})
   const [days, setDays] = useState<SchoolDays | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  // 통계 숫자에서 넘어오면(?sid=) 그 학생을 고른 채로
+  const [selected, setSelected] = useState<string | null>(() => hashParam('sid'))
   const [notice, setNotice] = useState<string>()
   const [loadedFor, setLoadedFor] = useState<string>()
   const listRef = useRef<HTMLUListElement>(null)
@@ -51,7 +52,14 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
     reload().catch((e) => setNotice(`불러오지 못했습니다: ${e instanceof Error ? e.message : String(e)}`))
   }, [reload])
 
-  useEffect(() => setSelected(null), [classId])
+  const firstClass = useRef(true)
+  useEffect(() => {
+    if (firstClass.current) {
+      if (classId) firstClass.current = false
+      return
+    }
+    setSelected(null)
+  }, [classId])
 
   function moveFocus(e: KeyboardEvent) {
     const buttons = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('button.student-cell') ?? [])]

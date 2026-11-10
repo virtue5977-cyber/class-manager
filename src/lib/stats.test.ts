@@ -41,3 +41,23 @@ test('표: 결석은 일수(건수), 나머지는 건수, 합계 행', () => {
   expect(t[3][1]).toBe('합계')
   expect(t[3][col('결석 질병')]).toBe('2일(1건)')
 })
+
+test('표: 고른 칸만, 신고서 칸(미제출 n / 전체 m)', async () => {
+  const { STAT_COLS } = await import('./stats')
+  expect(STAT_COLS).toHaveLength(12)
+  expect(STAT_COLS[0]).toBe('결석:질병')
+  const students = [{ id: 'a', number: 1, name: '가' }, { id: 'b', number: 2, name: '나' }] as StudentRec[]
+  const st = computeAttendanceStats([att('a', '2026-11-06', '결석', '질병')], days)
+  const t = statsTable(students, st, { cols: ['결석:질병', '지각:미인정'], reports: new Map([['a', { open: 1, total: 2 }]]) })
+  expect(t[0]).toEqual(['번호', '이름', '결석 질병', '지각 미인정', '신고서'])
+  expect(t[1]).toEqual(['1', '가', '1일(1건)', '', '미제출 1 / 2'])
+  expect(t[2][4]).toBe('')
+  expect(t[3]).toEqual(['', '합계', '1일(1건)', '', '미제출 1 / 2'])
+})
+
+test('firstAbsenceDate: 기간 안 그 학생·종류의 첫 날짜', async () => {
+  const { firstAbsenceDate } = await import('./stats')
+  const list = [att('a', '2026-11-09', '결석', '질병'), att('a', '2026-11-06', '결석', '미인정'), att('a', '2026-10-01', '결석', '질병')]
+  expect(firstAbsenceDate(list, 'a', '결석', { from: '2026-11-01' })).toBe('2026-11-06')
+  expect(firstAbsenceDate(list, 'b', '결석', {})).toBeUndefined()
+})
