@@ -23,3 +23,15 @@ test('저장 창에서 취소하면 canceled', async () => {
   ;(globalThis as { desktop?: unknown }).desktop = { pdf: { save: async () => false } }
   expect(await exportPdf('a.pdf')).toBe('canceled')
 })
+
+test('용지 크기를 다리에 넘긴다(반성문 B4)', async () => {
+  const calls: unknown[][] = []
+  ;(globalThis as { desktop?: unknown }).desktop = { pdf: { save: async (...a: unknown[]) => (calls.push(a), true) } }
+  try {
+    const { exportPdf } = await import('./pdf')
+    expect(await exportPdf('반성문.pdf', { pageSize: 'B4' })).toBe('saved')
+    expect(calls[0]).toEqual(['반성문.pdf', { pageSize: 'B4' }])
+  } finally {
+    delete (globalThis as { desktop?: unknown }).desktop
+  }
+})

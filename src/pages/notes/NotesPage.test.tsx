@@ -69,3 +69,13 @@ test('블록 메뉴: 전달사항으로 보내기', async () => {
   await user.click(screen.getByRole('menuitem', { name: '전달사항으로 보내기' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-10')).map((x) => x.text)).toEqual(['체육복 지참']))
 })
+
+test('폴더 블록: 옛 exe·HTML판이면 새 exe 안내', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('/폴')
+  await user.keyboard('{Enter}')
+  expect(await screen.findByText('폴더 연결은 새 Watson exe에서만 됩니다.')).toBeInTheDocument()
+})
