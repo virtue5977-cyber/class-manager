@@ -69,4 +69,10 @@ function statusFrom(versionOut, probe) {
 
 const PROBE_PROMPT = 'OK 라고만 답하세요.'
 
-module.exports = { agyArgs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, PROBE_PROMPT, MAX_PROMPT, LOGIN_MSG }
+/** Claude Code 한 번 묻기 인자: 세션 파일을 남기지 않고(학생 글이 ~/.claude에 쌓이지 않게), 도구·MCP 없이.
+ * Windows는 shell:true(cmd.exe)로 부르므로 빈 값을 "" 로 넘겨야 인자가 사라지지 않는다. */
+function claudeAskArgs(platform) {
+  return ['-p', '--output-format', 'json', '--max-turns', '1', '--model', 'haiku', '--no-session-persistence', '--strict-mcp-config', '--tools', platform === 'win32' ? '""' : '']
+}
+
+module.exports = { claudeAskArgs, agyArgs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, PROBE_PROMPT, MAX_PROMPT, LOGIN_MSG }

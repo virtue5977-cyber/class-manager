@@ -44,6 +44,11 @@ export async function listStudents(db: AppDB, classId: string, opts: { includeIn
   return all.filter((s) => !s.deleted && (includeInactive || s.active)).sort((a, b) => a.number - b.number)
 }
 
+/** AI로 보내기 전에 가릴 이름: 앱에 있는 모든 학생(다른 반·전출 포함, 지운 학생 제외). */
+export async function allStudentNames(db: AppDB): Promise<string[]> {
+  return [...new Set((await db.students.toArray()).filter((s) => !s.deleted).map((s) => s.name))]
+}
+
 export async function saveStudent(db: AppDB, classId: string, fields: StudentFields, id?: string): Promise<StudentRec> {
   const clash = (await listStudents(db, classId)).some((s) => s.number === fields.number && s.id !== id)
   if (clash) throw new Error('같은 번호의 학생이 이미 있습니다.')
@@ -71,7 +76,10 @@ export async function upsertRosterRows(db: AppDB, classId: string, rows: RosterR
     const now = new Date()
     for (const r of rows) {
       const given = Object.fromEntries(Object.entries(r.fields).filter(([, v]) => typeof v === 'string' && v.trim() !== '')) as RosterPatch
+      // 추가 칸: 채운 값만, 있던 다른 추가 칸 값은 그대로
+      const extra = Object.fromEntries(Object.entries(r.fields.extra ?? {}).filter(([, v]) => v.trim() !== ''))
       const prev = byNumber.get(r.number)
+      if (Object.keys(extra).length) given.extra = { ...prev?.extra, ...extra }
       if (prev) {
         if (!Object.keys(given).length) continue
         await save(db.students, { ...prev, ...given }, now)

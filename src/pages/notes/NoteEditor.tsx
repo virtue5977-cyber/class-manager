@@ -27,6 +27,30 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const [slashSel, setSlashSel] = useState(0)
   const [msg, setMsg] = useState<string>()
   const [menuFor, setMenuFor] = useState<string>()
+  // 블록 메뉴: Esc(손잡이로 초점 돌림)·바깥 누르기로 닫기
+  useEffect(() => {
+    if (!menuFor) return undefined
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      document.querySelector<HTMLButtonElement>(`[data-handle="${menuFor}"]`)?.focus()
+      setMenuFor(undefined)
+    }
+    const down = (e: MouseEvent) => {
+      const t = e.target as Element | null
+      if (t?.closest('.nb-menu') || t?.closest(`[data-handle="${menuFor}"]`)) return
+      setMenuFor(undefined)
+    }
+    document.addEventListener('keydown', key)
+    document.addEventListener('mousedown', down)
+    return () => {
+      document.removeEventListener('keydown', key)
+      document.removeEventListener('mousedown', down)
+    }
+  }, [menuFor])
+  /** 전달사항으로 보낼 블록(또는 'all' = 노트 전체)과 기간 */
+  const [sendFor, setSendFor] = useState<string>()
+  const [range, setRange] = useState({ start: today, end: today })
   const [dragId, setDragId] = useState<string>()
   const [fileInfo, setFileInfo] = useState<Record<string, { name: string; size: number }>>({})
   const [folderList, setFolderList] = useState<Record<string, { name: string; dir: boolean }[]>>({})
@@ -84,7 +108,13 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         setMsg('50MB까지 붙일 수 있습니다.')
         continue
       }
-      const rec = await attachFile(db, note.id, { name: f.name, mime: f.type, bytes: await fileBytes(f) })
+      let rec
+      try {
+        rec = await attachFile(db, note.id, { name: f.name, mime: f.type, bytes: await fileBytes(f) })
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : String(e))
+        break
+      }
       setFileInfo((m) => ({ ...m, [rec.id]: { name: rec.name, size: rec.size } }))
       const nb: NoteBlock = { id: newBlockId(), type: 'file', file_id: rec.id }
       setBlocks((bs) => {
@@ -99,11 +129,16 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   async function chooseSlash(b: NoteBlock, type: NoteBlockType) {
     setSlashSel(0)
     if (type === 'file') {
-      const f = await fs.pickFileToRead()
+      const f = await fs.pickFileToRead('', { maxBytes: MAX_FILE })
       update(b.id, { text: '' })
       if (f) {
-        if (f.bytes.length > MAX_FILE) return setMsg('50MB까지 붙일 수 있습니다.')
-        const rec = await attachFile(db, note.id, { name: f.name, mime: '', bytes: f.bytes })
+        if (f.tooBig || f.bytes.length > MAX_FILE) return setMsg('50MB까지 붙일 수 있습니다.')
+        let rec
+        try {
+          rec = await attachFile(db, note.id, { name: f.name, mime: '', bytes: f.bytes })
+        } catch (e) {
+          return setMsg(e instanceof Error ? e.message : String(e))
+        }
         setFileInfo((m) => ({ ...m, [rec.id]: { name: rec.name, size: rec.size } }))
         setBlocks((bs) => bs.map((x) => (x.id === b.id ? { id: x.id, type: 'file', file_id: rec.id } : x)))
       }
@@ -174,14 +209,26 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     setMenuFor(undefined)
     if (act === 'notice') {
       if (!(b.text ?? '').trim()) return setMsg('보낼 글이 없습니다.')
-      await addNotice(db, { text: b.text!, start_date: today })
-      setMsg('오늘 전달사항으로 보냈습니다.')
+      setRange({ start: today, end: today })
+      setSendFor(b.id)
     } else if (act === 'copy') {
       setBlocks((bs) => {
         const i = bs.findIndex((x) => x.id === b.id)
         return [...bs.slice(0, i + 1), { ...b, id: newBlockId() }, ...bs.slice(i + 1)]
       })
     } else setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))
+  }
+
+  /** 기간을 정해 보내기: 블록 하나 또는 노트 전체(글이 있는 블록마다 한 항목) */
+  async function sendNotices() {
+    const targets = sendFor === 'all' ? blocks.filter((x) => (x.text ?? '').trim() && x.type !== 'h1' && x.type !== 'h2') : blocks.filter((x) => x.id === sendFor)
+    try {
+      for (const x of targets) await addNotice(db, { text: x.text!.trim(), start_date: range.start, end_date: range.end })
+      setMsg(`전달사항 ${targets.length}개를 보냈습니다.`)
+      setSendFor(undefined)
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    }
   }
 
   const onDrop = (e: DragEvent) => {
@@ -197,6 +244,19 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     <section className="note-editor" aria-label="노트 편집" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
       {msg && <p className="notice" role="status">{msg}</p>}
+      <div className="row note-tools">
+        <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+      </div>
+      {sendFor && (
+        <div className="row card send-range" role="group" aria-label="전달사항 기간">
+          <span>{sendFor === 'all' ? '노트 전체(글 블록마다 한 항목)' : '이 블록'}을 전달사항으로:</span>
+          <input type="date" aria-label="시작" value={range.start} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
+          ~
+          <input type="date" aria-label="끝" value={range.end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
+          <button type="button" className="primary" onClick={sendNotices}>보내기</button>
+          <button type="button" className="link" onClick={() => setSendFor(undefined)}>취소</button>
+        </div>
+      )}
       <div className="note-blocks">
         {blocks.map((b, i) => {
           const lv = b.indent ?? 0
@@ -216,7 +276,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                 setDragId(undefined)
               }}
             >
-              <button type="button" className="nb-handle" aria-label="블록 메뉴" draggable onDragStart={() => setDragId(b.id)} onDragEnd={() => setDragId(undefined)} onClick={() => setMenuFor(menuFor === b.id ? undefined : b.id)}>
+              <button type="button" className="nb-handle" data-handle={b.id} aria-label="블록 메뉴" aria-haspopup="menu" aria-expanded={menuFor === b.id} draggable onDragStart={() => setDragId(b.id)} onDragEnd={() => setDragId(undefined)} onClick={() => setMenuFor(menuFor === b.id ? undefined : b.id)}>
                 ⋮⋮
               </button>
               {menuFor === b.id && (
@@ -268,10 +328,15 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                   {items.length > 0 && (
                     <ul className="suggest nb-slash" role="listbox" aria-label="블록 고르기">
                       {items.map((it, k) => (
-                        <li key={it.type} role="option" aria-selected={k === slashSel} className={k === slashSel ? 'on' : undefined} onMouseDown={(e) => (e.preventDefault(), chooseSlash(b, it.type))}>
-                          {it.label}
+                        <li key={it.type} role="option" aria-label={it.label} aria-selected={k === slashSel} className={k === slashSel ? 'on' : undefined} ref={k === slashSel ? (el) => el?.scrollIntoView?.({ block: 'nearest' }) : undefined} onMouseDown={(e) => (e.preventDefault(), chooseSlash(b, it.type))}>
+                          <span className="slash-ico" aria-hidden="true">{it.icon}</span>
+                          <span className="slash-txt">
+                            <b>{it.label}</b>
+                            <small>{it.hint}</small>
+                          </span>
                         </li>
                       ))}
+                      <li className="slash-foot" aria-hidden="true">↑↓ 고르기 · Enter 넣기 · Esc 닫기</li>
                     </ul>
                   )}
                 </>

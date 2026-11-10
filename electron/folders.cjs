@@ -2,8 +2,18 @@
 const fs = require('node:fs/promises')
 const path = require('node:path')
 
+/** 이 컴퓨터의 경로만: Windows는 'C:\…' 꼴(드라이브 문자)만. \\서버·\\?\·\??\ 경로는 열면
+ * 윈도가 그 서버에 로그인 정보를 보낼 수 있어 막는다. 상대 경로도 막는다. */
+function isLocalPath(p, platform = process.platform) {
+  if (typeof p !== 'string' || !p) return false
+  if (/^[\\/]{2}|^\\\?\?\\/.test(p)) return false
+  if (platform === 'win32') return /^[A-Za-z]:[\\/]/.test(p)
+  return path.posix.isAbsolute(p)
+}
+
 async function assertDir(p) {
-  if (typeof p !== 'string' || !path.isAbsolute(p)) throw new Error('폴더를 찾지 못했습니다.')
+  if (typeof p === 'string' && (/^[\\/]{2}/.test(p) || /^\\\?\?\\/.test(p))) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
+  if (!isLocalPath(p)) throw new Error('폴더를 찾지 못했습니다.')
   const st = await fs.stat(p).catch(() => null)
   if (!st || !st.isDirectory()) throw new Error('폴더를 찾지 못했습니다.')
   return path.normalize(p)
@@ -24,4 +34,4 @@ function pdfPageSize(opts) {
   return opts && opts.pageSize === 'B4' ? { width: 257 / 25.4, height: 364 / 25.4 } : 'A4'
 }
 
-module.exports = { assertDir, listDir, pdfPageSize }
+module.exports = { isLocalPath, assertDir, listDir, pdfPageSize }

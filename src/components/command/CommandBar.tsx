@@ -24,7 +24,9 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
   // 학급을 읽어 입력 칸이 켜진 뒤에 커서를 둔다.
   const ready = !!env
   useEffect(() => {
-    if (autoFocus && ready) ref.current?.focus()
+    // 다른 칸에 이미 쓰고 있으면 초점을 빼앗지 않는다
+    const busyElsewhere = document.activeElement && document.activeElement !== document.body && document.activeElement !== ref.current
+    if (autoFocus && ready && !busyElsewhere) ref.current?.focus()
   }, [autoFocus, ready, ref])
 
   const list: Suggestion[] = useMemo(() => (closed || !value ? [] : suggest(value, caret, { ...ctx, commands: COMMAND_META })), [value, caret, ctx, closed])
@@ -113,11 +115,16 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
           {busy ? '실행 중…' : '실행'}
         </button>
       </div>
-      {problem ? (
+      {/* 명령 이름을 아직 치는 중(후보가 열림)이면 오류 대신 안내 */}
+      {list.length > 0 && !parsed?.cmd && /^\/\S*$/.test(value.trim()) ? (
+        <p className="command-preview muted">↑↓로 고르고 Enter</p>
+      ) : problem ? (
         <p className="command-problem" role="alert">{problem}</p>
       ) : parsed?.cmd ? (
         <p className="command-preview" role="status">{describe(parsed, commandLabel)}</p>
-      ) : null}
+      ) : (
+        <p className="command-preview" aria-hidden="true">{'\u00a0'}</p>
+      )}
     </div>
   )
 }

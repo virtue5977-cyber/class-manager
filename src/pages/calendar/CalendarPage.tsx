@@ -9,27 +9,17 @@ import { isHideNames } from '../../components/HideNames'
 import { exportPdf } from '../../lib/export/pdf'
 import { calendarXlsx } from '../../lib/export/sheets'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
-import type { AttendanceRec, CounselingLogRec, GoogleEventRec, LocalEventRec, SchoolCalendarRec, StudentRec } from '../../lib/db/types'
-import { addLocalEvent, listLocalEvents } from '../../lib/events/localEvents'
+import type { AttendanceRec, StudentRec } from '../../lib/db/types'
+import { loadMonthData, monthCells, type DayData } from '../../lib/calendar/monthData'
+import { addLocalEvent } from '../../lib/events/localEvents'
 import { softDelete } from '../../lib/db/records'
-import { listGoogleEvents } from '../../lib/google/google'
-import { listStudents } from '../../lib/roster/roster'
-import { listCalendar } from '../../lib/neis/schedule'
-import { listAttendanceInRange } from '../../lib/attendance/attendance'
-import { listLogsByStudents, logTags } from '../../lib/counseling/counseling'
-import { addDays, toYmd, weekday } from '../../lib/schoolDays'
+import { logTags } from '../../lib/counseling/counseling'
+import { toYmd, weekday } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
 const DAYS = ['월', '화', '수', '목', '금', '토', '일']
 const shortKind = (a: AttendanceRec) => `${a.kind}${a.period ? `(${a.period}교시)` : ''}·${a.category === '출석인정' ? '인정' : a.category}`
 
-interface DayData {
-  events: SchoolCalendarRec[]
-  google: GoogleEventRec[]
-  local: LocalEventRec[]
-  atts: { a: AttendanceRec; s: StudentRec }[]
-  logs: { l: CounselingLogRec; s: StudentRec }[]
-}
 
 /** 한 달 달력: 학사일정 + 출결 + 상담 기록(위로그 캘린더를 담임용으로). */
 export default function CalendarPage({ today = toYmd(new Date()) }: { today?: string }) {
@@ -43,30 +33,12 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
   const [data, setData] = useState<Record<string, DayData>>({})
   const seq = useRef(0)
 
-  const first = `${month}-01`
-  const gridStart = addDays(first, -(weekday(first) - 1)) // 월요일부터
-  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
-  let lastRow = 0
-  cells.forEach((d, i) => d.startsWith(month) && (lastRow = i))
-  const shownCells = cells.slice(0, Math.ceil((lastRow + 1) / 7) * 7).filter((d) => weekends || weekday(d) <= 5)
+  const shownCells = monthCells(month, weekends)
+  const all = monthCells(month, true)
 
   const load = useCallback(async () => {
     const n = ++seq.current
-    const from = cells[0]
-    const to = cells[41]
-    const map: Record<string, DayData> = {}
-    const day = (d: string) => (map[d] ??= { events: [], google: [], local: [], atts: [], logs: [] })
-    for (const e of await listCalendar(db, from, to)) if (e.title && e.title !== '토요휴업일') day(e.date).events.push(e)
-    for (const ge of await listGoogleEvents(db, from, to)) for (let d = ge.date; d <= ge.end_date && d <= to; d = addDays(d, 1)) day(d).google.push(ge)
-    for (const le of await listLocalEvents(db, from, to)) for (let d = le.date < from ? from : le.date; d <= (le.end_date ?? le.date) && d <= to; d = addDays(d, 1)) day(d).local.push(le)
-    if (classId) {
-      const studs = await listStudents(db, classId, { includeInactive: true })
-      const byId = new Map(studs.map((s) => [s.id, s]))
-      const ids = studs.map((s) => s.id)
-      for (const a of await listAttendanceInRange(db, ids, from, to)) day(a.date).atts.push({ a, s: byId.get(a.student_id)! })
-      const logs = await listLogsByStudents(db, ids)
-      for (const list of Object.values(logs)) for (const l of list) if (l.date >= from && l.date <= to) day(l.date).logs.push({ l, s: byId.get(l.student_id)! })
-    }
+    const map = await loadMonthData(db, classId, all[0], all[all.length - 1])
     if (n === seq.current) setData(map)
   }, [db, classId, month])
   useEffect(() => {
@@ -101,10 +73,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
     <section className="stack">
       <PageHead title="달력">
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
-          <button type="button" onClick={() => { setMonth(today.slice(0, 7)); setPicked(today) }}>
-            오늘
-          </button>
-          <MonthPicker value={month} onChange={setMonth} label="달" />
+          <MonthPicker value={month} onChange={setMonth} label="달" current={today.slice(0, 7)} onToday={() => { setMonth(today.slice(0, 7)); setPicked(today) }} />
           <label className="inline">
             <input type="checkbox" checked={weekends} onChange={(e) => setWeekends(e.target.checked)} />
             주말 보기

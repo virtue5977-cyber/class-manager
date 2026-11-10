@@ -61,11 +61,11 @@ test('제출 후 출결 추가 → stale 안내', async () => {
   expect(await screen.findByText('출결이 바뀌었습니다. 내용을 확인하세요.')).toBeInTheDocument()
 })
 
-test('hwpx로 내보내기 → 파일명, PK 바이트', async () => {
+test('한글로 받기 → 파일명, PK 바이트', async () => {
   const user = userEvent.setup()
   const { db, s } = await withAbsences(['2026-11-09'])
   const { fs } = renderPanel(db, s)
-  await user.click(await screen.findByRole('button', { name: 'hwpx로 내보내기' }))
+  await user.click(await screen.findByRole('button', { name: '한글로 받기' }))
   await waitFor(() => expect(fs.downloads).toHaveLength(1))
   expect(fs.downloads[0].name).toMatch(/\.hwpx$/)
   expect([...fs.downloads[0].bytes.slice(0, 2)]).toEqual([0x50, 0x4b])

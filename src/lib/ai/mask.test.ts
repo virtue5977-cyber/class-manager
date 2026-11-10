@@ -30,3 +30,9 @@ test('fixJosa·nameForms', () => {
   expect(nameForms('이준')).toEqual(['이준', '이준이'])
   expect(nameForms('김민수')).toEqual(['김민수', '민수'])
 })
+
+test('두 글자 성·띄어 쓴 이름·영문 이름·국제 전화번호도 가린다', () => {
+  const m = maskText('민수가 지훈이랑 서연이와 Jisu, +82-10-1234-5678, 1234-5678', ['남궁민수', '황보지훈', '이 서연', 'Kim Jisu'])
+  expect(m.text).not.toMatch(/민수|지훈|서연|Jisu|1234-5678/)
+  expect(nameForms('남궁민수')).toEqual(expect.arrayContaining(['남궁민수', '민수']))
+})

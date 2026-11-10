@@ -1,8 +1,10 @@
 import type { AppDB } from '../db/schema'
 import type { NoteFileRec, NoteRec } from '../db/types'
-import { newRecord, save, softDelete } from '../db/records'
+import { newRecord, save, scrubDelete } from '../db/records'
 
 export const MAX_FILE = 50 * 1024 * 1024
+/** 모든 노트 첨부 합계 한도(브라우저 저장 공간·백업 크기 보호) */
+export const MAX_TOTAL = 500 * 1024 * 1024
 
 export const newBlockId = () => crypto.randomUUID().slice(0, 8)
 
@@ -48,7 +50,7 @@ async function dropFile(db: AppDB, fileId: string): Promise<void> {
 
 export async function deleteNote(db: AppDB, id: string): Promise<void> {
   await db.transaction('rw', db.notes, db.note_files, async () => {
-    await softDelete(db.notes, id)
+    await scrubDelete(db.notes, id, { title: '', blocks: [] })
     for (const f of await db.note_files.where('note_id').equals(id).toArray()) if (!f.deleted || f.data) await dropFile(db, f.id)
   })
 }
@@ -67,6 +69,9 @@ function fromB64(b: string): Uint8Array {
 
 export async function attachFile(db: AppDB, noteId: string, file: { name: string; mime: string; bytes: Uint8Array }): Promise<NoteFileRec> {
   if (file.bytes.length > MAX_FILE) throw new Error('50MB까지 붙일 수 있습니다.')
+  let used = 0
+  await db.note_files.each((f) => { if (!f.deleted) used += f.size || 0 })
+  if (used + file.bytes.length > MAX_TOTAL) throw new Error(`첨부 파일은 모두 합쳐 500MB까지입니다(지금 ${Math.round(used / 1048576)}MB). 쓰지 않는 첨부를 지우세요.`)
   const rec = newRecord({ note_id: noteId, name: file.name, mime: file.mime || 'application/octet-stream', size: file.bytes.length, data: toB64(file.bytes) }) as NoteFileRec
   await db.note_files.add(rec)
   return rec

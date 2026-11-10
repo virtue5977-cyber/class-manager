@@ -1,5 +1,5 @@
 import type { AppDB } from '../db/schema'
-import { newRecord, save, softDelete } from '../db/records'
+import { newRecord, save, scrubDelete } from '../db/records'
 import type { CounselingLogRec, NugaStatus, StudentRec } from '../db/types'
 import { weekday } from '../schoolDays'
 
@@ -40,7 +40,7 @@ export async function saveLog(db: AppDB, input: LogInput, id?: string): Promise<
   return rec
 }
 
-export const deleteLog = (db: AppDB, id: string) => softDelete(db.counseling_logs, id)
+export const deleteLog = (db: AppDB, id: string) => scrubDelete(db.counseling_logs, id, { content: '', nuga_text: '', place: '' }).then(() => undefined)
 
 const byDate = (a: CounselingLogRec, b: CounselingLogRec) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.created_at < b.created_at ? -1 : 1)
 

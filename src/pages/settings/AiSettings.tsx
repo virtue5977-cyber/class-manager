@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAi, useDb } from '../../app/context'
 import type { AiPromptRec, AppSettingsRec } from '../../lib/db/types'
-import { effectiveMask, getAiKey, getSettings, setAiKey, updateSettings } from '../../lib/settings'
+import { effectiveMask, getAiKey, getSettings, isDesktopApp, setAiKey, updateSettings } from '../../lib/settings'
 import { DEFAULT_PROMPTS, getPrompt, listPromptVersions, resetPrompt, savePrompt, type PromptKind } from '../../lib/ai/prompts'
 import { buildNugaPrompt } from '../../lib/counseling/nuga'
 import { buildBriefingPrompt } from '../../lib/briefing/briefing'
@@ -45,7 +45,7 @@ export default function AiSettings() {
     <div className="card stack wide" aria-label="AI 설정">
       <h3>AI</h3>
       <p className="muted">
-        AI는 버튼을 누를 때만 쓰며, 학생 이름과 전화번호·학번은 가려서 보냅니다. 다른 반 학생 이름은 명단에 없어 가려지지 않으니 메모에 쓸 때 주의하세요.
+        AI는 버튼을 누를 때만 쓰며, 앱에 있는 모든 학생 이름(다른 반·전출 포함)과 전화번호·학번은 가려서 보냅니다. 앱에 없는 사람 이름은 가려지지 않으니 메모에 쓸 때 주의하세요.
       </p>
       <h4>1. 연결 방식</h4>
       <div className="row choice" role="radiogroup" aria-label="AI 연결 방식">
@@ -63,8 +63,9 @@ export default function AiSettings() {
       {provider === 'antigravity' ? (
         <div className="stack">
           <p className="muted">
-            노트북에 설치한 구글 Antigravity CLI(agy)로 정리합니다. 키 없이 구글 계정 로그인만 하면 됩니다. 설치 후 명령 창에서 <code>agy</code>를 한 번 실행해 로그인하세요. 새 Watson exe에서만 됩니다.
+            노트북에 설치한 구글 Antigravity CLI(agy)로 정리합니다. 키 없이 구글 계정 로그인만 하면 됩니다. 설치 후 명령 창에서 <code>agy</code>를 한 번 실행해 로그인하세요. 새 설치형(Windows 앱)에서만 됩니다.
           </p>
+          <p className="muted">agy는 보낼 글을 명령줄로 받습니다. 정리하는 동안(몇 초) 같은 노트북의 다른 프로그램이 그 글을 볼 수 있으니, 학교 공용 노트북보다 내 노트북에서 쓰세요.</p>
           <p className="banner">
             개인 구글 계정은 Antigravity 설정 &gt; Account &gt; General의 <b>Enable Telemetry</b>를 꺼야 입력 내용이 구글의 학습에 쓰이지 않습니다. 그래서 이 연결에서는 학생 이름 가리기를 끌 수 없습니다. 다른 앱에서 agy를 부르는 것에 대한 구글의 공식 답은 아직 없습니다.
           </p>
@@ -86,14 +87,14 @@ export default function AiSettings() {
             >
               Antigravity 연결 확인
             </button>
-            {!agy && <span className="warn">지금 버전에서는 쓸 수 없습니다. 새 Watson exe가 필요합니다.</span>}
+            {!agy && <span className="muted">지금 버전에서는 쓸 수 없습니다. 새 설치형(Windows 앱)이 필요합니다.</span>}
             {cc && <span role="status">{cc}</span>}
           </div>
         </div>
       ) : provider === 'claude-code' ? (
         <div className="stack">
           <p className="muted">
-            노트북에 설치·로그인된 Claude Code로 정리합니다. 키가 필요 없고 Pro 요금제 사용 한도 안에서 쓰입니다(추가 요금 없음). exe 버전에서만 됩니다.
+            노트북에 설치·로그인된 Claude Code로 정리합니다. 키가 필요 없고 Pro 요금제 사용 한도 안에서 쓰입니다(추가 요금 없음). 설치형(Windows 앱)에서만 됩니다.
           </p>
           <div className="row">
             <button
@@ -107,14 +108,14 @@ export default function AiSettings() {
             >
               Claude Code 연결 확인
             </button>
-            {!bridge && <span className="warn">지금은 브라우저(HTML) 버전이라 쓸 수 없습니다. API 키를 고르세요.</span>}
+            {!bridge && <span className="muted">지금은 브라우저(HTML) 버전이라 쓸 수 없습니다. API 키를 고르세요.</span>}
             {cc && <span role="status">{cc}</span>}
           </div>
         </div>
       ) : (
         <div className="row">
           <label>
-            {`AI 키 ${hasKey ? '(저장됨, 이 노트북에만 보관)' : '(없음)'}`}
+            {`AI 키 ${hasKey ? (isDesktopApp() ? '(저장됨, 이 노트북에만 보관)' : '(넣음, 이 창을 닫으면 지워짐)') : '(없음)'}`}
             <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-..." autoComplete="off" />
           </label>
           <button
@@ -128,6 +129,7 @@ export default function AiSettings() {
           >
             키 저장
           </button>
+          {!isDesktopApp() && <p className="banner wide">브라우저(HTML) 버전은 같은 노트북의 다른 HTML 파일이 앱 자료를 읽을 수 있어 AI 키를 저장하지 않습니다. 창을 열 때마다 넣거나 설치형(Windows 앱)을 쓰세요.</p>}
           <span className="muted">키 사용료는 Pro 요금과 따로 콘솔 충전금에서 나갑니다. Claude 콘솔에서 월 지출 한도를 꼭 걸어 두세요.</span>
         </div>
       )}

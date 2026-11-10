@@ -1,6 +1,6 @@
 import type { AppDB } from '../db/schema'
 import type { NoteRec, StudentRec, TodoPart, TodoRec } from '../db/types'
-import { newRecord, save, softDelete } from '../db/records'
+import { newRecord, save, scrubDelete } from '../db/records'
 
 export async function addTodo(db: AppDB, parts: TodoPart[], due: string | null = null): Promise<TodoRec> {
   if (!parts.some((p) => (typeof p === 'string' ? p.trim() : true))) throw new Error('할 일을 입력하세요.')
@@ -23,7 +23,7 @@ export async function setTodoDone(db: AppDB, id: string, done: boolean): Promise
   if (cur) await save(db.todos, { ...cur, done, done_at: done ? new Date().toISOString() : null })
 }
 
-export const deleteTodo = (db: AppDB, id: string) => softDelete(db.todos, id)
+export const deleteTodo = (db: AppDB, id: string) => scrubDelete(db.todos, id, { parts: [] }).then(() => undefined)
 
 export async function todosLinkingNote(db: AppDB, noteId: string): Promise<TodoRec[]> {
   return (await listTodos(db)).filter((t) => t.parts.some((p) => typeof p === 'object' && 'note' in p && p.note === noteId))

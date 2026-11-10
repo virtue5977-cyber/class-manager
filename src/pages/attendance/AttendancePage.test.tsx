@@ -134,3 +134,29 @@ test('주소에 날짜가 있으면(달력에서 넘어옴) 그 날짜로 연다
   expect(screen.getByLabelText('날짜')).toHaveValue('2026-11-12')
   window.location.hash = ''
 })
+
+test('학생을 고르지 않으면 오른쪽에 이달 달력: 날짜를 누르면 그날로, 그날 일정 목록, 학생을 누르면 입력 칸', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  const { newRecord } = await import('../../lib/db/records')
+  await db.school_calendar.add(newRecord({ date: '2026-11-12', title: '체육대회', type: '행사', is_class_day: true, source: 'manual' }) as never)
+  renderAt(db, '2026-11-10')
+  const cal = await screen.findByRole('region', { name: '이달 달력' })
+  await user.click(await within(cal).findByRole('button', { name: /^11월 12일/ }))
+  expect(screen.getByLabelText('날짜')).toHaveValue('2026-11-12')
+  expect(await within(screen.getByRole('region', { name: '이달 달력' })).findByText('체육대회')).toBeInTheDocument()
+  await user.click(await screen.findByRole('button', { name: /^\d+번 가나/ })) // 날짜를 바꾸면 명단을 다시 읽는다
+  expect(screen.queryByRole('region', { name: '이달 달력' })).toBeNull()
+  await user.click(screen.getByRole('button', { name: '닫기' }))
+  expect(await screen.findByRole('region', { name: '이달 달력' })).toBeInTheDocument()
+})
+
+test('?sid= 로 열면 그 학생 입력 칸이 열려 있다', async () => {
+  const { db, s1 } = await setup()
+  window.location.hash = `#/attendance?date=2026-11-06&sid=${s1.id}`
+  renderAt(db, '2026-11-10')
+  expect(await screen.findByLabelText('날짜')).toHaveValue('2026-11-06')
+  expect(await screen.findByRole('button', { name: '닫기' })).toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: '이달 달력' })).toBeNull()
+  window.location.hash = ''
+})

@@ -1,3 +1,4 @@
+import { HeadTools } from '../../components/PageHead'
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
 import ExportMenu from '../../components/ExportMenu'
 import { exportPdf } from '../../lib/export/pdf'
@@ -116,9 +117,10 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
             이 배치 지우기
           </button>
         )}
-        <span className="spacer" />
-        <ExportMenu items={[{ format: 'hwpx', run: exportHwpx }, { format: 'xlsx', run: exportXlsx }, { format: 'pdf', run: () => exportPdf(`${chart.title || '자리배치'}.pdf`) }]} />
       </div>
+      <HeadTools>
+        <ExportMenu items={[{ format: 'hwpx', run: exportHwpx }, { format: 'xlsx', run: exportXlsx }, { format: 'pdf', run: () => exportPdf(`${chart.title || '자리배치'}.pdf`) }]} />
+      </HeadTools>
       <div className="toolbar">
         <button
           type="button"

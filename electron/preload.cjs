@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
@@ -27,6 +27,19 @@ contextBridge.exposeInMainWorld('desktop', {
   ai: {
     status: () => ipcRenderer.invoke('ai:status'),
     ask: (req) => ipcRenderer.invoke('ai:ask', req),
+  },
+  stt: {
+    status: () => ipcRenderer.invoke('stt:status'),
+    install: (model) => ipcRenderer.invoke('stt:install', model),
+    remove: () => ipcRenderer.invoke('stt:remove'),
+    run: (opts) => ipcRenderer.invoke('stt:run', opts),
+    cancel: () => ipcRenderer.invoke('stt:cancel'),
+    onProgress(cb) {
+      const h = (_e, p) => cb(p)
+      ipcRenderer.on('stt:progress', h)
+      return () => ipcRenderer.removeListener('stt:progress', h)
+    },
+    pathOf: (file) => webUtils.getPathForFile(file),
   },
   folder: {
     pick: () => ipcRenderer.invoke('folder:pick'),

@@ -23,6 +23,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
   const id = params.get('id')
   const notes = useLive<NoteRec[]>(() => listNotes(db), [db], [])
   const [q, setQ] = useState('')
+  const [confirmDel, setConfirmDel] = useState<string>()
   const [current, setCurrent] = useState<NoteRec | null>(null)
   useEffect(() => {
     if (!id) return setCurrent(null)
@@ -63,7 +64,13 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
                 <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => setPinned(db, n.id, !n.pinned)}>
               <Icon name="pin" size={14} />
             </button>
-                <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={async () => { await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>×</button>
+                <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={() => setConfirmDel(n.id)}>×</button>
+                {confirmDel === n.id && (
+                  <span className="row confirm-inline" role="group" aria-label="노트 지우기 확인">
+                    <button type="button" className="danger" onClick={async () => { setConfirmDel(undefined); await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>정말 지우기</button>
+                    <button type="button" className="link" onClick={() => setConfirmDel(undefined)}>취소</button>
+                  </span>
+                )}
               </li>
             ))}
             {shown.length === 0 && <li className="muted">노트가 없습니다.</li>}

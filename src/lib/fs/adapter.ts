@@ -21,5 +21,6 @@ export interface FsAdapter {
   requestPermission(): Promise<BackupFolder | null>
   downloadFile(name: string, bytes: Uint8Array): void
   /** accept: 파일 선택 창의 확장자 필터(기본 '.enc') */
-  pickFileToRead(accept?: string): Promise<{ name: string; bytes: Uint8Array } | null>
+  /** accept ''이면 모든 파일. maxBytes를 넘으면 읽지 않고 tooBig: true(bytes 빈 값). */
+  pickFileToRead(accept?: string, opts?: { maxBytes?: number }): Promise<{ name: string; bytes: Uint8Array; tooBig?: boolean } | null>
 }

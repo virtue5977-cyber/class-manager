@@ -1,6 +1,6 @@
 import type { AppDB } from '../db/schema'
 import type { NoticeItemRec } from '../db/types'
-import { newRecord, save, softDelete } from '../db/records'
+import { newRecord, save, scrubDelete } from '../db/records'
 
 type Patch = Partial<Pick<NoticeItemRec, 'text' | 'start_date' | 'end_date' | 'done' | 'pinned' | 'order'>>
 
@@ -43,10 +43,9 @@ export async function updateNotice(db: AppDB, id: string, patch: Patch): Promise
 
 /** 지우고 되돌리기 함수를 돌려준다. */
 export async function deleteNotice(db: AppDB, id: string): Promise<() => Promise<void>> {
-  await softDelete(db.notice_items, id)
+  const before = await scrubDelete(db.notice_items, id, { text: '' })
   return async () => {
-    const cur = await db.notice_items.get(id)
-    if (cur) await save(db.notice_items, { ...cur, deleted: false })
+    if (before) await save(db.notice_items, { ...before, deleted: false })
   }
 }
 

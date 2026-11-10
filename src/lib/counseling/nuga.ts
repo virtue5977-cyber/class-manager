@@ -1,3 +1,4 @@
+import { allStudentNames } from '../roster/roster'
 import type { AppDB } from '../db/schema'
 import type { CounselingLogRec, StudentRec } from '../db/types'
 import { extractJson, type AiCaller } from '../ai/client'
@@ -46,7 +47,7 @@ export interface NugaResult {
 export async function runNuga(db: AppDB, ai: AiCaller, student: StudentRec, roster: StudentRec[], logs: CounselingLogRec[]): Promise<NugaResult[]> {
   if (!logs.length) return []
   const settings = await getSettings(db)
-  const names = effectiveMask(settings) ? [...roster.map((s) => s.name), student.name] : []
+  const names = effectiveMask(settings) ? [...new Set([...roster.map((s) => s.name), student.name, ...(await allStudentNames(db))])] : []
   let map: Record<string, string> = {}
   const items = logs.map((l) => {
     const m = maskText(`${l.content}`, names, map)

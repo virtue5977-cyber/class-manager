@@ -21,3 +21,12 @@ test('공유 문자열·숫자·빈 칸 건너뛴 셀 주소', async () => {
 test('xlsx가 아니면 안내', async () => {
   await expect(readFirstSheet(new Uint8Array([1, 2, 3]))).rejects.toThrow('.xlsx')
 })
+
+test('셀 주소가 터무니없이 크면 그 줄·칸은 버린다(메모리 보호)', async () => {
+  const zip = new JSZip()
+  zip.file('xl/workbook.xml', '<workbook xmlns:r="r"><sheets><sheet name="a" sheetId="1" r:id="rId1"/></sheets></workbook>')
+  zip.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>')
+  zip.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>번호</t></is></c><c r="XFD1" t="inlineStr"><is><t>멀리</t></is></c></row><row r="1048576"><c r="A1048576"><v>9</v></c></row></sheetData></worksheet>')
+  const out = await readFirstSheet(await zip.generateAsync({ type: 'uint8array' }))
+  expect(out).toEqual([['번호']])
+})

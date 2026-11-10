@@ -6,7 +6,7 @@ export interface Masked {
   map: Record<string, string>
 }
 
-const PHONE_RE = /\b01[016789][-. ]?\d{3,4}[-. ]?\d{4}\b|\b0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}\b/g
+const PHONE_RE = /\+82[-. ]?\d{1,2}[-. ]?\d{3,4}[-. ]?\d{4}\b|\b01[016789][-. ]?\d{3,4}[-. ]?\d{4}\b|\b0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}\b|\b\d{3,4}-\d{4}\b/g
 /** 학번: "학번 1503", "1503번"처럼 학번으로 보이는 것만(연도·금액은 그대로) */
 const STUDENT_NO_RE = /(?<=학번\s*:?\s*)\d{4,5}\b|\b\d{4,5}(?=번)/g
 
@@ -24,12 +24,20 @@ function jong(word: string): number {
 }
 
 /** 메모에 흔히 쓰는 이름 꼴: 김민수 / 민수 / 지훈이(받침 있는 이름 + 이). 두 글자 이름은 성을 떼지 않는다. */
+/** 두 글자 성 */
+const TWO_SURNAMES = ['남궁', '황보', '제갈', '선우', '독고', '사공', '서문', '동방', '어금', '망절', '을지', '탁정']
+
 export function nameForms(full: string): string[] {
-  const n = full.trim()
+  const raw = full.trim()
+  // 영문 이름: 띄어 쓴 각 부분(2글자 이상)도 따로 가린다.
+  if (/^[A-Za-z][A-Za-z .'-]*$/.test(raw)) return [...new Set([raw, ...raw.split(/\s+/).filter((x) => x.length >= 2)])]
+  const n = raw.replace(/\s+/g, '')
   if (n.length < 2) return []
   const forms = [n]
+  if (raw !== n) forms.push(raw)
+  const surLen = n.length >= 4 && TWO_SURNAMES.includes(n.slice(0, 2)) ? 2 : 1
   if (n.length >= 3) {
-    const given = n.slice(1)
+    const given = n.slice(surLen)
     forms.push(given)
     if (jong(given)) forms.push(given + '이')
   } else if (jong(n)) forms.push(n + '이')
@@ -105,4 +113,12 @@ export function unmaskText(text: string, map: Record<string, string>): string {
     out = out.split(token).join(orig) // 조사 규칙에 안 맞는 나머지(예: 학생A의)
   }
   return out
+}
+
+/** 밖(구글 등)으로 보내는 글에서 학생 이름을 ○○로(되돌리지 않음). "민수가" 같은 꼴도. */
+export function hideNames(text: string, names: string[]): string {
+  const forms = [...new Set(names.flatMap((n) => nameForms(n)))].sort((a, b) => b.length - a.length)
+  let s = text
+  for (const f of forms) s = s.replace(new RegExp(escapeRe(f), 'g'), '○○')
+  return s.replace(/○○이(?=[가는를와랑의도에])/g, '○○')
 }

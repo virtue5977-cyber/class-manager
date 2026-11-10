@@ -16,19 +16,37 @@ export const ROSTER_COLUMNS: { key: RosterKey; label: string; aliases: string[] 
 
 const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase()
 
-/** 머리글 줄이면 열 위치를, 아니면 null. 모르는 열(학년·반·비고 등)은 건너뛴다. */
-export function mapHeader(row: string[]): Partial<Record<RosterKey, number>> | null {
-  const map: Partial<Record<RosterKey, number>> = {}
+/** 열 정의(명단 양식에서 만든 것 포함). builtin 아니면 값은 extra로. */
+export interface ColumnSpec {
+  key: string
+  label: string
+  aliases: string[]
+  builtin?: boolean
+}
+
+/** 머리글 줄이면 열 위치를, 아니면 null. 모르는 열(학년·반·비고 등)은 건너뛴다.
+ * 이름이 겹치면 기본 칸이 추가 칸보다 먼저 잡는다. */
+export function mapHeader(row: string[], cols: ColumnSpec[] = ROSTER_COLUMNS): Record<string, number> | null {
+  const ordered = [...cols.filter((c) => c.builtin !== false), ...cols.filter((c) => c.builtin === false)]
+  const map: Record<string, number> = {}
   row.forEach((cell, i) => {
     const c = norm(cell)
     if (!c) return
-    const col = ROSTER_COLUMNS.find((k) => k.aliases.some((a) => norm(a) === c))
-    if (col && map[col.key] === undefined) map[col.key] = i
+    const col = ordered.find((k) => k.aliases.some((a) => norm(a) === c) && map[k.key] === undefined)
+    if (col) map[col.key] = i
   })
   return map.number !== undefined ? map : null
 }
 
 export const DEFAULT_MAP: Record<RosterKey, number> = Object.fromEntries(ROSTER_COLUMNS.map((c, i) => [c.key, i])) as Record<RosterKey, number>
+
+/** 기본 칸 값 다듬기(성별·날짜·전화) */
+export function normField(key: string, v: string): string {
+  if (key === 'gender') return normGender(v)
+  if (key === 'birth_date') return normDate(v)
+  if (key === 'phone' || key === 'guardian_phone') return normPhone(v)
+  return v
+}
 
 export function normGender(v: string): string {
   const s = v.trim()
@@ -59,4 +77,5 @@ export function normPhone(v: string): string {
   return s
 }
 
-export type RosterPatch = Partial<Pick<StudentFields, Exclude<RosterKey, 'number'>>>
+type TextKeys = Exclude<{ [K in keyof StudentFields]-?: StudentFields[K] extends string | undefined ? K : never }[keyof StudentFields], undefined>
+export type RosterPatch = Partial<Pick<StudentFields, Exclude<TextKeys, 'number'>>> & { extra?: Record<string, string> }

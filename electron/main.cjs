@@ -15,7 +15,7 @@ app.setPath('userData', pickUserDataDir(app.getPath('appData'), fsSync.existsSyn
 const BUILT_DIST = path.join(__dirname, '..', 'dist')
 // ---- 자동 업데이트 ----
 // 화면(dist)만 GitHub에서 받아 바꾼다. exe(이 파일·preload)가 바뀌는 업데이트는 SHELL 번호를 올리고 새 exe를 받아야 한다.
-const SHELL = 4
+const SHELL = 5
 const UPDATE_URL = (!app.isPackaged && process.env.DAMIM_UPDATE_URL) || 'https://raw.githubusercontent.com/virtue5977-cyber/class-manager/updates/update.json'
 const UPDATE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAjiLbLA7jnUY/fIBXaBuyVwSPkFupzLAVU4WXXGemyQs=
@@ -110,13 +110,12 @@ function sendUpdate(state) {
 }
 async function checkForUpdate() {
   sendUpdate({ status: 'checking', current: RUNNING_VERSION })
-  const res = await net.fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' })
-  if (!res.ok) throw new Error('update.json ' + res.status)
-  const info = await res.json()
+  const { fetchCapped } = require('./fetchcap.cjs')
+  const info = JSON.parse((await fetchCapped((u, i) => net.fetch(u, i), UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' }, { timeoutMs: 20000, maxBytes: 1024 * 1024 })).toString('utf8'))
   if (!newer(info.version, RUNNING_VERSION)) return sendUpdate({ status: 'latest', current: RUNNING_VERSION })
   if (info.shell > SHELL) return sendUpdate({ status: 'need-exe', current: RUNNING_VERSION, version: info.version, note: info.note || '' })
   const bundleUrl = new URL(info.bundle, UPDATE_URL).toString()
-  const bytes = Buffer.from(await (await net.fetch(bundleUrl, { cache: 'no-store' })).arrayBuffer())
+  const bytes = await fetchCapped((u, i) => net.fetch(u, i), bundleUrl, { cache: 'no-store' }, { timeoutMs: 180000, maxBytes: 60 * 1024 * 1024 })
   const crypto = require('node:crypto')
   const sha = crypto.createHash('sha256').update(bytes).digest('hex')
   const signed = `${info.version}\n${info.shell}\n${sha}`
@@ -247,7 +246,7 @@ handle('ai:ask', async (req) => {
   const system = String(req && req.system || '')
   const user = String(req && req.user || '')
   const prompt = `${system}\n\n# 입력\n${user}\n\n위 지시와 출력 형식만 따르고, 도구를 쓰거나 다른 설명을 붙이지 마세요.`
-  const raw = await runClaude(['-p', '--output-format', 'json', '--max-turns', '1', '--model', 'haiku'], prompt, 180000)
+  const raw = await runClaude(require('./agy.cjs').claudeAskArgs(process.platform), prompt, 180000)
   let body
   try {
     body = JSON.parse(raw)
@@ -264,7 +263,7 @@ const agyLib = require('./agy.cjs')
 function findAgy() {
   if (process.platform !== 'win32') return { file: 'agy', viaCmd: false }
   try {
-    return agyLib.pickAgyPath(require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true }))
+    return agyLib.pickAgyPath(require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true, cwd: (fsSync.mkdirSync(AI_DIR(), { recursive: true }), AI_DIR()) }))
   } catch {
     return null
   }
@@ -345,6 +344,131 @@ handle('folder:open', async (p) => {
   if (err) throw new Error('폴더를 열지 못했습니다.')
 })
 handle('folder:list', async (p) => foldersLib.listDir(p))
+
+// ---- 음성 받아쓰기: 고른 사람만 받아 두고, 녹음은 이 컴퓨터 안에서만 글로 바꾼다 ----
+const sttLib = require('./stt.cjs')
+const STT_DIR = () => path.join(app.getPath('userData'), 'stt')
+const STT_WORK = () => path.join(AI_DIR(), 'stt')
+const sttSupported = () => process.platform === 'win32' && process.arch === 'x64'
+const sttJobs = sttLib.createSttJobs((child) => killTree(child))
+const sttSend = (p) => win && win.webContents.send('stt:progress', p)
+const CANCELLED = '그만두었습니다.'
+function sttStatus() {
+  const dir = STT_DIR()
+  const has = (f) => fsSync.existsSync(path.join(dir, f))
+  // 실행 파일은 dll까지 다 풀린 뒤 마지막에 놓는다(중간에 끊기면 bin=false라 다시 받는다)
+  return {
+    supported: sttSupported(),
+    bin: has('whisper-cli.exe') && has('whisper.dll'),
+    models: Object.entries(sttLib.STT_FILES.models).filter(([, m]) => has(m.file)).map(([k]) => k),
+  }
+}
+// 지난번에 끝나지 못한 받아쓰기 임시 파일(녹음·글)과 받다 만 파일을 지운다
+app.whenReady().then(() => {
+  fsSync.rmSync(STT_WORK(), { recursive: true, force: true })
+  try {
+    for (const f of fsSync.readdirSync(STT_DIR())) if (f.endsWith('.part') || f === 'whisper-bin.zip') fsSync.rmSync(path.join(STT_DIR(), f), { force: true })
+  } catch {
+    /* 아직 받은 적 없음 */
+  }
+})
+// 앱을 닫으면 받아쓰던 프로그램도 끝낸다(녹음 글을 든 채 남지 않게)
+app.on('before-quit', () => sttJobs.cancel())
+handle('stt:status', async () => sttStatus())
+handle('stt:install', async (model) => {
+  if (!sttSupported()) throw new Error('이 컴퓨터(Windows 64비트가 아님)에서는 쓸 수 없습니다.')
+  const m = sttLib.STT_FILES.models[model]
+  if (!m) throw new Error('모델을 고르세요.')
+  const job = sttJobs.start('install')
+  const ctl = new AbortController()
+  job.abort = () => ctl.abort()
+  const dir = STT_DIR()
+  const zipPath = path.join(dir, 'whisper-bin.zip')
+  try {
+    const f = (u, i) => net.fetch(u, i)
+    // 멈춤 판단은 받는 동안 1분 넘게 아무것도 오지 않을 때(느린 학교 망에서도 끝까지 받게)
+    const idle = (phase) => (r, t) => sttSend({ phase, received: r, total: t })
+    if (!sttStatus().bin) {
+      await sttLib.downloadVerified(f, sttLib.STT_FILES.bin.url, zipPath, sttLib.STT_FILES.bin.sha256, { maxBytes: sttLib.STT_FILES.bin.maxBytes, timeoutMs: 6 * 3600000, idleMs: 60000, signal: ctl.signal, onProgress: idle('bin') })
+      const tmp = path.join(dir, 'bin-tmp')
+      await fs.rm(tmp, { recursive: true, force: true })
+      const got = await sttLib.extractBin(await fs.readFile(zipPath), tmp)
+      if (!got.includes('whisper-cli.exe') || !got.includes('whisper.dll')) throw new Error('받은 프로그램이 올바르지 않습니다.')
+      for (const n of got.filter((x) => x !== 'whisper-cli.exe')) await fs.rename(path.join(tmp, n), path.join(dir, n))
+      await fs.rename(path.join(tmp, 'whisper-cli.exe'), path.join(dir, 'whisper-cli.exe'))
+      await fs.rm(tmp, { recursive: true, force: true })
+    }
+    await sttLib.downloadVerified(f, m.url, path.join(dir, m.file), m.sha256, { maxBytes: m.maxBytes, timeoutMs: 6 * 3600000, idleMs: 60000, signal: ctl.signal, onProgress: idle('model') })
+    return sttStatus()
+  } finally {
+    await fs.rm(zipPath, { force: true })
+    job.done()
+  }
+})
+handle('stt:remove', async () => {
+  if (sttJobs.busy()) throw new Error('받거나 받아쓰는 중에는 지울 수 없습니다.')
+  await fs.rm(STT_DIR(), { recursive: true, force: true })
+  return sttStatus()
+})
+handle('stt:cancel', async () => sttJobs.cancel())
+handle('stt:run', async ({ path: input, wav, model } = {}) => {
+  if (!sttSupported()) throw new Error('이 컴퓨터에서는 쓸 수 없습니다.')
+  const job = sttJobs.start('run') // 동기로 자리 잡기: 이 뒤로 누른 취소는 모두 이 작업에 닿는다
+  const work = path.join(STT_WORK(), require('node:crypto').randomUUID())
+  try {
+    const st = sttStatus()
+    const key = model && st.models.includes(model) ? model : st.models.includes('accurate') ? 'accurate' : st.models[0]
+    if (!st.bin || !key) throw new Error('먼저 설정에서 음성 받아쓰기를 받으세요.')
+    await fs.mkdir(work, { recursive: true })
+    // 받아쓰기 프로그램은 영문 경로가 안전하다: 녹음을 작업 폴더에 in.확장자로 옮겨 쓴다
+    let file
+    if (wav) {
+      file = path.join(work, 'in.wav')
+      await fs.writeFile(file, Buffer.from(wav))
+    } else {
+      const ext = typeof input === 'string' ? path.extname(input).toLowerCase() : ''
+      if (!foldersLib.isLocalPath(input) || !['.mp3', '.wav', '.ogg', '.flac'].includes(ext)) throw new Error('녹음 파일을 읽을 수 없습니다.')
+      const stIn = await fs.stat(input).catch(() => null)
+      if (!stIn || !stIn.isFile()) throw new Error('녹음 파일을 읽을 수 없습니다.')
+      file = path.join(work, 'in' + ext)
+      await fs.copyFile(input, file)
+    }
+    if (job.cancelled) throw new Error(CANCELLED)
+    const outBase = path.join(work, 'out')
+    const cli = path.join(STT_DIR(), 'whisper-cli.exe')
+    const args = sttLib.whisperArgs({ model: path.join(STT_DIR(), sttLib.STT_FILES.models[key].file), input: file, outBase, threads: Math.max(1, Math.min(8, os.cpus().length - 1)) })
+    const text = await new Promise((resolve, reject) => {
+      const child = spawn(cli, args, { cwd: STT_DIR(), windowsHide: true })
+      job.attach(child)
+      let err = ''
+      const onData = (d) => {
+        const t = String(d)
+        err = (err + t).slice(-4000)
+        for (const line of t.split(/\r?\n/)) {
+          const p = sttLib.parseProgress(line)
+          if (p !== null) sttSend({ phase: 'run', percent: p })
+        }
+      }
+      child.stderr.on('data', onData)
+      child.stdout.on('data', onData)
+      child.on('error', (e) => reject(new Error(`받아쓰기 프로그램을 열지 못했습니다: ${e.message}`)))
+      child.on('close', async (code) => {
+        if (job.cancelled) return reject(new Error(CANCELLED))
+        if (code !== 0) return reject(new Error(`받아쓰기에 실패했습니다(${code}). ${/vcruntime|MSVCP/i.test(err) ? 'Microsoft Visual C++ 재배포 패키지가 필요할 수 있습니다.' : ''}`.trim()))
+        try {
+          resolve((await fs.readFile(outBase + '.txt', 'utf8')).trim())
+        } catch {
+          reject(new Error('받아쓴 글을 읽지 못했습니다.'))
+        }
+      })
+    })
+    if (job.cancelled) throw new Error(CANCELLED)
+    return { text }
+  } finally {
+    job.done()
+    await fs.rm(work, { recursive: true, force: true })
+  }
+})
 
 handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION }))
 handle('update:check', async () => {

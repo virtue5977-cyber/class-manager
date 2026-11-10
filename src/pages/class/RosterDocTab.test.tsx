@@ -29,7 +29,7 @@ test('기본 제목과 빈 열 3이 채워져 있다', async () => {
   expect(screen.getByLabelText('글자 크기')).toHaveValue('11')
 })
 
-test('hwpx로 내보내기 → 파일명 "1학년5반_명렬표.hwpx", 첫 바이트 PK', async () => {
+test('한글로 받기 → 파일명 "1학년5반_명렬표.hwpx", 첫 바이트 PK', async () => {
   const user = userEvent.setup()
   const { fs } = await setup()
   await pickExport(user, '한글(hwpx)')
@@ -69,4 +69,13 @@ test('빈 열 개수를 바꾸면 미리보기 열 수가 바뀐다', async () =
   await user.clear(screen.getByLabelText('빈 열 개수'))
   await user.type(screen.getByLabelText('빈 열 개수'), '1')
   expect(within(screen.getByRole('table', { name: '명렬표 미리보기' })).getAllByRole('columnheader')).toHaveLength(3)
+})
+
+test('칸 더하기: 고른 명단 칸이 이름 뒤에 들어간다', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await user.click(screen.getByText('칸 더하기 ▾'))
+  await user.click(screen.getByRole('checkbox', { name: '전화번호' }))
+  const table = screen.getByRole('table', { name: '명렬표 미리보기' })
+  await waitFor(() => expect(within(table).getAllByRole('columnheader').map((h) => h.textContent).slice(0, 3)).toEqual(['번호', '이름', '전화번호']))
 })

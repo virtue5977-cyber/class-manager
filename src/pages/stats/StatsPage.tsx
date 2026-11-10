@@ -9,7 +9,8 @@ import type { StudentRec } from '../../lib/db/types'
 import { listStudents, classLabel } from '../../lib/roster/roster'
 import { listAttendanceByStudent } from '../../lib/attendance/attendance'
 import { loadReportContext } from '../../lib/absenceReports/reconcile'
-import { computeAttendanceStats, statsTable } from '../../lib/stats'
+import { firstAbsenceDate, KINDS, STAT_COLS, computeAttendanceStats, statsTable } from '../../lib/stats'
+import { listReportsByStudents } from '../../lib/absenceReports/reconcile'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
@@ -23,6 +24,24 @@ export default function StatsPage() {
   const [month, setMonth] = useState('')
   useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
   const [table, setTable] = useState<string[][]>([])
+  /** 표 줄마다 학생 id와 결석 첫 날짜(숫자 링크용) */
+  const [rowsMeta, setRowsMeta] = useState<{ id: string; first?: string }[]>([])
+  /** 보일 칸(이 기기에 기억). 기본은 모두. */
+  const [cols, setCols] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('watson.stats.cols') ?? 'null')
+      return Array.isArray(v) ? STAT_COLS.filter((k) => v.includes(k)) : STAT_COLS
+    } catch {
+      return STAT_COLS
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('watson.stats.cols', JSON.stringify(cols))
+    } catch {
+      /* 기억 못 해도 그대로 */
+    }
+  }, [cols])
   const [message, setMessage] = useState<string>()
   const seq = useRef(0)
 
@@ -39,9 +58,18 @@ export default function StatsPage() {
     const atts = (await Promise.all(students.map((s) => listAttendanceByStudent(db, s.id)))).flat()
     const { days } = await loadReportContext(db)
     const r = range()
-    const t = statsTable(students, computeAttendanceStats(atts, days, r))
-    if (n === seq.current) setTable(t)
-  }, [db, classId, range])
+    const reps = await listReportsByStudents(db, students.map((x) => x.id))
+    const inRange = (d: string) => d >= r.from && d <= r.to
+    const reports = new Map(students.map((x) => {
+      const list = (reps[x.id] ?? []).filter((rp) => inRange(rp.start_date))
+      return [x.id, { open: list.filter((rp) => !rp.submitted).length, total: list.length }]
+    }))
+    const t = statsTable(students, computeAttendanceStats(atts, days, r), { cols, reports })
+    if (n === seq.current) {
+      setTable(t)
+      setRowsMeta(students.map((x) => ({ id: x.id, first: firstAbsenceDate(atts, x.id, '결석', r) })))
+    }
+  }, [db, classId, range, cols])
   useEffect(() => {
     reload()
   }, [reload])
@@ -74,6 +102,23 @@ export default function StatsPage() {
         {month && (
           <MonthPicker value={month} onChange={setMonth} />
         )}
+        <details className="menu">
+          <summary>칸 ▾</summary>
+          <div className="menu-list col-pick">
+            {KINDS.map((k) => (
+              <fieldset key={k}>
+                <legend>{k}</legend>
+                {STAT_COLS.filter((c) => c.startsWith(k + ':')).map((c) => (
+                  <label key={c} className="check">
+                    <input type="checkbox" aria-label={c.replace(':', ' ')} checked={cols.includes(c)} onChange={(e) => setCols((cur) => STAT_COLS.filter((x) => (x === c ? e.target.checked : cur.includes(x))))} />
+                    {c.split(':')[1]}
+                  </label>
+                ))}
+              </fieldset>
+            ))}
+            <button type="button" className="link" onClick={() => setCols(STAT_COLS)}>모두 보이기</button>
+          </div>
+        </details>
         <ExportMenu items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${title}_${range().label}.pdf`.replace(/\s+/g, '_')) }]} />
       </PageHead>
       {message && (
@@ -88,26 +133,31 @@ export default function StatsPage() {
               <tr>
                 <th rowSpan={2}>번호</th>
                 <th rowSpan={2}>이름</th>
-                {['결석', '지각', '조퇴', '결과'].map((k) => (
-                  <th key={k} colSpan={3}>
+                {KINDS.filter((k) => cols.some((c) => c.startsWith(k + ':'))).map((k) => (
+                  <th key={k} colSpan={cols.filter((c) => c.startsWith(k + ':')).length}>
                     {k}
                   </th>
                 ))}
+                <th rowSpan={2}>신고서</th>
               </tr>
               <tr>
-                {['결석', '지각', '조퇴', '결과'].flatMap((k) =>
-                  ['질병', '미인정', '출석인정'].map((c) => <th key={k + c}>{c === '출석인정' ? '인정' : c}</th>),
-                )}
+                {cols.map((c) => <th key={c}>{c.split(':')[1]}</th>)}
               </tr>
             </thead>
             <tbody>
-              {table.slice(1).map((row, i) => (
-                <tr key={i} className={i === table.length - 2 ? 'total' : undefined}>
-                  {row.map((v, j) => (
-                    <td key={j} className={j === 1 ? 'pii' : undefined}>{v}</td>
-                  ))}
-                </tr>
-              ))}
+              {table.slice(1).map((row, i) => {
+                const meta = rowsMeta[i]
+                return (
+                  <tr key={i} className={i === table.length - 2 ? 'total' : undefined}>
+                    {row.map((v, j) => {
+                      const col = cols[j - 2]
+                      const last = j === row.length - 1
+                      const link = meta && v ? (last ? `#/attendance/reports?sid=${meta.id}` : col?.startsWith('결석:') && meta.first ? `#/attendance?date=${meta.first}&sid=${meta.id}` : undefined) : undefined
+                      return <td key={j} className={j === 1 ? 'pii' : undefined}>{link ? <a href={link}>{v}</a> : v}</td>
+                    })}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

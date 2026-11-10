@@ -64,7 +64,7 @@ export default function GettingStarted() {
       <div className="steps-compact">
         {steps.map((s, i) => (
           <Link key={s.label} to={s.to} title={s.hint} className={s.done ? 'done' : undefined}>
-            {`${s.done ? '✓' : `${i + 1}`}. ${s.label}${s.optional ? '(선택)' : ''}`}
+            {`${s.done ? '✓' : `${i + 1}.`} ${s.label}${s.optional ? '(선택)' : ''}`}
           </Link>
         ))}
       </div>

@@ -89,3 +89,12 @@ test('buildAbsenceHwpx zip: 같은 날 두 장도 파일이 겹치지 않는다'
   const { bytes } = await buildAbsenceHwpx(db, [r, { ...r, id: 'x2' }], { stuName: false, mode: 'zip' })
   expect(Object.keys((await JSZip.loadAsync(bytes)).files)).toHaveLength(2)
 })
+
+test('absenceValues: 다른 학교 양식용 묶음 값(학년반번호·결석종류·작성날짜)', async () => {
+  const { c, s } = await ctx()
+  const v = absenceValues(report({ student_id: s.id }), s, c, opt)
+  expect(v.학년반번호).toBe('1학년 5반 3번')
+  expect(v.결석종류).toBe('질병 결석')
+  expect(v.작성날짜).toBe('2026년 11월 10일')
+  expect(ABSENCE_PLACEHOLDERS.map((p) => p.name)).toEqual(expect.arrayContaining(['학년반번호', '결석종류', '작성날짜']))
+})

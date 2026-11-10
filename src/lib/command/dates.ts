@@ -18,7 +18,7 @@ function realDate(y: number, m: number, d: number): string | null {
   return t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${pad(m)}-${pad(d)}` : null
 }
 
-function oneDate(words: string[], i: number, today: string): { date?: string; invalid?: string; used: number } | null {
+function oneDate(words: string[], i: number, today: string, prefer: Prefer): { date?: string; invalid?: string; used: number } | null {
   const w = words[i]
   if (!w) return null
   const rel: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2, 어제: -1, 그제: -2, 그저께: -2 }
@@ -27,12 +27,27 @@ function oneDate(words: string[], i: number, today: string): { date?: string; in
   let m = /^(\d{1,2})[/.](\d{1,2})\.?$/.exec(w)
   // 13 이상의 '월'(37.5 같은 체온·점수)은 날짜로 보지 않는다.
   if (m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) {
-    const d = realDate(y, +m[1], +m[2])
+    // 출결·상담(past): 오늘보다 뒤면 지난해. 일정·할 일(future): 오늘보다 앞이면 다음 해.
+    let yy = y
+    const md = `${pad(+m[1])}-${pad(+m[2])}`
+    if (prefer === 'past' && md > today.slice(5)) yy = y - 1
+    if (prefer === 'future' && md < today.slice(5)) yy = y + 1
+    const d = realDate(yy, +m[1], +m[2])
     return d ? { date: d, used: 1 } : { invalid: w, used: 1 }
   }
   m = /^(\d{1,2})일$/.exec(w)
   if (m && +m[1] >= 1 && +m[1] <= 31) {
-    const d = realDate(y, +today.slice(5, 7), +m[1])
+    let yy = y
+    let mm = +today.slice(5, 7)
+    // 출결·상담: 오늘보다 뒤의 날이면 지난달
+    if (prefer === 'past' && +m[1] > +today.slice(8, 10)) {
+      mm -= 1
+      if (mm === 0) {
+        mm = 12
+        yy -= 1
+      }
+    }
+    const d = realDate(yy, mm, +m[1])
     return d ? { date: d, used: 1 } : { invalid: w, used: 1 }
   }
   const monday = addDays(today, -dow(today))
@@ -45,6 +60,8 @@ function oneDate(words: string[], i: number, today: string): { date?: string; in
   if (k >= 0) {
     // 이번 주 그 요일, 이미 지났으면 다음 주
     const d = addDays(monday, k)
+    // 출결·상담은 지난(또는 오늘) 그 요일, 일정·할 일은 오늘 이후 그 요일
+    if (prefer === 'past') return { date: d > today ? addDays(d, -7) : d, used: 1 }
     return { date: d < today ? addDays(d, 7) : d, used: 1 }
   }
   return null
@@ -91,8 +108,9 @@ export interface DateWords {
   /** 그중 날짜 말이 쓴 낱말 수 */
   dateUsed?: number
 }
-export function parseDateWords(words: string[], i: number, today: string): DateWords {
-  const d = oneDate(words, i, today)
+export type Prefer = 'past' | 'future'
+export function parseDateWords(words: string[], i: number, today: string, prefer: Prefer = 'future'): DateWords {
+  const d = oneDate(words, i, today, prefer)
   const t = d?.invalid ? null : oneTime(words, i + (d?.used ?? 0))
   const out: DateWords = { used: (d?.used ?? 0) + (t?.used ?? 0) }
   if (d?.date) out.date = d.date

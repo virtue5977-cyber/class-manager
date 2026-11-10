@@ -24,7 +24,7 @@ test('편집 저장은 최신 노트에 제목·블록만 바꾸고, 지운 노�
   expect(await db.notes.get(n.id)).toMatchObject({ title: '나', pinned: true })
   await deleteNote(db, n.id)
   await saveNoteContent(db, n.id, { title: '다', blocks: [] })
-  expect(await db.notes.get(n.id)).toMatchObject({ title: '나', deleted: true })
+  expect(await db.notes.get(n.id)).toMatchObject({ title: '', deleted: true }) // 지우면 글을 비우고, 그 뒤 저장도 되살리지 않음
 })
 
 test('노트를 지우거나 파일 블록을 빼면 첨부 내용은 비운다(백업이 커지지 않게)', async () => {
@@ -40,4 +40,18 @@ test('노트를 지우거나 파일 블록을 빼면 첨부 내용은 비운다(
   expect((await db.note_files.get(f1.id))!.data).not.toBe('')
   await deleteNote(db, n.id)
   expect(await db.note_files.get(f1.id)).toMatchObject({ deleted: true, data: '' })
+})
+
+test('첨부는 모두 합쳐 MAX_TOTAL까지(지운 첨부는 빼고 센다)', async () => {
+  const { MAX_TOTAL } = await import('./notes')
+  expect(MAX_TOTAL).toBe(500 * 1024 * 1024)
+  const db = createDb('test-' + crypto.randomUUID())
+  const n = await createNote(db)
+  const big = (size: number) => ({ name: 'x', mime: '', size, data: '', note_id: n.id })
+  const { newRecord } = await import('../db/records')
+  for (let i = 0; i < 10; i++) await db.note_files.add(newRecord(big(49 * 1024 * 1024)) as never)
+  await expect(attachFile(db, n.id, { name: 'c', mime: '', bytes: { length: 20 * 1024 * 1024 } as Uint8Array })).rejects.toThrow('첨부 파일은 모두 합쳐 500MB까지')
+  const one = (await db.note_files.toArray())[0]
+  await db.note_files.update(one.id, { deleted: true })
+  await expect(attachFile(db, n.id, { name: 'c', mime: '', bytes: new Uint8Array(3) })).resolves.toBeTruthy()
 })

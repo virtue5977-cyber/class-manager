@@ -39,10 +39,11 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <GlobalClassContext.Provider value={true}>
         <div className="layout">
+          <button type="button" className="skip-link" onClick={() => document.getElementById('main')?.focus()}>본문으로</button>
           <Shortcuts />
           <StartupTasks />
           <Sidebar />
-          <main className="content">
+          <main className="content" id="main" tabIndex={-1}>
             <HideNamesBar />
             <UpdateBanner />
             <GoogleAutoSync />

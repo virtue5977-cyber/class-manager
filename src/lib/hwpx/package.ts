@@ -1,3 +1,4 @@
+import { escapeXml } from './xml'
 import JSZip from 'jszip'
 import versionXml from './base/version.xml?raw'
 import headerXml from './base/header.xml?raw'
@@ -25,9 +26,7 @@ export interface HwpxDoc {
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
 
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
-}
+const esc = escapeXml
 
 function sectionXml(doc: HwpxDoc): string {
   const secPr = secPrXml.replace(/landscape="[A-Z]+"/, `landscape="${doc.landscape ? 'NARROWLY' : 'WIDELY'}"`)

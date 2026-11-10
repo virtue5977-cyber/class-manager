@@ -93,3 +93,16 @@ test('연결 정보가 없으면 앱에 든 기본값을 넣고, 이미 있으�
   await ensureGoogleClient(g, '{"installed":{}}')
   expect(set).toHaveLength(1)
 })
+
+test('내 일정 제목의 학생 이름은 구글로 보낼 때 ○○로 가린다', async () => {
+  const { createDb } = await import('../db/schema')
+  const { createClass, emptyStudent, saveStudent } = await import('../roster/roster')
+  const { addLocalEvent } = await import('../events/localEvents')
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await saveStudent(db, c.id, emptyStudent(3, '김민수'))
+  await addLocalEvent(db, { date: '2026-11-12', time: '15:00', title: '김민수 어머니 상담, 민수 진로', tag: '업무' })
+  const { buildPushItems } = await import('./google')
+  const items = await buildPushItems(db, '2026-11-01', '2026-11-30', c.id)
+  expect(items.map((i) => i.title)).toContain('[업무] 15:00 ○○ 어머니 상담, ○○ 진로')
+})

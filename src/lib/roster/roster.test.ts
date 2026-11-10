@@ -89,3 +89,14 @@ test('현재 학급 id를 저장하고 읽는다', async () => {
   await setCurrentClassId(db, 'c-1')
   expect(await getCurrentClassId(db)).toBe('c-1')
 })
+
+test('엑셀 올리기: 추가 칸 값(extra)은 합쳐 저장, 빈 칸은 있던 값 유지', async () => {
+  const db = testDb()
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 1 })
+  await saveStudent(db, c.id, { ...emptyStudent(1, '가나'), extra: { x_aaaaaaaa: '땅콩', x_bbbbbbbb: '로봇반' } })
+  await upsertRosterRows(db, c.id, [{ number: 1, fields: { extra: { x_aaaaaaaa: '우유', x_bbbbbbbb: '' } } }])
+  const [s] = await listStudents(db, c.id)
+  expect(s.extra).toEqual({ x_aaaaaaaa: '우유', x_bbbbbbbb: '로봇반' })
+  await upsertRosterRows(db, c.id, [{ number: 2, fields: { name: '다라', extra: { x_aaaaaaaa: '달걀' } } }])
+  expect((await listStudents(db, c.id))[1].extra).toEqual({ x_aaaaaaaa: '달걀' })
+})

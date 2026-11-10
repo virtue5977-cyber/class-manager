@@ -8,9 +8,10 @@ import { listAttendanceByDate } from '../../lib/attendance/attendance'
 import { listReportsByStudents, loadReportContext } from '../../lib/absenceReports/reconcile'
 import { addDays, toYmd, type SchoolDays } from '../../lib/schoolDays'
 import { gridNext } from '../../lib/ui/gridNav'
-import { ymdParam } from '../../lib/ui/hashParam'
+import { hashParam, ymdParam } from '../../lib/ui/hashParam'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import AttendanceForm from './AttendanceForm'
+import MiniCalendar from './MiniCalendar'
 import ReportPanel from './ReportPanel'
 
 const label = (r: AttendanceRec) => `${r.kind}${r.period ? ` ${r.period}교시` : ''}(${r.category})`
@@ -23,7 +24,8 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
   const [records, setRecords] = useState<AttendanceRec[]>([])
   const [reports, setReports] = useState<Record<string, AbsenceReportRec[]>>({})
   const [days, setDays] = useState<SchoolDays | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  // 통계 숫자에서 넘어오면(?sid=) 그 학생을 고른 채로
+  const [selected, setSelected] = useState<string | null>(() => hashParam('sid'))
   const [notice, setNotice] = useState<string>()
   const [loadedFor, setLoadedFor] = useState<string>()
   const listRef = useRef<HTMLUListElement>(null)
@@ -50,7 +52,14 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
     reload().catch((e) => setNotice(`불러오지 못했습니다: ${e instanceof Error ? e.message : String(e)}`))
   }, [reload])
 
-  useEffect(() => setSelected(null), [classId])
+  const firstClass = useRef(true)
+  useEffect(() => {
+    if (firstClass.current) {
+      if (classId) firstClass.current = false
+      return
+    }
+    setSelected(null)
+  }, [classId])
 
   function moveFocus(e: KeyboardEvent) {
     const buttons = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('button.student-cell') ?? [])]
@@ -91,19 +100,17 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
         }
       >
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
-          <div className="date-bar">
-            <button type="button" aria-label="전날" title="전 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(-1))}>
-              ◀ 전날
+          <div className="stepper" role="group" aria-label="날짜 이동">
+            <button type="button" className="step-btn" aria-label="전날" title="전 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(-1))}>
+              ‹
             </button>
             <input type="date" aria-label="날짜" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
-            <button type="button" aria-label="다음날" title="다음 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(1))}>
-              다음날 ▶
+            <button type="button" className="step-btn" aria-label="다음날" title="다음 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(1))}>
+              ›
             </button>
-            {date !== today && (
-              <button type="button" className="link" onClick={() => setDate(today)}>
-                오늘
-              </button>
-            )}
+            <button type="button" className="ghost" disabled={date === today} onClick={() => setDate(today)}>
+              오늘
+            </button>
           </div>
       </PageHead>
       {days && !days.isClassDay(date) && <p className="banner">수업일이 아닙니다(휴업일·주말).</p>}
@@ -136,7 +143,12 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
           })}
         </ul>
         <div className="att-side">
-          {!student && <div className="card muted">학생을 누르면 여기에서 출결을 입력합니다. 방향키로 옮겨 다닐 수 있습니다.</div>}
+          {!student && (
+            <>
+              <MiniCalendar date={date} today={today} classId={classId ?? undefined} onPick={setDate} />
+              <p className="muted">학생을 누르면 여기에서 출결을 입력합니다. 방향키로 옮겨 다닐 수 있습니다.</p>
+            </>
+          )}
           {student && ready && (
             <AttendanceForm
               key={`${student.id}-${date}-${dayRecords.filter((r) => r.student_id === student.id).map((r) => r.id + r.updated_at).join()}`}

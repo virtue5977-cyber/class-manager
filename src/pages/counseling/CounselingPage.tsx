@@ -1,3 +1,5 @@
+import AudioDrop from './AudioDrop'
+import { appendTranscript } from '../../lib/stt/stt'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHead from '../../components/PageHead'
 import ExportMenu from '../../components/ExportMenu'
@@ -328,6 +330,7 @@ export function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCanc
       <Choice label="대상" options={TARGETS} value={f.target} onChange={(v) => setF({ ...f, target: v })} />
       <Choice label="방법" options={METHODS} value={f.method} onChange={(v) => setF({ ...f, method: v })} />
       <Choice label="분야" options={TOPICS} value={f.topic} onChange={(v) => setF({ ...f, topic: v })} allowEmpty />
+      <AudioDrop onText={(t) => setF((cur) => ({ ...cur, content: appendTranscript(cur.content, t) }))} />
       <label className="wide">
         내용(개조식 메모나 녹음 글)
         <textarea rows={3} value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} />

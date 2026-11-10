@@ -1,7 +1,8 @@
+import SttSettings from './SttSettings'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useDb } from '../../app/context'
-import { getNeisKey, getSettings } from '../../lib/settings'
+import { getNeisKey, getSettings, isDesktopApp } from '../../lib/settings'
 import BackupSettings from './BackupSettings'
 import SchoolSettings from './SchoolSettings'
 import MyTimetable from './MyTimetable'
@@ -51,6 +52,11 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
       <div className="stack gap settings-body" role="tabpanel">
         {tab === 'backup' && (
           <>
+            {!isDesktopApp() && (
+              <p className="banner" role="note">
+                브라우저(HTML) 버전입니다. 이 방식은 같은 노트북에서 연 다른 HTML 파일이 앱 자료를 읽을 수 있어 학생 자료 보호가 약합니다. 학생 자료는 설치형(Windows 앱)에서 쓰고, HTML 버전은 잠깐 볼 때만 쓰세요.
+              </p>
+            )}
             <PinSettings />
             <BackupSettings iterations={backupIterations} />
           </>
@@ -58,7 +64,12 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
         {tab === 'school' && <SchoolSettings />}
         {tab === 'timetable' && <MyTimetable />}
         {tab === 'reports' && <ReportSettings />}
-        {tab === 'ai' && <AiSettings />}
+        {tab === 'ai' && (
+          <>
+            <AiSettings />
+            <SttSettings />
+          </>
+        )}
         {tab === 'google' && <GoogleSettings />}
         {tab === 'screen' && <AppearanceSettings />}
         {tab === 'update' && <UpdateSettings />}

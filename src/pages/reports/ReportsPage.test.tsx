@@ -64,7 +64,7 @@ test('아무것도 고르지 않으면 선택 버튼 줄이 숨고, 위에 "미�
   const { fs } = await setup()
   await screen.findByText('1번 가나')
   expect(screen.queryByRole('button', { name: '선택 제출로 표시' })).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: '미제출 2건 hwpx' }))
+  await user.click(screen.getByRole('button', { name: '미제출 2건 한글로 받기' }))
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['결석신고서_2026-11-09_2명.hwpx']))
 })
 
@@ -80,4 +80,28 @@ test('내보내기 메뉴: 보이는 신고서를 엑셀 목록으로', async ()
   await pickExport(user, '엑셀(xlsx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['결석신고서_2026-11.xlsx']))
   expect(fs.downloads[0].bytes[0]).toBe(0x50)
+})
+
+test('?sid= 로 열면 그 학생 신고서만(달과 상관없이), 모두 보기로 돌아감', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const s1 = await saveStudent(db, c.id, emptyStudent(1, '가나'))
+  const s2 = await saveStudent(db, c.id, emptyStudent(2, '다라'))
+  const base = { kind: '결석', category: '질병', period: null, reason: '', evidence_type: null, memo: '' } as const
+  await saveAttendance(db, { ...base, student_id: s1.id, date: '2026-10-07' })
+  await saveAttendance(db, { ...base, student_id: s2.id, date: '2026-11-20' })
+  await reconcileStudent(db, s1.id)
+  await reconcileStudent(db, s2.id)
+  window.location.hash = `#/attendance/reports?sid=${s1.id}`
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <ReportsPage month="2026-11" />
+    </AppProviders>,
+  )
+  expect(await screen.findByText('1번 가나')).toBeInTheDocument()
+  expect(screen.queryByText('2번 다라')).toBeNull()
+  await user.click(screen.getByRole('button', { name: '모두 보기' }))
+  expect(await screen.findByText('2번 다라')).toBeInTheDocument()
+  window.location.hash = ''
 })

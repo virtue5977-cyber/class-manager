@@ -1,3 +1,6 @@
+import { DEFAULT_FIELDS, loadFields } from '../../lib/roster/fields'
+import { useLive } from '../../lib/ui/useLive'
+import { HeadTools } from '../../components/PageHead'
 import { useEffect, useMemo, useState } from 'react'
 import ExportMenu from '../../components/ExportMenu'
 import { exportPdf } from '../../lib/export/pdf'
@@ -17,6 +20,7 @@ export default function RosterDocTab({ classRec }: { classRec: ClassRec }) {
   const [students, setStudents] = useState<StudentRec[] | null>(null)
   const [opts, setOpts] = useState<RosterDocOptions>(() => defaultRosterDocOptions(classRec))
   const [blankText, setBlankText] = useState(String(opts.blankColumns))
+  const fields = useLive(() => loadFields(db), [db], DEFAULT_FIELDS)
   const [error, setError] = useState<string>()
 
   useEffect(() => {
@@ -44,6 +48,21 @@ export default function RosterDocTab({ classRec }: { classRec: ClassRec }) {
           제목
           <input value={opts.title} onChange={(e) => setOpts({ ...opts, title: e.target.value })} />
         </label>
+        <details className="menu">
+          <summary>칸 더하기 ▾</summary>
+          <div className="menu-list col-pick">
+            {fields.filter((f) => f.visible).map((f) => (
+              <label key={f.key} className="check">
+                <input
+                  type="checkbox"
+                  checked={(opts.fields ?? []).some((x) => x.key === f.key)}
+                  onChange={(e) => setOpts({ ...opts, fields: fields.filter((x) => (x.key === f.key ? e.target.checked : (opts.fields ?? []).some((y) => y.key === x.key))) })}
+                />
+                {f.label}
+              </label>
+            ))}
+          </div>
+        </details>
         <label>
           빈 열 개수
           <input
@@ -70,9 +89,9 @@ export default function RosterDocTab({ classRec }: { classRec: ClassRec }) {
           전출 학생 포함
         </label>
       </div>
-      <div className="row">
+      <HeadTools>
         <ExportMenu items={[{ format: 'hwpx', run: () => exportFile('hwpx') }, { format: 'xlsx', run: () => exportFile('xlsx') }, { format: 'pdf', run: () => exportPdf(rosterFileName(classRec, 'hwpx').replace(/\.hwpx$/, '.pdf')) }]} />
-      </div>
+      </HeadTools>
       {error && <p className="error" role="alert">{error}</p>}
       <div className="print-area" style={{ fontSize: `${opts.fontSizePt}pt` }}>
         <h3 className="print-title">{opts.title}</h3>

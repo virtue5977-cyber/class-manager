@@ -44,3 +44,11 @@ test('없는 날짜는 invalid로 알린다', () => {
   expect(parseDateWords(['37.5'], 0, T)).toEqual({ used: 0 })
   expect(parseDateWords(['일'], 0, T)).toEqual({ used: 0 })
 })
+
+test('지난 날짜 우선(출결·상담): 요일·날짜·해 넘김', () => {
+  const past = (s: string, today: string) => parseDateWords(s.split(' '), 0, today, 'past')
+  expect(past('월요일', '2026-11-11').date).toBe('2026-11-09')
+  expect(past('30일', '2026-11-02').date).toBe('2026-10-30')
+  expect(past('12/22', '2027-01-05').date).toBe('2026-12-22')
+  expect(parseDateWords(['월요일'], 0, '2026-11-11').date).toBe('2026-11-16') // 일정·할 일은 앞으로
+})

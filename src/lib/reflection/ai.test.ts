@@ -30,3 +30,14 @@ test('줄을 꽉 채우도록 용지에 맞는 글자 수를 지시한다(B4가 
   expect(sent[0].system).toContain(`${a4.min}~${a4.max}자`)
   expect(sent[0].system).not.toContain('45~70자')
 })
+
+test('넘긴 이름 목록에 없어도 앱에 있는 학생 이름은 가린다', async () => {
+  const { createClass, emptyStudent, saveStudent } = await import('../roster/roster')
+  const db = createDb('test-' + crypto.randomUUID())
+  await updateSettings(db, { ai_enabled: true })
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 2 })
+  await saveStudent(db, c.id, emptyStudent(4, '정하린'))
+  const sent: AiRequest[] = []
+  await fillByAi(db, async (r) => (sent.push(r), JSON.stringify({ lines: Array(16).fill('문장') })), '정하린과 싸움', [])
+  expect(JSON.stringify(sent)).not.toContain('정하린')
+})

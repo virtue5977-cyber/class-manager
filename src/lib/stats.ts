@@ -49,24 +49,37 @@ const show = (kind: AttendanceKind, c: Cell) => {
   return c.count ? String(c.count) : ''
 }
 
-/** 화면·엑셀·hwpx 공용 표. 마지막 줄은 합계. */
-export function statsTable(students: StudentRec[], stats: Map<string, StudentStats>): string[][] {
+/** 통계 칸 열쇠 12개: '결석:질병' 꼴(종류 순서 × 구분 순서) */
+export const STAT_COLS: string[] = KINDS.flatMap((k) => CATEGORIES.map((c) => `${k}:${c}`))
+
+/** 화면·엑셀·hwpx 공용 표. 마지막 줄은 합계. cols로 보일 칸만, reports를 주면 끝에 '신고서'(미제출 n / 전체 m). */
+export function statsTable(students: StudentRec[], stats: Map<string, StudentStats>, opts: { cols?: string[]; reports?: Map<string, { open: number; total: number }> } = {}): string[][] {
+  const cols = opts.cols ? STAT_COLS.filter((k) => opts.cols!.includes(k)) : STAT_COLS
   const total = empty()
+  const rep = (o?: { open: number; total: number }) => (o && o.total ? `미제출 ${o.open} / ${o.total}` : '')
+  const repTotal = { open: 0, total: 0 }
   const rows = students.map((s) => {
     const st = stats.get(s.id) ?? empty()
-    return [
-      String(s.number),
-      s.name,
-      ...KINDS.flatMap((k) =>
-        CATEGORIES.map((c) => {
-          const cell = st[`${k}:${c}`]
-          total[`${k}:${c}`].count += cell.count
-          total[`${k}:${c}`].days += cell.days
-          return show(k, cell)
-        }),
-      ),
-    ]
+    for (const k of STAT_COLS) {
+      total[k].count += st[k].count
+      total[k].days += st[k].days
+    }
+    const r = opts.reports?.get(s.id)
+    if (r) {
+      repTotal.open += r.open
+      repTotal.total += r.total
+    }
+    return [String(s.number), s.name, ...cols.map((k) => show(k.split(':')[0] as AttendanceKind, st[k])), ...(opts.reports ? [rep(r)] : [])]
   })
-  const sum = ['', '합계', ...KINDS.flatMap((k) => CATEGORIES.map((c) => show(k, total[`${k}:${c}`])))]
-  return [STATS_HEADER, ...rows, sum]
+  const head = ['번호', '이름', ...cols.map((k) => k.replace(':', ' ')), ...(opts.reports ? ['신고서'] : [])]
+  const sum = ['', '합계', ...cols.map((k) => show(k.split(':')[0] as AttendanceKind, total[k])), ...(opts.reports ? [rep(repTotal)] : [])]
+  return [head, ...rows, sum]
+}
+
+/** 그 학생·종류의 기간 안 첫 날짜(통계 숫자를 누르면 출결 화면 그날로). */
+export function firstAbsenceDate(atts: AttendanceRec[], studentId: string, kind: AttendanceKind, range: { from?: string; to?: string }): string | undefined {
+  return atts
+    .filter((a) => !a.deleted && a.student_id === studentId && a.kind === kind && (!range.from || a.date >= range.from) && (!range.to || a.date <= range.to))
+    .map((a) => a.date)
+    .sort()[0]
 }

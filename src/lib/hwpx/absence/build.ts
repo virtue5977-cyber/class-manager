@@ -53,6 +53,9 @@ export const ABSENCE_PLACEHOLDERS: { name: string; description: string }[] = [
   { name: '사유', description: '상세 사유' },
   { name: '담임교사', description: '설정의 담임 성명' },
   { name: '학교명', description: '설정의 학교 이름' },
+  { name: '학년반번호', description: '1학년 5반 3번(다른 학교 양식 한 칸용)' },
+  { name: '결석종류', description: '질병 결석·미인정 지각처럼 구분과 종류' },
+  { name: '작성날짜', description: '2026년 11월 10일(학생 작성일)' },
 ]
 
 const ymd = (iso: string) => ({ y: iso.slice(0, 4), m: String(Number(iso.slice(5, 7))), d: String(Number(iso.slice(8, 10))) })
@@ -93,6 +96,9 @@ export function absenceValues(
     사유: r.detail,
     담임교사: opt.teacher,
     학교명: opt.school || '        ',
+    학년반번호: `${classRec.grade}학년 ${classRec.class_no}반 ${student.number}번`,
+    결석종류: `${r.category} ${r.kind}`,
+    작성날짜: /^\d{4}-\d{2}-\d{2}$/.test(r.written_date) ? `${ymd(r.written_date).y}년 ${ymd(r.written_date).m}월 ${ymd(r.written_date).d}일` : '      년    월    일',
     ...dateParts('작성', r.written_date),
     ...dateParts('확인', r.confirmed_date),
   }
@@ -161,4 +167,20 @@ export async function buildAbsenceHwpx(
   }
   const warnings = [...unknown].map((u) => `양식의 알 수 없는 표시는 빈칸으로 두었습니다: {{${u}}}`)
   return { bytes, fileName, warnings }
+}
+
+/** 양식 미리보기: 가상 학생(1학년 5반 3번 가상학생)·가상 신고서 1건으로 채운다. 자료는 읽지도 쓰지도 않는다. */
+export async function buildSampleAbsenceHwpx(templateBytes: Uint8Array, opt: { teacher: string; school: string; codeFormat: string }): Promise<Uint8Array> {
+  const tpl = await JSZip.loadAsync(templateBytes)
+  const secFile = tpl.file('Contents/section0.xml')
+  if (!secFile) throw new Error('양식에 본문(section0.xml)이 없습니다.')
+  const section = joinSplitPlaceholders(await secFile.async('string'))
+  const r = {
+    start_date: '2026-11-09', end_date: '2026-11-10', kind: '결석', category: '질병', period: null, school_days: 2, evidence_type: '2일 이내 질병',
+    confirm_methods: [3], written_date: '2026-11-11', confirmed_date: '2026-11-11', detail: '감기로 병원 진료',
+  } as unknown as AbsenceReportRec
+  const student = { number: 3, name: '가상학생' } as StudentRec
+  const classRec = { grade: 1, class_no: 5 } as ClassRec
+  const values = absenceValues(r, student, classRec, { ...opt, stuName: true })
+  return pack(tpl, fillPlaceholders(section, values).xml)
 }

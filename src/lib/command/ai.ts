@@ -1,3 +1,4 @@
+import { allStudentNames } from '../roster/roster'
 import { extractJson } from '../ai/client'
 import { maskText, unmaskText } from '../ai/mask'
 import { getPrompt } from '../ai/prompts'
@@ -27,7 +28,7 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
   if (!p.cmd && input.startsWith('/')) return null
   const s = await aiReady(env)
   if (!s) return AI_OFF
-  const names = effectiveMask(s) ? ctx.students.map((x) => x.name) : []
+  const names = effectiveMask(s) ? [...new Set([...(ctx.maskNames ?? ctx.students.map((x) => x.name)), ...(await allStudentNames(env.db))])] : []
 
   if (p.cmd === 'counselDraft') {
     if (p.students.length !== 1) return { summary: '학생을 @로 한 명 고르세요.', links: [], pending: true }

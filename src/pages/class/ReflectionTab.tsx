@@ -1,3 +1,4 @@
+import { HeadTools } from '../../components/PageHead'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAi, useDb, useFs } from '../../app/context'
@@ -45,14 +46,36 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [panel, setPanel] = useState<'main' | 'phrases' | 'fit'>('main')
+  // 저장하지 않은 고침이 있는지: 불러온(또는 저장한) 때와 비교
+  const snap = () => JSON.stringify({ date, reason, lines, t1, t2 })
+  const [baseline, setBaseline] = useState(() => JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1: DEFAULT_T1, t2: DEFAULT_T2 }))
+  const dirty = snap() !== baseline
+  const [pendingSid, setPendingSid] = useState<string>()
   // 종이는 실제 크기(mm·pt)로 그리고, 화면 폭에 맞게 줄여 보인다(글자 맞춤과 같은 기준).
   const wrap = useRef<HTMLElement>(null)
-  const [zoom, setZoom] = useState(1)
+  const [fitZoom, setFitZoom] = useState(1)
+  /** 미리보기 크기: 맞춤(폭에 맞게 줄임) · 100% · 125%(넘치면 옆으로 밀어 봄). 이 기기에 기억. */
+  const [size, setSize] = useState<'fit' | '1' | '1.25'>(() => {
+    try {
+      const v = localStorage.getItem('watson.refl.size')
+      return v === '1' || v === '1.25' ? v : 'fit'
+    } catch {
+      return 'fit'
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('watson.refl.size', size)
+    } catch {
+      /* 기억 못 해도 그대로 */
+    }
+  }, [size])
+  const zoom = size === 'fit' ? fitZoom : Number(size)
   useEffect(() => {
     const el = wrap.current
     if (!el || typeof ResizeObserver === 'undefined') return undefined
     const mmPx = 96 / 25.4
-    const ro = new ResizeObserver(() => setZoom(Math.min(1, (el.clientWidth - 24) / (MODES[mode].pw * mmPx))))
+    const ro = new ResizeObserver(() => setFitZoom(Math.min(1, (el.clientWidth - 24) / (MODES[mode].pw * mmPx))))
     ro.observe(el)
     return () => ro.disconnect()
   }, [mode])
@@ -89,6 +112,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     }
   }
   function open(r: ReflectionRec) {
+    setBaseline(JSON.stringify({ date: r.date, reason: r.reason, lines: r.lines, t1: r.t1, t2: r.t2 }))
     setEditId(r.id)
     setDate(r.date)
     setReason(r.reason)
@@ -98,6 +122,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     setMode(r.mode)
   }
   function fresh() {
+    setBaseline(JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1, t2 }))
     setEditId(undefined)
     setDate(today)
     setReason('')
@@ -110,7 +135,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     <div className="reflection">
       <div className="row between">
         <span className="muted">{`이번 학년도 ${thisYear}건${over ? ` · 넘치는 줄 ${over}개` : ''}`}</span>
-        <div className="row">
+        <HeadTools>
           <div className="seg paper-mode" role="radiogroup" aria-label="용지">
             {(['B4', 'A4'] as const).map((m) => (
               <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : undefined} onClick={() => setMode(m)}>
@@ -122,6 +147,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           <button type="button" className="primary" disabled={!student} onClick={() => act(async () => {
             const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode }, editId)
             setEditId(r.id)
+            setBaseline(snap())
             setMsg('저장했습니다.')
           })}>
             저장
@@ -142,16 +168,28 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               } },
             ]}
           />
-        </div>
+        </HeadTools>
       </div>
       {msg && <p className="notice" role="status">{msg}</p>}
+      {pendingSid && (
+        <div className="banner row" role="alertdialog" aria-label="저장하지 않은 반성문">
+          <span>저장하지 않은 내용이 있습니다. 버리고 다른 학생으로 바꿀까요?</span>
+          <button type="button" className="danger" onClick={() => { setSid(pendingSid); setPendingSid(undefined); fresh() }}>버리고 바꾸기</button>
+          <button type="button" className="link" onClick={() => setPendingSid(undefined)}>취소</button>
+        </div>
+      )}
       <div className="reflection-layout">
         <div className="roster-list stack">
           <input type="search" aria-label="학생 찾기" placeholder="이름·번호 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
           <ul className="plain" aria-label="학생 목록">
             {shown.map((s) => (
               <li key={s.id}>
-                <button type="button" className="roster-item" aria-current={s.id === sid ? 'true' : undefined} onClick={() => { setSid(s.id); fresh() }}>
+                <button type="button" className="roster-item" aria-current={s.id === sid ? 'true' : undefined} onClick={() => {
+                  if (s.id === sid) return
+                  if (dirty) return setPendingSid(s.id)
+                  setSid(s.id)
+                  fresh()
+                }}>
                   <span className="pii">{`${s.number}번 ${s.name}`}</span>
                 </button>
               </li>
@@ -169,6 +207,26 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           )}
         </div>
 
+        <div className="paper-col stack">
+        <div className="paper-tools">
+          <div className="seg" role="radiogroup" aria-label="미리보기 크기">
+            {([['fit', '맞춤'], ['1', '100%'], ['1.25', '125%']] as const).map(([v, label]) => (
+              <button key={v} type="button" role="radio" aria-checked={size === v} className={size === v ? 'on' : undefined} onClick={() => setSize(v)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="paper-big">
+            <span className="muted">{`${sel + 1}번 줄`}</span>
+            <input
+              aria-label={`고른 줄(${sel + 1}번) 크게 고치기`}
+              aria-invalid={fits[sel]?.over ? 'true' : undefined}
+              value={lines[sel] ?? ''}
+              onChange={(e) => setLine(sel, e.target.value)}
+            />
+            <span className={fits[sel]?.over ? 'error' : 'muted'}>{fits[sel]?.over ? `${fits[sel].overChars}자 넘침` : `${(lines[sel] ?? '').length}자`}</span>
+          </label>
+        </div>
         <section className="paper-wrap" aria-label="반성문 양식" ref={wrap}>
           <div className={`paper print-area paper-${mode}`} style={{ width: `${MODES[mode].pw}mm`, minHeight: `${MODES[mode].ph}mm`, zoom }}>
             <table className="paper-table" style={{ width: `${(65174 * MODES[mode].k) / 100}pt` }}>
@@ -194,6 +252,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
             </table>
           </div>
         </section>
+        </div>
 
         <aside className="reflection-side stack">
           <div className="seg" role="tablist" aria-label="도구">
@@ -211,7 +270,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
                 사유
                 <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 수업 중 휴대폰 사용" />
               </label>
-              <button type="button" className="primary" disabled={busy} onClick={() => act(async () => {
+              <button type="button" disabled={busy} onClick={() => act(async () => {
                 setBusy(true)
                 try {
                   setLines(await fillByAi(db, ai, reason, students.map((s) => s.name), mode))

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useBackupEvents, useDb, useFs } from '../app/context'
 import { checkBackupStatus, runStartup, type StartupStatus } from '../app/startup'
 import { runBackup } from '../lib/backup/service'
@@ -14,6 +14,7 @@ const MESSAGES: Partial<Record<StartupStatus, string>> = {
 /** device_local 'backupBannerHidden' = 그만 보기를 누른 날짜(그날만 숨김). */
 export default function BackupBanner({ today = toYmd(new Date()) }: { today?: string }) {
   const db = useDb()
+  const loc = useLocation()
   const [hidden, setHidden] = useState<boolean>()
   useEffect(() => {
     db.device_local.get('backupBannerHidden').then((r) => setHidden(r?.value === today))
@@ -58,6 +59,8 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
     }
   }
 
+  // 설정 화면에서는 '설정으로 이동'이 필요 없다
+  const onSettings = loc.pathname.startsWith('/settings')
   if (hidden !== false || !status || status === 'done' || status === 'not-due') return null
   const text = status === 'failed' ? `자동 백업에 실패했습니다: ${error ?? ''}` : MESSAGES[status]
   return (
@@ -67,7 +70,7 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
         <button type="button" onClick={allow}>
           허용
         </button>
-      ) : (
+      ) : onSettings ? null : (
         <Link to="/settings?tab=backup">설정으로 이동</Link>
       )}
       <button type="button" className="link banner-dismiss" onClick={hideToday}>

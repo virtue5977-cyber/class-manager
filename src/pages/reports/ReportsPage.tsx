@@ -3,7 +3,7 @@ import PageHead from '../../components/PageHead'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
-import { listReportsForMonth, setSubmittedMany, type ReportRow } from '../../lib/absenceReports/list'
+import { listReportsForMonth, setSubmittedMany, type ReportRow, listReportsForStudent } from '../../lib/absenceReports/list'
 import { updateReport } from '../../lib/absenceReports/reconcile'
 import { buildAbsenceHwpx } from '../../lib/hwpx/absence/build'
 import ExportMenu from '../../components/ExportMenu'
@@ -12,6 +12,7 @@ import { reportsXlsx } from '../../lib/export/sheets'
 import { isHideNames } from '../../components/HideNames'
 import { toYmd } from '../../lib/schoolDays'
 import { periodText } from '../attendance/AttendanceForm'
+import { hashParam } from '../../lib/ui/hashParam'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
 const kindText = (r: ReportRow['report']) => `${r.kind}${r.period ? ` ${r.period}교시` : ''}(${r.category})`
@@ -28,13 +29,15 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
   const [stuName, setStuName] = useState(false)
   const [messages, setMessages] = useState<string[]>([])
   const seq = useRef(0)
+  /** 통계에서 넘어오면(?sid=) 그 학생 신고서만 */
+  const [sid, setSid] = useState<string | null>(() => hashParam('sid'))
 
   const reload = useCallback(async () => {
     if (!classId) return
     const n = ++seq.current
-    const list = await listReportsForMonth(db, classId, month)
+    const list = sid ? await listReportsForStudent(db, sid) : await listReportsForMonth(db, classId, month)
     if (n === seq.current) setRows(list)
-  }, [db, classId, month])
+  }, [db, classId, month, sid])
   useEffect(() => {
     setPicked(new Set())
     reload()
@@ -78,16 +81,22 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
 
   return (
     <section className="stack">
-      <PageHead title="결석신고서" summary={`전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}>
+      <PageHead title="결석신고서" summary={`${sid && rows[0] ? `${rows[0].student.number}번 학생만 · ` : ''}전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}>
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
-          <MonthPicker value={month} onChange={setMonth} />
+          {sid ? (
+            <button type="button" onClick={() => setSid(null)}>
+              모두 보기
+            </button>
+          ) : (
+            <MonthPicker value={month} onChange={setMonth} />
+          )}
           <label className="inline">
             <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
             미제출만
           </label>
           {openRows.length > 0 && (
             <button type="button" className="primary" onClick={() => exportRows(openRows, 'one')}>
-              {`미제출 ${openRows.length}건 hwpx`}
+              {`미제출 ${openRows.length}건 한글로 받기`}
             </button>
           )}
           {shown.length > 0 && (

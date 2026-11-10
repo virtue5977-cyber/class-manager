@@ -20,7 +20,9 @@ export function useCommandCtx(today = toYmd(new Date())): { ctx: ParseCtx; env: 
   const { classId } = useClasses()
   const students = useLive<StudentRec[]>(() => (classId ? listStudents(db, classId, { includeInactive: false }) : Promise.resolve([])), [db, classId], [])
   const notes = useLive<NoteRec[]>(() => listNotes(db), [db], [])
-  const ctx = useMemo(() => ({ students, notes, today }), [students, notes, today])
+  // AI 가림은 전출 학생 이름까지
+  const maskNames = useLive<string[]>(async () => (classId ? (await listStudents(db, classId, { includeInactive: true })).map((s) => s.name) : []), [db, classId], [])
+  const ctx = useMemo(() => ({ students, notes, today, maskNames }), [students, notes, today, maskNames])
   const env = useMemo<RunEnv | null>(
     () =>
       classId

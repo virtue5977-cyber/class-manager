@@ -7,4 +7,4 @@ export interface FolderBridge {
 export function getFolderBridge(): FolderBridge | undefined {
   return (globalThis as { desktop?: { folder?: FolderBridge } }).desktop?.folder
 }
-export const NEED_EXE = '폴더 연결은 새 Watson exe에서만 됩니다.'
+export const NEED_EXE = '폴더 연결은 새 설치형(Windows 앱)에서만 됩니다.'

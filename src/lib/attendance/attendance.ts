@@ -1,5 +1,5 @@
 import type { AppDB } from '../db/schema'
-import { newRecord, save, softDelete } from '../db/records'
+import { newRecord, save, scrubDelete } from '../db/records'
 import type { AttendanceRec, BaseRecord } from '../db/types'
 
 export type AttendanceInput = Omit<AttendanceRec, keyof BaseRecord>
@@ -54,7 +54,7 @@ export async function saveAttendance(db: AppDB, input: AttendanceInput, id?: str
 }
 
 export async function deleteAttendance(db: AppDB, id: string): Promise<void> {
-  await softDelete(db.attendance, id)
+  await scrubDelete(db.attendance, id, { reason: '', memo: '' })
 }
 
 export async function listAttendanceByDate(db: AppDB, studentIds: string[], date: string): Promise<AttendanceRec[]> {
