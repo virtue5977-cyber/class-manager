@@ -1,9 +1,9 @@
 {
-  "version": "0.7.1",
+  "version": "0.8.0",
   "shell": 1,
-  "bundle": "bundle-0.7.1.zip",
-  "sha256": "b67624ff61628d3f84d4d350e80af62e50412552cc888246399c014773d1cee2",
-  "sig": "ueNOwcVu/bvtXhxWHIukQLChp9BF/kC/6B5XPH8JYahZMxytQZ0OGsluEjgnxY5inRH01GpBW3U//cQi9fnLAA==",
-  "note": "0.7.1: 음성 받아쓰기 최고 모델, 통계·달력·명단 양식 작은 문제 정리",
+  "bundle": "bundle-0.8.0.zip",
+  "sha256": "5cc74e4c0d7d5dc8bcf92a72c0bca713785a78b33625bded47d524ebf09b15dc",
+  "sig": "Qw1gKlvc+9PzyklDOCVRjsC/I7mVSu/gIlw/IHrPrt5xFWMQ77jLsdKpg2izSWnbSGOLzVZgCS0/FA65kOa/Bw==",
+  "note": "0.8.0: 날짜 여러 꼴, 메뉴·홈 배치 바꾸기, 노트 학생 체크 표·단축키, 반성문 좋은 글·바로 인쇄, 전달사항 줄바꿈·Ctrl+Z 등",
   "date": "2026-11-10"
 }
