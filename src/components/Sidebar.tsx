@@ -4,6 +4,7 @@ import { getSettings } from '../lib/settings'
 import { classLabel } from '../lib/roster/roster'
 import { useClasses } from '../pages/common/useClasses'
 import Nav, { SettingsNav } from './Nav'
+import { useBadges } from '../lib/ui/badges'
 
 /** 사이드바 머리: Watson / 학교명 / 학년도·반(학급이 여럿이면 고르기). */
 function Brand() {
@@ -32,7 +33,9 @@ function Brand() {
   )
 }
 
-export default function Sidebar({ badges }: { badges?: Record<string, number> }) {
+export default function Sidebar() {
+  const b = useBadges()
+  const badges = { '/attendance': b.openReports, '/counseling': b.unorganizedLogs }
   return (
     <aside className="sidebar">
       <Brand />

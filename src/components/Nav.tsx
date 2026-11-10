@@ -1,6 +1,8 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import Icon from './Icon'
 
+const BADGE_TEXT: Record<string, string> = { '/attendance': '미제출 신고서', '/counseling': '미정리' }
+
 export interface MenuItem {
   to: string
   base: string // 이 주소로 시작하면 하위 메뉴를 펼친다
@@ -32,7 +34,7 @@ function Item({ m, badge }: { m: MenuItem; badge?: number }) {
   const open = !!m.children && (pathname === m.base || pathname.startsWith(m.base + '/'))
   return (
     <>
-      <NavLink to={m.to} end={m.to === '/' || m.to === '/attendance'} className={({ isActive }) => (isActive || (open && m.base !== '/attendance') ? 'active' : undefined)}>
+      <NavLink to={m.to} aria-label={badge ? `${m.label}, ${BADGE_TEXT[m.base] ?? ''} ${badge}건` : undefined} end={m.to === '/' || m.to === '/attendance'} className={({ isActive }) => (isActive || (open && m.base !== '/attendance') ? 'active' : undefined)}>
         <Icon name={m.icon} />
         <span>{m.label}</span>
         {!!badge && <span className="badge" aria-hidden="true">{badge}</span>}
