@@ -85,3 +85,32 @@ test('설정: 모델 골라 받기(진행 막대), 받은 뒤 지우기. 설치�
   await user.click(screen.getByRole('button', { name: '지우기' }))
   expect(b.remove).toHaveBeenCalled()
 })
+
+test('취소를 눌렀는데 받아쓰기가 끝나 버려도(취소가 늦게 닿음) 내용에 붙이지 않는다', async () => {
+  const user = userEvent.setup()
+  const { b, done } = fake()
+  b.cancel.mockImplementation(async () => {}) // 주 프로세스가 아직 시작 전이라 취소를 못 받음
+  render(<Host />)
+  const zone = await screen.findByRole('region', { name: '녹음 파일' })
+  fireEvent.drop(zone, { dataTransfer: { files: [new File(['x'], 'c.mp3')] } })
+  await user.click(await screen.findByRole('button', { name: '취소' }))
+  done()
+  await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull())
+  expect(screen.getByLabelText('내용')).toHaveTextContent(/^메모$/)
+})
+
+test('설정: 받는 중 취소 단추, 프로그램이 빠져 있으면 다시 받기·지우기가 된다', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const { b } = fake([])
+  b.status.mockResolvedValue({ supported: true, bin: false, models: ['fast'] })
+  let stop: (() => void) | null = null
+  b.install.mockImplementation(() => new Promise((_res, rej) => { stop = () => rej(new Error('그만두었습니다.')) }))
+  b.cancel.mockImplementation(async () => stop?.())
+  render(<AppProviders db={db} fs={createMemoryFsAdapter()}><SttSettings /></AppProviders>)
+  expect(await screen.findByRole('button', { name: '지우기' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '받기' }))
+  await user.click(await screen.findByRole('button', { name: '받기 취소' }))
+  expect(b.cancel).toHaveBeenCalled()
+  expect(await screen.findByRole('button', { name: '받기' })).toBeEnabled()
+})

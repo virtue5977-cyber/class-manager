@@ -11,6 +11,10 @@ export interface FormCell {
   rowSpan: number
   colSpan: number
   text: string
+  /** 몇 번째 표인지(본문 순서). 값 칸은 이름표와 같은 표에서만 찾는다. */
+  table: number
+  /** 글은 없어도 그림·도형·누름틀·체크 등이 있는 칸(값 칸으로 쓰지 않음) */
+  filled: boolean
 }
 
 /** field = 기존 {{표시}} 이름, label = 이름표 칸 id, target = 값이 들어갈 칸 id */
@@ -32,9 +36,38 @@ export const SLOT_FIELDS: { field: string; label: string; re: RegExp }[] = [
   { field: '작성날짜', label: '작성 날짜', re: /(작성|신고|제출)\s*일/ },
 ]
 
-const TC_RE = /<hp:tc\b[\s\S]*?<\/hp:tc>/g
+const OBJECT_RE = /<hp:(pic|rect|ellipse|line|arc|polygon|curve|container|ole|equation|textart|checkBtn|radioBtn|btn|edit|comboBox|listBox|scrollBar|ctrl|fieldBegin)\b/
 
-function cellInfo(xml: string, id: number): FormCell {
+interface Span {
+  start: number
+  end: number
+  table: number
+  container: boolean
+}
+
+/** 표 칸의 위치: 여는·닫는 태그를 짝지어(겹친 표 안의 칸도) 찾는다. 안에 표가 든 칸(상자)은 container. */
+function cellSpans(xml: string): Span[] {
+  const re = /<hp:tbl\b|<\/hp:tbl>|<hp:tc\b|<\/hp:tc>/g
+  const tables: number[] = []
+  const open: { start: number; table: number; container: boolean }[] = []
+  const out: Span[] = []
+  let n = 0
+  for (const m of xml.matchAll(re)) {
+    const tag = m[0]
+    if (tag === '<hp:tbl') {
+      if (open.length) open[open.length - 1].container = true
+      tables.push(n++)
+    } else if (tag === '</hp:tbl>') tables.pop()
+    else if (tag === '<hp:tc') open.push({ start: m.index!, table: tables[tables.length - 1] ?? -1, container: false })
+    else {
+      const c = open.pop()
+      if (c) out.push({ ...c, end: m.index! + tag.length })
+    }
+  }
+  return out.filter((c) => !c.container).sort((a, b) => a.start - b.start)
+}
+
+function cellInfo(xml: string, id: number, table: number): FormCell {
   const addr = xml.match(/<hp:cellAddr colAddr="(\d+)" rowAddr="(\d+)"/)
   const span = xml.match(/<hp:cellSpan colSpan="(\d+)" rowSpan="(\d+)"/)
   const text = [...xml.matchAll(/<hp:t(?:\s[^>]*)?>([\s\S]*?)<\/hp:t>/g)]
@@ -43,26 +76,23 @@ function cellInfo(xml: string, id: number): FormCell {
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
-  return { id, row: Number(addr?.[2] ?? 0), col: Number(addr?.[1] ?? 0), colSpan: Number(span?.[1] ?? 1), rowSpan: Number(span?.[2] ?? 1), text }
+  return { id, row: Number(addr?.[2] ?? 0), col: Number(addr?.[1] ?? 0), colSpan: Number(span?.[1] ?? 1), rowSpan: Number(span?.[2] ?? 1), text, table, filled: OBJECT_RE.test(xml) }
 }
 
-/** 본문의 모든 표 칸(겹친 표는 바깥 칸이 안 칸 글까지 담지 않도록 가장 안쪽 칸만). */
+/** 본문의 모든 표 칸(겹친 표는 안쪽 칸만, 바깥 상자 칸은 뺌). */
 export function scanCells(sectionXml: string): FormCell[] {
-  const out: FormCell[] = []
-  let id = 0
-  for (const m of sectionXml.matchAll(TC_RE)) {
-    if (/<hp:tbl\b/.test(m[0])) continue // 안에 표가 있는 칸(겹친 표)은 건너뜀
-    out.push(cellInfo(m[0], id++))
-  }
-  return out
+  return cellSpans(sectionXml).map((sp, id) => cellInfo(sectionXml.slice(sp.start, sp.end), id, sp.table))
 }
 
 /** 이름표 칸의 값 칸: 오른쪽(같은 줄) 빈 칸, 없으면 아래(같은 열) 빈 칸. */
+const isEmpty = (c: FormCell) => !c.text && !c.filled
+
 function targetOf(cells: FormCell[], label: FormCell): FormCell | undefined {
-  const right = cells.find((c) => c.row === label.row && c.col === label.col + label.colSpan && c.id !== label.id)
-  if (right && !right.text) return right
-  const below = cells.find((c) => c.col === label.col && c.row === label.row + label.rowSpan)
-  if (below && !below.text) return below
+  const same = cells.filter((c) => c.table === label.table && c.id !== label.id)
+  const right = same.find((c) => c.row === label.row && c.col === label.col + label.colSpan)
+  if (right && isEmpty(right)) return right
+  const below = same.find((c) => c.col === label.col && c.row === label.row + label.rowSpan)
+  if (below && isEmpty(below)) return below
   return undefined
 }
 
@@ -86,7 +116,7 @@ export function matchByRules(cells: FormCell[]): Slot[] {
 export async function matchByAi(cells: FormCell[], have: Slot[], ai: AiCaller): Promise<Slot[]> {
   const missing = SLOT_FIELDS.filter((f) => !have.some((s) => s.field === f.field))
   if (!missing.length) return []
-  const labels = cells.filter((c) => c.text).map((c) => ({ id: c.id, row: c.row, col: c.col, text: c.text.slice(0, 40) }))
+  const labels = cells.filter((c) => c.text).map((c) => ({ id: c.id, table: c.table, row: c.row, col: c.col, text: c.text.slice(0, 40) }))
   const raw = await ai({
     system:
       '학교 결석신고서 양식의 표 칸 글 목록을 보고, 각 자리(field)의 이름표가 되는 칸 id를 고른다. 이름표 칸의 오른쪽이나 아래 빈 칸에 값이 들어간다. 맞는 칸이 없으면 그 자리는 빼고, 추측하지 않는다.\n출력은 JSON {"pairs":[{"field":"자리","label":칸id}]} 만.',
@@ -114,17 +144,23 @@ export async function markTemplate(bytes: Uint8Array, slots: Slot[]): Promise<Ui
   if (!f) throw new Error('양식에 본문(section0.xml)이 없습니다.')
   const xml = await f.async('string')
   const byTarget = new Map(slots.map((s) => [s.target, s.field]))
-  let id = 0
-  const out = xml.replace(TC_RE, (tc) => {
-    if (/<hp:tbl\b/.test(tc)) return tc
-    const field = byTarget.get(id++)
-    if (!field) return tc
-    return tc.replace(/(<hp:p\b[^>]*>)([\s\S]*?)(<\/hp:p>)/, (_m, open: string, inner: string, close: string) => {
+  const spans = cellSpans(xml)
+  let out = xml
+  // 뒤에서부터 바꿔야 앞 칸의 위치가 그대로다
+  for (let id = spans.length - 1; id >= 0; id--) {
+    const field = byTarget.get(id)
+    if (!field) continue
+    const { start, end } = spans[id]
+    const cell = out.slice(start, end)
+    const info = cellInfo(cell, id, spans[id].table)
+    if (!isEmpty(info)) continue // 글·그림이 있는 칸은 건드리지 않는다
+    const next = cell.replace(/(<hp:p\b[^>]*>)([\s\S]*?)(<\/hp:p>)/, (_m, open: string, inner: string, close: string) => {
       const cp = inner.match(/<hp:run charPrIDRef="(\d+)"/)?.[1] ?? '0'
       const keep = inner.match(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/)?.[0] ?? ''
       return `${open}<hp:run charPrIDRef="${cp}"><hp:t>${escapeXml(`{{${field}}}`)}</hp:t></hp:run>${keep}${close}`
     })
-  })
+    out = out.slice(0, start) + next + out.slice(end)
+  }
   const z2 = new JSZip()
   const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir)
   names.sort((a, b) => Number(b === 'mimetype') - Number(a === 'mimetype'))

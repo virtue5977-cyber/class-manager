@@ -53,3 +53,33 @@ test('실행 파일 풀기: whisper-cli.exe와 dll만, 경로 밖 이름은 거�
   expect(fs.readdirSync(dir).sort()).toEqual(['ggml.dll', 'whisper-cli.exe'])
   expect(fs.existsSync(path.join(dir, '..', 'evil.dll'))).toBe(false)
 })
+
+test('작업 하나씩: 시작 전에 누른 취소도 기억하고, 나중에 붙은 프로그램은 바로 끝낸다', () => {
+  const { createSttJobs } = require('../../../electron/stt.cjs') as { createSttJobs: (kill: (c: unknown) => void) => { start: (kind: string) => { cancelled: boolean; attach: (c: unknown) => void; done: () => void; abort?: () => void }; cancel: () => void; busy: () => boolean } }
+  const killed: unknown[] = []
+  const jobs = createSttJobs((c) => killed.push(c))
+  const j = jobs.start('run')
+  expect(() => jobs.start('install')).toThrow('이미 받거나 받아쓰는 중입니다.')
+  jobs.cancel()
+  expect(j.cancelled).toBe(true)
+  j.attach('child')
+  expect(killed).toEqual(['child'])
+  j.done()
+  expect(jobs.busy()).toBe(false)
+  const k = jobs.start('install')
+  let aborted = false
+  k.abort = () => (aborted = true)
+  jobs.cancel()
+  expect(aborted).toBe(true)
+  const stale = j
+  stale.done() // 끝난 작업의 done이 새 작업을 지우지 않는다
+  expect(jobs.busy()).toBe(true)
+})
+
+test('받기: idleMs 동안 아무것도 안 오면 멈춤으로 보고 그만둔다(전체 시간과 따로)', async () => {
+  const dir = tmp()
+  const slow = ((_u: string, init: RequestInit) =>
+    Promise.resolve(new Response(new ReadableStream({ pull: () => new Promise((_r, rej) => init.signal!.addEventListener('abort', () => rej(new Error('aborted')))) })))) as unknown as typeof fetch
+  await expect(stt.downloadVerified(slow, 'u', path.join(dir, 'c.bin'), sha('x'), { maxBytes: 100, timeoutMs: 10000, idleMs: 30 } as never)).rejects.toThrow('시간이 너무 오래 걸려')
+  expect(fs.readdirSync(dir)).toEqual([])
+})

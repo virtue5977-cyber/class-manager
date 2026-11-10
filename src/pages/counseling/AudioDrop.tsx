@@ -11,6 +11,8 @@ export default function AudioDrop({ onText }: { onText: (text: string) => void }
   const [msg, setMsg] = useState<string>()
   const [over, setOver] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  /** 취소를 누른 뒤 끝난 결과는 버린다(주 프로세스가 아직 시작 전이라 취소가 닿지 않았을 때도) */
+  const cancelled = useRef(false)
   useEffect(() => {
     let live = true
     bridge?.status().then((s) => live && setModels(s.supported && s.bin ? s.models : [])).catch(() => live && setModels([]))
@@ -28,8 +30,12 @@ export default function AudioDrop({ onText }: { onText: (text: string) => void }
     setMsg(undefined)
     setPct(0)
     setBusy(file.name)
+    cancelled.current = false
     try {
-      const r = DIRECT_EXT.test(file.name) ? await bridge.run({ path: bridge.pathOf(file), model }) : await bridge.run({ wav: await toWav16k(file), model })
+      const wav = DIRECT_EXT.test(file.name) ? undefined : await toWav16k(file)
+      if (cancelled.current) return
+      const r = wav ? await bridge.run({ wav, model }) : await bridge.run({ path: bridge.pathOf(file), model })
+      if (cancelled.current) return
       if (r.text.trim()) onText(r.text)
       else setMsg('받아쓴 글이 없습니다(말소리가 없거나 너무 작습니다).')
     } catch (e) {
@@ -59,7 +65,7 @@ export default function AudioDrop({ onText }: { onText: (text: string) => void }
           <span>{`${busy} 받아쓰는 중… ${pct}%`}</span>
           <div className="row">
             <progress role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} max={100} value={pct} />
-            <button type="button" onClick={() => void bridge.cancel()}>
+            <button type="button" onClick={() => { cancelled.current = true; setBusy(null); void bridge.cancel() }}>
               취소
             </button>
           </div>

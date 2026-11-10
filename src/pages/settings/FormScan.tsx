@@ -19,7 +19,7 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
     const found = matchByRules(cells)
     setPick((p) => ({ ...p, ...Object.fromEntries(found.map((s) => [s.field, s.target])) }))
   }, [cells])
-  const empty = useMemo(() => cells.filter((c) => !c.text), [cells])
+  const empty = useMemo(() => cells.filter((c) => !c.text && !c.filled), [cells])
   /** 빈 칸 옆(왼쪽·위) 글: 고를 때 알아보기 쉽게 */
   const near = (c: FormCell) => cells.find((x) => x.text && x.row === c.row && x.col + x.colSpan === c.col)?.text ?? cells.find((x) => x.text && x.col === c.col && x.row + x.rowSpan === c.row)?.text ?? ''
   const slots = (): Slot[] => SLOT_FIELDS.flatMap((f) => (pick[f.field] === '' ? [] : [{ field: f.field, label: -1, target: pick[f.field] as number }]))

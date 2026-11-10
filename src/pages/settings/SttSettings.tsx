@@ -20,12 +20,14 @@ export default function SttSettings() {
       }),
     [bridge],
   )
-  const run = async (fn: () => Promise<SttStatus>) => {
+  const run = async (fn: () => Promise<SttStatus>, starting?: string) => {
     setMsg(undefined)
+    if (starting) setProg({ label: starting, pct: 0 })
     try {
       setSt(await fn())
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : String(e))
+      const m = e instanceof Error ? e.message : String(e)
+      setMsg(m === '그만두었습니다.' ? '받기를 그만두었습니다.' : m)
     } finally {
       setProg(null)
     }
@@ -52,13 +54,16 @@ export default function SttSettings() {
             <div className="row">
               <span>{`${prog.label} 받는 중 ${prog.pct}%`}</span>
               <progress max={100} value={prog.pct} />
+              <button type="button" onClick={() => void bridge.cancel()}>
+                받기 취소
+              </button>
             </div>
           ) : (
             <div className="row">
-              <button type="button" className="primary" disabled={st.models.includes(model)} onClick={() => run(() => bridge.install(model))}>
-                {st.models.includes(model) ? '받아 둠' : '받기'}
+              <button type="button" className="primary" disabled={st.bin && st.models.includes(model)} onClick={() => run(() => bridge.install(model), '프로그램')}>
+                {st.bin && st.models.includes(model) ? '받아 둠' : '받기'}
               </button>
-              {st.bin && (
+              {(st.bin || st.models.length > 0) && (
                 <button type="button" className="danger-text" onClick={() => run(() => bridge.remove())}>
                   지우기
                 </button>

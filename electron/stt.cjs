@@ -31,10 +31,18 @@ const TOO_BIG = '받을 파일이 너무 큽니다.'
 const BAD_HASH = '파일 확인(SHA-256)에 실패했습니다.'
 
 /** dest.part에 흘려 쓰며 해시를 재고, 맞으면 dest로 바꾼다. 실패·취소면 .part를 지운다. */
-async function downloadVerified(fetchFn, url, dest, sha256, { onProgress, maxBytes, timeoutMs, signal } = {}) {
+async function downloadVerified(fetchFn, url, dest, sha256, { onProgress, maxBytes, timeoutMs, idleMs, signal } = {}) {
   const part = dest + '.part'
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), timeoutMs)
+  // 멈춤: idleMs 동안 받은 것이 없으면 그만둔다
+  let idle = null
+  const poke = () => {
+    if (!idleMs) return
+    clearTimeout(idle)
+    idle = setTimeout(() => ctl.abort(), idleMs)
+  }
+  poke()
   const onAbort = () => ctl.abort()
   signal?.addEventListener('abort', onAbort)
   let out
@@ -52,6 +60,7 @@ async function downloadVerified(fetchFn, url, dest, sha256, { onProgress, maxByt
       const { done, value } = await reader.read()
       if (done) break
       received += value.length
+      poke()
       if (received > maxBytes) throw new Error(TOO_BIG)
       hash.update(value)
       if (!out.write(Buffer.from(value))) await new Promise((r) => out.once('drain', r))
@@ -70,6 +79,7 @@ async function downloadVerified(fetchFn, url, dest, sha256, { onProgress, maxByt
     throw e
   } finally {
     clearTimeout(timer)
+    clearTimeout(idle)
     signal?.removeEventListener('abort', onAbort)
   }
 }
@@ -103,4 +113,38 @@ function parseProgress(line) {
   return m ? Number(m[1]) : null
 }
 
-module.exports = { STT_FILES, downloadVerified, extractBin, whisperArgs, parseProgress }
+/** 받기·받아쓰기는 한 번에 하나. 시작은 동기로 자리를 잡아(await 앞) 겹치지 않게 하고,
+ * 프로그램이 붙기 전에 누른 취소도 기억한다. */
+function createSttJobs(kill) {
+  let cur = null
+  return {
+    start(kind) {
+      if (cur) throw new Error('이미 받거나 받아쓰는 중입니다.')
+      const job = {
+        kind,
+        cancelled: false,
+        child: null,
+        abort: undefined,
+        attach(child) {
+          job.child = child
+          if (job.cancelled) kill(child)
+        },
+        done() {
+          if (cur === job) cur = null
+        },
+      }
+      cur = job
+      return job
+    },
+    cancel() {
+      if (!cur) return
+      cur.cancelled = true
+      if (cur.child) kill(cur.child)
+      cur.abort?.()
+    },
+    busy: () => !!cur,
+    current: () => cur,
+  }
+}
+
+module.exports = { createSttJobs, STT_FILES, downloadVerified, extractBin, whisperArgs, parseProgress }

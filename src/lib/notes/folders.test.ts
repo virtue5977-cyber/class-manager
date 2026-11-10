@@ -30,3 +30,14 @@ test('네트워크 경로(UNC)는 열지 않는다', async () => {
   await expect(assertDir('\\\\server\\share\\자료')).rejects.toThrow('네트워크 폴더는 연결할 수 없습니다.')
   await expect(assertDir('//server/share')).rejects.toThrow('네트워크 폴더는 연결할 수 없습니다.')
 })
+
+test('localPathKind: Windows는 드라이브 문자 경로만, \\\\?\\·\\??\\·UNC·상대 경로는 거부', () => {
+  const { isLocalPath } = require('../../../electron/folders.cjs') as { isLocalPath: (p: unknown, platform: string) => boolean }
+  expect(isLocalPath('C:\\녹음\\a.mp3', 'win32')).toBe(true)
+  expect(isLocalPath('d:/x/y', 'win32')).toBe(true)
+  for (const bad of ['\\\\server\\share\\a', '//server/share', '\\??\\UNC\\host\\s\\a.wav', '\\\\?\\C:\\a', '\\??\\C:\\a', 'a.wav', '..\\a', '\\a.wav', 'C:a.wav', 3])
+    expect([bad, isLocalPath(bad, 'win32')]).toEqual([bad, false])
+  expect(isLocalPath('/home/a', 'linux')).toBe(true)
+  expect(isLocalPath('//h/s', 'linux')).toBe(false)
+  expect(isLocalPath('a', 'linux')).toBe(false)
+})
