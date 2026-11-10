@@ -47,3 +47,18 @@ test('지출 한도 안내는 API 키를 고를 때만, 순서는 연결 방식 
   await user.click(screen.getByRole('radio', { name: 'API 키' }))
   expect(await screen.findByText(/지출 한도/)).toBeInTheDocument()
 })
+
+test('Antigravity(구글 로그인)를 고르면 학습 끄기 안내가 보이고 이름 가림은 늘 켜짐(못 끔)', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <AiSettings />
+    </AppProviders>,
+  )
+  await user.click(await screen.findByRole('radio', { name: 'Antigravity(구글 로그인)' }))
+  expect(await screen.findByText(/Enable Telemetry/)).toBeInTheDocument()
+  const mask = screen.getByLabelText(/학생 이름 가리기/)
+  expect(mask).toBeChecked()
+  expect(mask).toBeDisabled()
+})

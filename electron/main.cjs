@@ -248,6 +248,65 @@ handle('ai:ask', async (req) => {
   return String(body.result || '')
 })
 
+// ---- AI: Antigravity CLI(agy, 구글 계정 로그인) ----
+// 프롬프트는 인자로만 받으므로 셸을 거치지 않고 부른다(.cmd면 cmd.exe 규칙대로 인용).
+const agyLib = require('./agy.cjs')
+function findAgy() {
+  if (process.platform !== 'win32') return { file: 'agy', viaCmd: false }
+  try {
+    const out = require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true })
+    const first = out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+    const exe = first.find((x) => /\.exe$/i.test(x))
+    if (exe) return { file: exe, viaCmd: false }
+    if (first[0]) return { file: first[0], viaCmd: true }
+  } catch {}
+  return null
+}
+function runAgy(args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const found = findAgy()
+    if (!found) return reject(new Error('Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'))
+    fsSync.mkdirSync(AI_DIR(), { recursive: true })
+    const line = '"' + [found.file, ...args].map(agyLib.quoteCmdArg).join(' ') + '"'
+    // cmd.exe 한 줄은 8,191자까지라 그보다 길면 나눠 달라고 한다.
+    if (found.viaCmd && line.length > 8000) return reject(new Error('AI에 보낼 글이 너무 깁니다. 내용을 나눠서 정리하세요.'))
+    const child = found.viaCmd
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', line], { cwd: AI_DIR(), windowsHide: true, windowsVerbatimArguments: true, env: process.env })
+      : spawn(found.file, args, { cwd: AI_DIR(), windowsHide: true, env: process.env })
+    let out = ''
+    let err = ''
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error('Antigravity 응답이 너무 늦습니다. 잠시 뒤 다시 시도하세요.'))
+    }, timeoutMs)
+    child.stdout.on('data', (d) => (out += d))
+    child.stderr.on('data', (d) => (err += d))
+    child.on('error', () => {
+      clearTimeout(timer)
+      reject(new Error('Antigravity CLI(agy)를 실행하지 못했습니다.'))
+    })
+    child.on('close', () => {
+      clearTimeout(timer)
+      resolve({ out, err })
+    })
+    child.stdin.end()
+  })
+}
+handle('ai:agy:status', async () => {
+  try {
+    const { out } = await runAgy(['--version'], 20000)
+    return out.trim() ? { installed: true, version: out.trim().split(/\s+/).pop() } : { installed: false }
+  } catch {
+    return { installed: false }
+  }
+})
+handle('ai:agy:ask', async (prompt) => {
+  const { out, err } = await runAgy(agyLib.agyArgs(String(prompt || '')), 60000)
+  const r = agyLib.parseAgyOutput(out || err)
+  if (r.error) throw new Error(r.error)
+  return r.text
+})
+
 handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION }))
 handle('update:check', async () => {
   try {

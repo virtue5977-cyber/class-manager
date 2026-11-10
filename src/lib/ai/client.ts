@@ -76,15 +76,40 @@ export function getClaudeCode(): ClaudeCodeApi | undefined {
   return (globalThis as { desktop?: { ai?: ClaudeCodeApi } }).desktop?.ai
 }
 
+/** exe(SHELL 3)의 preload가 넣어 주는 Antigravity CLI 연결(구글 로그인) */
+export interface AntigravityApi {
+  status(): Promise<{ installed: boolean; version?: string }>
+  ask(prompt: string): Promise<string>
+}
+export function getAntigravity(): AntigravityApi | undefined {
+  return (globalThis as { desktop?: { agy?: AntigravityApi } }).desktop?.agy
+}
+
 /** IPC 오류 앞에 붙는 "Error invoking remote method ..." 를 떼어 낸다. */
 const cleanIpcError = (e: unknown) => new AiError(String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').replace('사용량 한도(Pro 프로그램용 크레딧)', 'Pro 사용 한도'), 'CLAUDE-CODE')
 
 /** 설정에 따라 Claude Code(Pro 구독) 또는 API 키로 부른다. 기본값: exe면 Claude Code, 아니면 키. */
-export function createRoutedAiCaller(getProvider: () => Promise<'claude-code' | 'api-key' | undefined>, keyCaller: AiCaller, cc: () => ClaudeCodeApi | undefined = getClaudeCode): AiCaller {
+export function createRoutedAiCaller(
+  getProvider: () => Promise<'claude-code' | 'api-key' | 'antigravity' | undefined>,
+  keyCaller: AiCaller,
+  cc: () => ClaudeCodeApi | undefined = getClaudeCode,
+  agy: () => AntigravityApi | undefined = getAntigravity,
+): AiCaller {
   return async (req) => {
     const bridge = cc()
     const provider = (await getProvider()) ?? (bridge ? 'claude-code' : 'api-key')
     if (provider === 'api-key') return keyCaller(req)
+    if (provider === 'antigravity') {
+      const g = agy()
+      if (!g) throw new AiError('Antigravity 연결은 새 Watson exe에서만 됩니다. 설정 > AI에서 다른 연결을 고르세요.', 'NO-BRIDGE')
+      try {
+        const text = await g.ask(`${req.system}\n\n# 입력\n${req.user}\n\n위 지시와 출력 형식만 따르고, 도구를 쓰거나 다른 설명을 붙이지 마세요.`)
+        if (!text.trim()) throw new AiError('AI 응답이 비어 있습니다.', 'EMPTY')
+        return text
+      } catch (e) {
+        throw e instanceof AiError ? e : cleanIpcError(e)
+      }
+    }
     if (!bridge) throw new AiError('Claude Code 연결은 exe 버전에서만 됩니다. 설정 > AI에서 "API 키"를 고르거나 exe 버전을 쓰세요.', 'NO-BRIDGE')
     try {
       const text = await bridge.ask(req)

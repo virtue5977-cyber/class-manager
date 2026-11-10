@@ -3,7 +3,7 @@ import type { CounselingLogRec, StudentRec } from '../db/types'
 import { extractJson, type AiCaller } from '../ai/client'
 import { maskText, unmaskText } from '../ai/mask'
 import { fillInstruction, getPrompt } from '../ai/prompts'
-import { getSettings } from '../settings'
+import { effectiveMask, getSettings } from '../settings'
 import { updateNuga } from './counseling'
 
 /** 앱 고정 출력 형식: 지시문을 어떻게 고쳐도 이 형식이 우선한다. */
@@ -46,7 +46,7 @@ export interface NugaResult {
 export async function runNuga(db: AppDB, ai: AiCaller, student: StudentRec, roster: StudentRec[], logs: CounselingLogRec[]): Promise<NugaResult[]> {
   if (!logs.length) return []
   const settings = await getSettings(db)
-  const names = settings.mask_names ? [...roster.map((s) => s.name), student.name] : []
+  const names = effectiveMask(settings) ? [...roster.map((s) => s.name), student.name] : []
   let map: Record<string, string> = {}
   const items = logs.map((l) => {
     const m = maskText(`${l.content}`, names, map)

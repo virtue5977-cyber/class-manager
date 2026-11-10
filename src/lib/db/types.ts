@@ -207,7 +207,7 @@ export interface AppSettingsRec extends BaseRecord {
   neis_school_code: string
   ai_enabled: boolean
   /** 'claude-code' = 노트북의 Claude Code(Pro 구독), 'api-key' = Claude API 키 (예전 기록에는 없음) */
-  ai_provider?: 'claude-code' | 'api-key'
+  ai_provider?: 'claude-code' | 'api-key' | 'antigravity'
   mask_names: boolean
   nuga_max_chars: number | null
   my_subjects: string[]
