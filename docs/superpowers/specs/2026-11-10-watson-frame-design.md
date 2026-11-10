@@ -1,6 +1,6 @@
 # 설계서 1 — Watson 앱 틀 (메뉴·이름·단축키·내보내기)
 
-상태: 검토 대기 · 근거: 문서 '홈 개편 기획안' 7·9장(11/10 확정), '2차 검토' 공통-1~5·학급-2·3·품질-1
+상태: 승인(11/10) · 근거: 문서 '홈 개편 기획안' 7·9장(11/10 확정), '2차 검토' 공통-1~5·학급-2·3·품질-1
 
 ## 1. 목표
 - 앱 이름을 Watson으로 바꾸고, 메뉴를 하위 메뉴가 있는 구조로 바꾼다.
@@ -11,7 +11,7 @@
 ## 2. 이름과 exe (새 exe 한 번 — SHELL 3)
 - package.json `productName`: Watson, exe `Watson.exe`, 창 제목·작업표시줄 Watson, 아이콘 W(256px .ico를 스크립트로 생성).
 - **자료 보존**: Electron은 productName으로 userData 폴더를 정하므로, main.cjs에서 `app.setPath('userData', path.join(app.getPath('appData'), '담임업무'))`를 ready 전에 고정한다. 옛 폴더가 없으면(새 설치) 'Watson'을 쓴다. `appId`는 바꾸지 않는다.
-- SHELL=3: `pdf:save` IPC 추가(webContents.printToPDF, A4, 저장 위치 대화상자). 렌더러는 브리지가 없으면 `window.print()`로 대신한다(HTML판·옛 exe).
+- SHELL=3: `ai:agy` 브리지(설계서 2의 12장) 자리와 `pdf:save` IPC 추가(webContents.printToPDF, A4, 저장 위치 대화상자). 렌더러는 브리지가 없으면 `window.print()`로 대신한다(HTML판·옛 exe).
 - 업데이트 번들은 shell 1에서도 돌아가야 하므로 새 기능은 브리지 유무를 확인해 쓴다.
 
 ## 3. 사이드바
