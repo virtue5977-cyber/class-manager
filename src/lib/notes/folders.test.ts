@@ -25,3 +25,8 @@ test('PDF 용지: B4는 257×364mm', () => {
   expect(pdfPageSize()).toBe('A4')
   expect(pdfPageSize({ pageSize: 'B4' })).toEqual({ width: 257 / 25.4, height: 364 / 25.4 })
 })
+
+test('네트워크 경로(UNC)는 열지 않는다', async () => {
+  await expect(assertDir('\\\\server\\share\\자료')).rejects.toThrow('네트워크 폴더는 연결할 수 없습니다.')
+  await expect(assertDir('//server/share')).rejects.toThrow('네트워크 폴더는 연결할 수 없습니다.')
+})

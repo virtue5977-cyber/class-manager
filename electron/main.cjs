@@ -247,7 +247,7 @@ handle('ai:ask', async (req) => {
   const system = String(req && req.system || '')
   const user = String(req && req.user || '')
   const prompt = `${system}\n\n# 입력\n${user}\n\n위 지시와 출력 형식만 따르고, 도구를 쓰거나 다른 설명을 붙이지 마세요.`
-  const raw = await runClaude(['-p', '--output-format', 'json', '--max-turns', '1', '--model', 'haiku'], prompt, 180000)
+  const raw = await runClaude(require('./agy.cjs').claudeAskArgs(process.platform), prompt, 180000)
   let body
   try {
     body = JSON.parse(raw)
@@ -264,7 +264,7 @@ const agyLib = require('./agy.cjs')
 function findAgy() {
   if (process.platform !== 'win32') return { file: 'agy', viaCmd: false }
   try {
-    return agyLib.pickAgyPath(require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true }))
+    return agyLib.pickAgyPath(require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true, cwd: (fsSync.mkdirSync(AI_DIR(), { recursive: true }), AI_DIR()) }))
   } catch {
     return null
   }

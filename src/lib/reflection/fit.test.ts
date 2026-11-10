@@ -68,3 +68,13 @@ test('넓은 영문(W·M·m·w)은 넓게 잡고, 줄 글의 $&는 그대로 들
   const z = await JSZip.loadAsync(await buildReflectionHwpx({ date: '', no: '', name: '', t1: DEFAULT_T1, t2: DEFAULT_T2, lines, mode: 'B4' }))
   expect(await z.file('Contents/section0.xml')!.async('string')).toContain('가격 $&amp; 표시')
 })
+
+test('붙여 넣은 글의 제어 문자는 한글 파일에서 빠진다(파일이 깨지지 않게)', async () => {
+  const lines = [...DEFAULT_LINES]
+  lines[0] = '앞\u0001\u000B뒤'
+  const z = await JSZip.loadAsync(await buildReflectionHwpx({ date: '', no: '', name: '이\u0007름', t1: DEFAULT_T1, t2: DEFAULT_T2, lines, mode: 'B4' }))
+  const sec = await z.file('Contents/section0.xml')!.async('string')
+  expect(sec).toContain('앞뒤')
+  expect(sec).toContain('이름')
+  expect(sec).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/)
+})

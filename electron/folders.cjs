@@ -3,6 +3,8 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 
 async function assertDir(p) {
+  // \\server\share, //server, \\?\UNC\… : 열면 윈도가 그 서버에 로그인 정보를 보낼 수 있다.
+  if (typeof p === 'string' && /^[\\/]{2}/.test(p)) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
   if (typeof p !== 'string' || !path.isAbsolute(p)) throw new Error('폴더를 찾지 못했습니다.')
   const st = await fs.stat(p).catch(() => null)
   if (!st || !st.isDirectory()) throw new Error('폴더를 찾지 못했습니다.')

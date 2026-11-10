@@ -57,3 +57,13 @@ test('checkNuga: 글자 수·메모에 없는 숫자·가명 잔존', () => {
   ])
   expect(buildNugaPrompt('최대 {최대글자수}자', [], 200).system).toContain('최대 200자')
 })
+
+test('runNuga: 넘긴 명단에 없는 학생(전출·다른 반)의 이름도 가린다', async () => {
+  const { db, me } = await setup()
+  const other = await createClass(db, { school_year: 2026, grade: 1, class_no: 6 })
+  await saveStudent(db, other.id, emptyStudent(3, '최서연'))
+  const log = await saveLog(db, { student_id: me.id, date: '2026-11-05', place: '', content: '최서연과 다툼' })
+  const sent: AiRequest[] = []
+  await runNuga(db, async (r) => (sent.push(r), JSON.stringify({ items: [] })), me, [me], [log])
+  expect(JSON.stringify(sent)).not.toContain('최서연')
+})

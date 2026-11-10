@@ -1,3 +1,4 @@
+import { allStudentNames } from '../roster/roster'
 import type { AppDB } from '../db/schema'
 import { extractJson, type AiCaller } from '../ai/client'
 import { maskText, unmaskText } from '../ai/mask'
@@ -10,7 +11,7 @@ export async function fillByAi(db: AppDB, ai: AiCaller | undefined, reason: stri
   if (!reason.trim()) throw new Error('사유를 먼저 쓰세요.')
   const s = await getSettings(db)
   if (!s.ai_enabled || !ai) throw new Error('AI가 꺼져 있습니다. 설정 > AI에서 켜세요.')
-  const m = maskText(reason, names)
+  const m = maskText(reason, [...new Set([...names, ...(await allStudentNames(db))])])
   const t = lineTarget(mode)
   const reply = extractJson<{ lines?: unknown[] }>(
     await ai({

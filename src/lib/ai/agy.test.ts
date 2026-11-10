@@ -126,3 +126,14 @@ test('연결 확인: 버전이 나와도 짧은 시험 질문에서 로그인 �
   expect(st).toMatchObject({ installed: true, version: '1.2.0', loggedIn: false })
   expect(st.message).toMatch(/로그인이 필요/)
 })
+
+test('Claude Code는 대화 기록을 남기지 않고 도구·MCP 없이 부른다', () => {
+  const { claudeAskArgs } = require('../../../electron/agy.cjs') as { claudeAskArgs: (platform: string) => string[] }
+  for (const pf of ['win32', 'darwin']) {
+    const a = claudeAskArgs(pf)
+    expect(a.slice(0, 2)).toEqual(['-p', '--output-format'])
+    expect(a).toContain('--no-session-persistence')
+    expect(a).toContain('--strict-mcp-config')
+    expect(a[a.indexOf('--tools') + 1]).toBe(pf === 'win32' ? '""' : '')
+  }
+})

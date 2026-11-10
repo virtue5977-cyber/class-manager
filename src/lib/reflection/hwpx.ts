@@ -1,9 +1,10 @@
+import { escapeXml } from '../hwpx/xml'
 import JSZip from 'jszip'
 import { bodyOpts, fitLine, MODES, titleOpts, type PaperMode } from './fit'
 import { REFLECTION_HWPX_B64 } from './template'
 
 const b64ToU8 = (b: string) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0))
-const xesc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const xesc = (s: string) => escapeXml(s)
 
 export interface ReflectionDoc {
   date: string
