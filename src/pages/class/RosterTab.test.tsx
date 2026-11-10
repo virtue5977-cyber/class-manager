@@ -70,3 +70,15 @@ test('양식 고치기: 칸 추가·숨기기·순서, 상세가 따라가고 �
     expect(s.phone).toBe('010-1111')
   })
 })
+
+test('양식 고치기: 기본 칸과 겹치는 이름은 더할 수 없다', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByRole('form', { name: '학생 정보' })
+  await user.click(screen.getByText('가져오기·양식 ▾'))
+  await user.click(screen.getByRole('button', { name: '양식 고치기' }))
+  const ed = screen.getByRole('region', { name: '명단 양식 고치기' })
+  await user.type(within(ed).getByLabelText('새 칸 이름'), '연락처')
+  expect(within(ed).getByRole('button', { name: '칸 추가' })).toBeDisabled()
+  expect(within(ed).getByText(/기본 칸\(전화번호\)/)).toBeInTheDocument()
+})

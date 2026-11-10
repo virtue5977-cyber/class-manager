@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDb } from '../../app/context'
 import type { RosterField } from '../../lib/db/types'
-import { addField, DEFAULT_FIELDS, moveField, removeField, renameField, saveFields } from '../../lib/roster/fields'
+import { addField, DEFAULT_FIELDS, fieldLabelProblem, moveField, removeField, renameField, saveFields } from '../../lib/roster/fields'
 
 /** 명단 양식 고치기: 칸 보이기·순서·이름(추가 칸)·추가·지우기. 번호·이름은 고정. 숨겨도 학생 값은 남는다. */
 export default function RosterFieldsEditor({ fields, onClose }: { fields: RosterField[]; onClose: () => void }) {
@@ -9,6 +9,9 @@ export default function RosterFieldsEditor({ fields, onClose }: { fields: Roster
   const [list, setList] = useState(fields)
   const [label, setLabel] = useState('')
   const [msg, setMsg] = useState<string>()
+  const newProblem = label.trim() ? fieldLabelProblem(list, label) : undefined
+  /** 추가 칸 이름 문제(저장 막음) */
+  const bad = list.filter((f) => !f.builtin).map((f) => ({ key: f.key, problem: fieldLabelProblem(list, f.label, f.key) })).filter((x) => x.problem)
   return (
     <section className="card stack fields-editor" aria-label="명단 양식 고치기">
       <h3>명단 양식 고치기</h3>
@@ -19,7 +22,7 @@ export default function RosterFieldsEditor({ fields, onClose }: { fields: Roster
             <label className="check">
               <input type="checkbox" aria-label={`${f.label} 보이기`} checked={f.visible} onChange={(e) => setList(list.map((x) => (x.key === f.key ? { ...x, visible: e.target.checked } : x)))} />
             </label>
-            {f.builtin ? <span className="fields-name">{f.label}</span> : <input aria-label={`${f.label} 이름`} value={f.label} onChange={(e) => setList(renameField(list, f.key, e.target.value))} />}
+            {f.builtin ? <span className="fields-name">{f.label}</span> : <input aria-label={`${f.label} 이름`} aria-invalid={bad.some((x) => x.key === f.key) ? 'true' : undefined} value={f.label} onChange={(e) => setList(renameField(list, f.key, e.target.value))} />}
             {!f.builtin && <span className="tag">추가 칸</span>}
             <span className="spacer" />
             <button type="button" className="link" aria-label={`${f.label} 위로`} disabled={i === 0} onClick={() => setList(moveField(list, f.key, -1))}>↑</button>
@@ -34,15 +37,17 @@ export default function RosterFieldsEditor({ fields, onClose }: { fields: Roster
       </ul>
       <div className="row">
         <input aria-label="새 칸 이름" placeholder="예: 방과후, 알레르기, 비상연락처" value={label} onChange={(e) => setLabel(e.target.value)} />
-        <button type="button" disabled={!label.trim()} onClick={() => { setList(addField(list, label)); setLabel('') }}>
+        <button type="button" disabled={!label.trim() || !!newProblem} onClick={() => { setList(addField(list, label)); setLabel('') }}>
           칸 추가
         </button>
       </div>
+      {(newProblem || bad[0]) && <p className="error" role="alert">{newProblem ?? bad[0].problem}</p>}
       {msg && <p className="error" role="alert">{msg}</p>}
       <div className="row">
         <button
           type="button"
           className="primary"
+          disabled={bad.length > 0}
           onClick={async () => {
             try {
               await saveFields(db, list)

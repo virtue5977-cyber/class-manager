@@ -4,6 +4,7 @@ import { buildSampleAbsenceHwpx } from '../../lib/hwpx/absence/build'
 import { markTemplate, matchByAi, matchByRules, SLOT_FIELDS, type FormCell, type Slot } from '../../lib/hwpx/absence/scan'
 import { installTemplate } from '../../lib/hwpx/absence/template'
 import { getSettings } from '../../lib/settings'
+import { allStudentNames } from '../../lib/roster/roster'
 
 const where = (c: FormCell) => `${c.row + 1}행 ${c.col + 1}열`
 
@@ -87,7 +88,7 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
         {aiOn && (
           <button type="button" disabled={busy} onClick={() => run(async () => {
             const have = slots()
-            const more = await matchByAi(cells, have, ai)
+            const more = await matchByAi(cells, have, ai, await allStudentNames(db))
             setPick((p) => ({ ...p, ...Object.fromEntries(more.map((s) => [s.field, s.target])) }))
             setMsg(more.length ? undefined : 'AI도 더 찾지 못했습니다.')
           })}>

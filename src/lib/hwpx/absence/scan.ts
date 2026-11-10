@@ -2,6 +2,7 @@
 import JSZip from 'jszip'
 import { extractJson, type AiCaller } from '../../ai/client'
 import { escapeXml } from '../xml'
+import { maskText } from '../../ai/mask'
 
 export interface FormCell {
   /** 본문에 나오는 순서 */
@@ -113,10 +114,11 @@ export function matchByRules(cells: FormCell[]): Slot[] {
 }
 
 /** 규칙으로 못 찾은 자리만 AI에 묻는다. 보내는 것은 양식 칸의 글뿐(학생 자료 없음). */
-export async function matchByAi(cells: FormCell[], have: Slot[], ai: AiCaller): Promise<Slot[]> {
+/** names: 가릴 학생 이름(빈 양식이 아니라 채워진 양식을 올렸을 때를 대비) */
+export async function matchByAi(cells: FormCell[], have: Slot[], ai: AiCaller, names: string[] = []): Promise<Slot[]> {
   const missing = SLOT_FIELDS.filter((f) => !have.some((s) => s.field === f.field))
   if (!missing.length) return []
-  const labels = cells.filter((c) => c.text).map((c) => ({ id: c.id, table: c.table, row: c.row, col: c.col, text: c.text.slice(0, 40) }))
+  const labels = cells.filter((c) => c.text).map((c) => ({ id: c.id, table: c.table, row: c.row, col: c.col, text: maskText(c.text.slice(0, 40), names).text }))
   const raw = await ai({
     system:
       '학교 결석신고서 양식의 표 칸 글 목록을 보고, 각 자리(field)의 이름표가 되는 칸 id를 고른다. 이름표 칸의 오른쪽이나 아래 빈 칸에 값이 들어간다. 맞는 칸이 없으면 그 자리는 빼고, 추측하지 않는다.\n출력은 JSON {"pairs":[{"field":"자리","label":칸id}]} 만.',

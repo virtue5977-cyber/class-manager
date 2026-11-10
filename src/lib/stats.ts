@@ -77,9 +77,9 @@ export function statsTable(students: StudentRec[], stats: Map<string, StudentSta
 }
 
 /** 그 학생·종류의 기간 안 첫 날짜(통계 숫자를 누르면 출결 화면 그날로). */
-export function firstAbsenceDate(atts: AttendanceRec[], studentId: string, kind: AttendanceKind, range: { from?: string; to?: string }): string | undefined {
+export function firstAbsenceDate(atts: AttendanceRec[], studentId: string, kind: AttendanceKind, range: { from?: string; to?: string }, category?: AttendanceCategory): string | undefined {
   return atts
-    .filter((a) => !a.deleted && a.student_id === studentId && a.kind === kind && (!range.from || a.date >= range.from) && (!range.to || a.date <= range.to))
+    .filter((a) => !a.deleted && a.student_id === studentId && a.kind === kind && (!category || a.category === category) && (!range.from || a.date >= range.from) && (!range.to || a.date <= range.to))
     .map((a) => a.date)
     .sort()[0]
 }

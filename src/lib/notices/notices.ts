@@ -5,6 +5,8 @@ import { newRecord, save, scrubDelete } from '../db/records'
 type Patch = Partial<Pick<NoticeItemRec, 'text' | 'start_date' | 'end_date' | 'done' | 'pinned' | 'order'>>
 
 function checkRange(start: string, end: string) {
+  const ok = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d)
+  if (!ok(start) || !ok(end)) throw new Error('날짜를 고르세요.')
   if (end < start) throw new Error('끝 날짜가 시작 날짜보다 앞입니다.')
 }
 

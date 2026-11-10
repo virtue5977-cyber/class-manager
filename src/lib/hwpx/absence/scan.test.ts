@@ -98,3 +98,12 @@ test('그림·누름틀만 있는 칸은 빈 칸이 아니다(지우지 않음)'
   expect(cells[1].filled).toBe(true)
   expect(matchByRules(cells)).toEqual([])
 })
+
+test('matchByAi: 채워진 양식이라 칸에 학생 이름이 있으면 가려서 보낸다', async () => {
+  const bytes = await buildTableHwpx({ title: '결석계', header: ['성 명', '홍길동', '비고', ''], rows: [['사 유', '', '작성일', '']] })
+  const cells = scanCells(await section(bytes))
+  const sent: string[] = []
+  await matchByAi(cells, [], (async (r: unknown) => (sent.push(JSON.stringify(r)), '{"pairs":[]}')) as never, ['홍길동'])
+  expect(sent[0]).not.toContain('홍길동')
+  expect(sent[0]).toContain('성 명')
+})

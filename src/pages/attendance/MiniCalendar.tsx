@@ -14,7 +14,9 @@ export default function MiniCalendar({ date, today, classId, onPick }: { date: s
   const cells = monthCells(month, false)
   const all = monthCells(month, true)
   const data = useLive<Record<string, DayData>>(() => loadMonthData(db, classId, all[0], all[all.length - 1]), [db, classId, month], {})
-  const sel = data[date] ?? emptyDay()
+  // 아래 목록은 보는 달과 상관없이 고른 날(date)
+  const day = useLive<Record<string, DayData>>(() => loadMonthData(db, classId, date, date), [db, classId, date], {})
+  const sel = day[date] ?? emptyDay()
   const items = [
     ...sel.events.map((e) => ({ k: 's' + e.id, time: '', title: e.title, cls: 'tag-school' })),
     ...sel.google.map((e) => ({ k: 'g' + e.id, time: e.time, title: e.title, cls: 'tag-google' })),

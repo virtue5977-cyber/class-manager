@@ -228,7 +228,7 @@ function runClaude(args, input, timeoutMs) {
     child.on('close', (code) => {
       clearTimeout(timer)
       if (code === 0) resolve(out)
-      else reject(new Error(/login|auth|log in/i.test(err + out) ? 'Claude Code에 로그인되어 있지 않습니다. 명령 창에서 claude 를 한 번 실행해 로그인하세요.' : 'Claude Code 실행 중 오류가 났습니다. Pro 사용 한도를 확인하세요.'))
+      else reject(new Error(require('./agy.cjs').claudeErrorText(err + out)))
     })
     if (input !== null) child.stdin.end(input, 'utf8')
     else child.stdin.end()

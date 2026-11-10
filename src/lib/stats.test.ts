@@ -61,3 +61,10 @@ test('firstAbsenceDate: 기간 안 그 학생·종류의 첫 날짜', async () =
   expect(firstAbsenceDate(list, 'a', '결석', { from: '2026-11-01' })).toBe('2026-11-06')
   expect(firstAbsenceDate(list, 'b', '결석', {})).toBeUndefined()
 })
+
+test('firstAbsenceDate: 구분을 주면 그 구분만', async () => {
+  const { firstAbsenceDate } = await import('./stats')
+  const list = [att('a', '2026-11-09', '결석', '질병'), att('a', '2026-11-06', '결석', '미인정')]
+  expect(firstAbsenceDate(list, 'a', '결석', {}, '질병')).toBe('2026-11-09')
+  expect(firstAbsenceDate(list, 'a', '결석', {}, '미인정')).toBe('2026-11-06')
+})

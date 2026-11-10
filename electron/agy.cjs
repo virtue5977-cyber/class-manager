@@ -75,4 +75,11 @@ function claudeAskArgs(platform) {
   return ['-p', '--output-format', 'json', '--max-turns', '1', '--model', 'haiku', '--no-session-persistence', '--strict-mcp-config', '--tools', platform === 'win32' ? '""' : '']
 }
 
-module.exports = { claudeAskArgs, agyArgs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, PROBE_PROMPT, MAX_PROMPT, LOGIN_MSG }
+/** Claude Code가 실패했을 때 보여 줄 말 */
+function claudeErrorText(text) {
+  if (/unknown option|unrecognized option|unknown argument/i.test(text)) return 'Claude Code가 오래된 판입니다. 명령 창에서 claude update 를 실행해 새 판으로 올리세요.'
+  if (/login|auth|log in/i.test(text)) return 'Claude Code에 로그인되어 있지 않습니다. 명령 창에서 claude 를 한 번 실행해 로그인하세요.'
+  return 'Claude Code 실행 중 오류가 났습니다. Pro 사용 한도를 확인하세요.'
+}
+
+module.exports = { claudeErrorText, claudeAskArgs, agyArgs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, PROBE_PROMPT, MAX_PROMPT, LOGIN_MSG }
