@@ -62,7 +62,7 @@ export default function TodaySummary({ today }: { today: string }) {
   )
 }
 
-function TodayMeal({ today }: { today: string }) {
+export function TodayMeal({ today, panel }: { today: string; panel?: boolean }) {
   const db = useDb()
   const fetch = useNetFetch()
   const [meals, setMeals] = useState<Meal[] | null>(null)
@@ -87,7 +87,7 @@ function TodayMeal({ today }: { today: string }) {
   }, [load])
   const todays = (meals ?? []).filter((m) => m.date === today)
   return (
-    <div className="card wide" aria-label="오늘 급식">
+    <section className={panel ? 'panel-card meal-panel' : 'card wide'} aria-label="오늘 급식">
       <div className="row between">
         <h3>오늘 급식</h3>
         <button type="button" className="link" onClick={() => load(true)}>
@@ -110,7 +110,7 @@ function TodayMeal({ today }: { today: string }) {
           {m.calories && <small className="muted">{m.calories}</small>}
         </div>
       ))}
-    </div>
+    </section>
   )
 }
 

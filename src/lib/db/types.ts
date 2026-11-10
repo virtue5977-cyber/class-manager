@@ -260,7 +260,7 @@ export interface NoticeItemRec extends BaseRecord {
   order: number
 }
 
-export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder'
+export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder' | 'roster'
 export interface NoteBlock {
   id: string
   type: NoteBlockType
@@ -270,6 +270,8 @@ export interface NoteBlock {
   path?: string
   /** 개요 깊이 0~4 */
   indent?: number
+  /** 학생 체크 표(roster): 만든 때의 학생(번호 이름)과 체크. text는 표 제목 */
+  rows?: { sid: string; label: string; checked: boolean }[]
 }
 export interface NoteRec extends BaseRecord {
   title: string
@@ -326,6 +328,9 @@ export interface ReflectionRec extends BaseRecord {
 export interface ReflectionPhraseRec extends BaseRecord {
   text: string
   starred_at: string
+  /** 좋은 글(16줄 전체)이면 이름과 줄. 없으면 예전 '좋은 문장' 한 줄 */
+  title?: string
+  lines?: string[]
 }
 
 /** 명단 양식 한 칸. builtin이면 key는 학생 글 칸 이름, 아니면 x_… (값은 StudentRec.extra) */

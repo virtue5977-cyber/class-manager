@@ -1,10 +1,10 @@
 import type { AppDB } from '../db/schema'
 import type { ReflectionPhraseRec, ReflectionRec, BaseRecord } from '../db/types'
-import { newRecord, scrubDelete, softDelete } from '../db/records'
+import { newRecord, save, scrubDelete, softDelete } from '../db/records'
 
 /** 반성문 양식 기본 16문장(보내 주신 생성기 그대로) */
 export const DEFAULT_LINES: string[] = [
- "감정을 통제하지 못하고 타인의 기분을 상하게 하는 것은 결코 자랑거리가 될 수 없습니다. 이는 자신의 미숙함을 드러내는 것입니다.",
+ "감정을 통제하지 못하고 타인의 기분을 상하게 하는 것은 결코 자랑거리가 될 수 없습니다.",
  "순간의 기분에 휩쓸려 섣불리 행동하는 것은 스스로의 인격을 깎아내리고 깊은 후회를 남길 수 있습니다.",
  "우리는 각자 다르며, 나의 좋고 싫음의 기준을 타인에게 억지로 강요하는 것은 폭력이 될 수 있습니다.",
  "무심코 내뱉은 거친 말과 무례한 태도는 타인과의 소통을 단절시키고 마음에 깊은 흉터를 남길 수 있습니다.",
@@ -71,7 +71,45 @@ export async function starPhrase(db: AppDB, text: string): Promise<void> {
 
 export const unstarPhrase = (db: AppDB, id: string) => softDelete(db.reflection_phrases, id)
 
-/** 모음 읽기만(넣지 않음) — liveQuery 안에서 쓴다. 처음 넣기는 listPhrases. */
+/** 모음 읽기만(넣지 않음) — liveQuery 안에서 쓴다. 처음 넣기는 listPhrases. 좋은 글(16줄)은 빼고 한 줄 문장만. */
 export async function readPhrases(db: AppDB): Promise<ReflectionPhraseRec[]> {
-  return (await db.reflection_phrases.toArray()).filter((p) => !p.deleted).sort((a, b) => b.starred_at.localeCompare(a.starred_at))
+  return (await db.reflection_phrases.toArray()).filter((p) => !p.deleted && !p.lines).sort((a, b) => b.starred_at.localeCompare(a.starred_at))
+}
+
+/** 좋은 글 모음(16줄 전체 + 이름): 읽기만 — liveQuery 안에서. 최근 저장 순. */
+export async function readGoodTexts(db: AppDB): Promise<ReflectionPhraseRec[]> {
+  return (await db.reflection_phrases.toArray()).filter((p) => !p.deleted && Array.isArray(p.lines)).sort((a, b) => b.starred_at.localeCompare(a.starred_at))
+}
+
+const GOOD_DEFAULT_ID = 'goodtext-default-0'
+/** 처음이면 기본 글 하나(정한 id라 한 번만) 넣고 읽는다. */
+export async function listGoodTexts(db: AppDB): Promise<ReflectionPhraseRec[]> {
+  if (!(await db.reflection_phrases.get(GOOD_DEFAULT_ID))) {
+    await db.reflection_phrases.add({ ...newRecord({ text: DEFAULT_LINES[0], title: '기본 반성문(1)', lines: [...DEFAULT_LINES], starred_at: new Date(0).toISOString() }), id: GOOD_DEFAULT_ID } as ReflectionPhraseRec)
+  }
+  return readGoodTexts(db)
+}
+
+export async function saveGoodText(db: AppDB, title: string, lines: string[]): Promise<ReflectionPhraseRec> {
+  const t = title.trim() || '반성문'
+  const ls = Array.from({ length: 16 }, (_, i) => (lines[i] ?? '').trim())
+  if (!ls.some(Boolean)) throw new Error('저장할 글이 없습니다.')
+  const rec = newRecord({ text: ls.find(Boolean)!, title: t, lines: ls, starred_at: new Date().toISOString() }) as ReflectionPhraseRec
+  await db.reflection_phrases.add(rec)
+  return rec
+}
+
+export async function renameGoodText(db: AppDB, id: string, title: string): Promise<void> {
+  const cur = await db.reflection_phrases.get(id)
+  if (!cur || cur.deleted || !title.trim()) return
+  await save(db.reflection_phrases, { ...cur, title: title.trim() })
+}
+
+export const deleteGoodText = (db: AppDB, id: string) => softDelete(db.reflection_phrases, id)
+
+/** '학교폭력' → '학교폭력 관련(n)', 같은 이름이 있으면 다음 번호 */
+export function nextGoodTitle(list: { title?: string }[], topic: string): string {
+  const base = `${topic.trim() || '반성문'} 관련`
+  const used = list.map((g) => g.title ?? '').filter((t) => t.startsWith(base)).map((t) => Number(/\((\d+)\)$/.exec(t)?.[1] ?? 0))
+  return `${base}(${(used.length ? Math.max(...used) : 0) + 1})`
 }

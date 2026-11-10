@@ -206,7 +206,7 @@ ol.steps li.done .step-no { background: var(--accent); color: #fff; }
 .cal-g { font-size: 12px; border-radius: 4px; padding: 0 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--c-purple-bg); color: var(--c-purple); }
 
 /* ===== 디자인 v2 덮어쓰기 ===== */
-.layout { grid-template-columns: 224px 1fr; }
+.layout { grid-template-columns: var(--side-w, 224px) 1fr; }
 .sidebar { background: var(--bg); border-right: 1px solid var(--line); padding: 16px 8px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: calc(100vh / var(--zoom, 1)); }
 .sidebar h1 { font-size: 15px; font-weight: 700; margin: 4px 8px 8px; letter-spacing: -.01em; }
 .nav { gap: 2px; }
@@ -400,7 +400,8 @@ a { color: var(--accent-soft-ink); }
 .dot-school { background: var(--c-blue); }
 .dot-google { background: var(--c-purple); }
 /* ===== 2차 정리: 전 화면 공통 ===== */
-.layout { background: linear-gradient(to right, var(--bg) 224px, var(--panel) 224px); }
+.layout { background: var(--panel); }
+.layout > .sidebar { background: var(--bg); }
 .card p, .card .notice { margin: 0; }
 .row { align-items: center; }
 .row:has(> label:not(.inline)) > button { align-self: flex-end; }
@@ -753,3 +754,60 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .audio-drop progress { flex: 1; }
 details.menu .menu-list.col-pick { min-width: 250px; right: 0; left: auto; }
 .seg[role='radiogroup'] { align-self: flex-start; }
+/* 체크박스·라디오: 글 입력 칸 꾸밈(안쪽 여백·최소 높이)을 받지 않게 → 글과 높이가 맞는다 */
+input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0; flex: none; accent-color: var(--accent); vertical-align: middle; }
+.todo-list li { align-items: center; gap: 8px; }
+.todo-list li .todo-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 전달사항 줄: 긴 글은 줄바꿈, 단추는 오른쪽 끝에 두고 마우스를 올리거나 초점이 있을 때만 보임 */
+.notice-row { align-items: flex-start; flex-wrap: nowrap; }
+.notice-row > input[type="checkbox"] { margin-top: 9px; }
+.notice-row .notice-text { resize: none; overflow: hidden; min-height: 32px; line-height: 1.45; padding: 6px 8px; }
+.notice-row .notice-period { margin-top: 6px; white-space: nowrap; }
+.notice-row .row-tools { display: inline-flex; gap: 2px; margin-left: auto; margin-top: 4px; opacity: 0; transition: opacity .12s; }
+.notice-row:hover .row-tools, .notice-row:focus-within .row-tools, .notice-row.pinned .row-tools .on { opacity: 1; }
+.notice-row.pinned:not(:hover):not(:focus-within) .row-tools { opacity: 1; }
+.notice-row.pinned:not(:hover):not(:focus-within) .row-tools > :not(.on) { opacity: 0; }
+@media (hover: none) { .notice-row .row-tools { opacity: 1; } }
+.nb-check input[type='checkbox'] { margin-top: 10px; }
+/* 좁은 창(노트북 창 줄임): 사이드바·여백을 줄이고, 홈 오른쪽 칸은 아래로 */
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: min(var(--side-w, 224px), 180px) 1fr; }
+  .content { padding: 16px 20px 96px; }
+  .home-body { grid-template-columns: 1fr !important; }
+  .home-body .resize-v { display: none; }
+  .home-side { padding-left: 0; margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-items: start; }
+  .home-main { padding-right: 0; }
+}
+.banner { flex-wrap: wrap; }
+.banner > a, .banner > button { white-space: nowrap; }
+/* 홈: 오른쪽 칸 첫 상자를 대화 상자 윗줄에 맞춘다(탭 줄 높이만큼 내림) */
+.home-tabs { min-height: 36px; box-sizing: border-box; }
+@media (min-width: 1101px) { .home-body:has(.home-tabs) .home-side { padding-top: 44px; } }
+.layout-prefs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.meal-panel ul { margin: 4px 0; }
+.meal-panel h3 { margin: 0; }
+/* 출결 오른쪽 달력: 칸 너비에 꼭 맞게 */
+.mini-cal { align-items: stretch; }
+.mini-cal > * { align-self: stretch; }
+.mini-grid { width: 100%; }
+.mini-day { min-height: 44px; width: 100%; }
+.mini-cal .stepper { justify-content: space-between; width: 100%; }
+/* 노트: 학생 체크 표 */
+.nb-roster { width: 100%; }
+.nb-roster-table { width: auto; min-width: 280px; }
+.nb-roster-table caption { text-align: left; padding-bottom: 6px; caption-side: top; }
+.nb-roster-head { gap: 8px; align-items: center; }
+.nb-roster-head input:not([type='checkbox']) { min-width: 200px; font-weight: 600; }
+.nb-roster-table td { padding: 4px 10px; }
+.nb-roster-table td:last-child { text-align: center; width: 48px; }
+.nb-roster-table tr.on td:first-child { color: var(--sub); }
+.good-list li { border-bottom: 1px solid var(--line); padding: 6px 0; gap: 4px; }
+.good-list input { font-weight: 600; }
+.good-first { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media print { .reflection-side, .paper-tools, .roster-list { display: none !important; } }
+/* 반성문 좋은 글 모음: 칸 안에 맞게 */
+.reflection-side section, .reflection-side .good-list, .reflection-side .good-list li { min-width: 0; max-width: 100%; }
+.reflection-side input:not([type='checkbox']):not([type='radio']), .reflection-side textarea { width: 100%; box-sizing: border-box; min-width: 0; }
+/* 달력 일정 추가: 날짜 두 칸 한 줄 */
+.cal-add .row { flex-wrap: wrap; gap: 6px; align-items: center; }
+.cal-add input[type='date'] { width: 140px; min-width: 0; }

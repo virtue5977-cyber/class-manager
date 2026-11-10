@@ -79,7 +79,12 @@ test('학생 이름과 같은 제목의 노트가 있어도 @이름은 학생', 
 test('출결은 지난 요일로, 미리보기에 다른 해면 연도', () => {
   const r = parseCommand('/출결 @3 월요일 결석 질병', { ...ctx, today: '2026-11-11' }, names, subs)
   expect(r.date).toBe('2026-11-09')
-  const y = parseCommand('/출결 @3 12/22 결석 질병', { ...ctx, today: '2027-01-05' }, names, subs)
-  expect(y.date).toBe('2026-12-22')
-  expect(describeParsed(y, () => '출결')).toContain('2026년 12/22')
+  // 연도를 안 쓰면 올해, 다른 해는 연도를 써야 하고 미리보기에 연도가 보인다
+  const y = parseCommand('/출결 @3 2025-12-22 결석 질병', { ...ctx, today: '2026-11-11' }, names, subs)
+  expect(y.date).toBe('2025-12-22')
+  expect(describeParsed(y, () => '출결')).toContain('2025년 12/22')
+  const e = parseCommand('/일정 달력 1111 회의', { ...ctx, today: '2026-11-10' }, names, subs)
+  expect([e.date, e.rest]).toEqual(['2026-11-11', '회의'])
+  const f = parseCommand('/일정 달력 11월12일 협의회', { ...ctx, today: '2026-11-10' }, names, subs)
+  expect([f.date, f.rest]).toEqual(['2026-11-12', '협의회'])
 })

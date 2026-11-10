@@ -24,7 +24,7 @@ export const COMMAND_META: CommandMeta[] = [
   { id: 'event', names: ['일정'], group: '일정', mode: 'rule', help: '/일정 달력 내일 15:30 #업무 협의회 · /일정 할일 …', subs: ['달력', '할일'], tags: ['개인', '업무'] },
   { id: 'todo', names: ['할일'], group: '일정', mode: 'rule', help: '/할일 내용 @노트 — 오늘 할 일(마감일은 날짜 말로)' },
   { id: 'search', names: ['찾기'], group: '조회', mode: 'rule', help: '/찾기 낱말 — 출결·상담·일정·노트에서' },
-  { id: 'notice', names: ['전달'], group: '정리', mode: 'hybrid', help: '/전달 학생 내용 — 전달사항 · /전달 학부모|교사 내용 — 문자 초안(AI)', subs: ['학생', '학부모', '교사'] },
+  { id: 'notice', names: ['전달'], group: '정리', mode: 'hybrid', help: '/전달 내용 — 전달사항 그대로 · /전달 학생 내용 — 학생에게 맞게 고쳐서(AI) · /전달 학부모|교사 내용 — 문자 초안(AI)', subs: ['학생', '학부모', '교사'] },
   { id: 'note', names: ['노트'], group: '정리', mode: 'rule', help: '/노트 제목 — 새 노트' },
   { id: 'counselDraft', names: ['상담정리'], group: '정리', mode: 'ai', help: '/상담정리 @학생 — 미정리 기록을 누가기록 초안으로(AI)' },
   { id: 'report', names: ['신고서'], group: '기록', mode: 'rule', help: '/신고서 @학생 — 최근 결석신고서 한글 파일' },

@@ -11,11 +11,11 @@ test('앱 이름 Watson이 보인다', async () => {
   expect(await screen.findByText('Watson')).toBeInTheDocument()
 })
 
-test('메뉴는 홈·달력·출결·상담일지·노트함·학급 순서이고 설정은 맨 아래 따로', async () => {
+test('메뉴는 홈·달력·학급·출결·상담일지·노트함 순서(사용자 요청 11/11)이고 설정은 맨 아래 따로', async () => {
   window.location.hash = ''
   setup()
   const nav = await screen.findByRole('navigation', { name: '메뉴' })
-  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '달력', '출결', '상담일지', '노트함', '학급'])
+  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '달력', '학급', '출결', '상담일지', '노트함'])
   expect(within(screen.getByRole('navigation', { name: '설정' })).getByRole('link', { name: '설정' })).toBeInTheDocument()
 })
 

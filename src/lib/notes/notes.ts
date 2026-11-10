@@ -84,4 +84,4 @@ export async function readFile(db: AppDB, fileId: string): Promise<{ name: strin
 }
 
 /** 노트 본문 글(검색·내보내기용) */
-export const noteText = (n: NoteRec) => [n.title, ...n.blocks.map((b) => b.text ?? '')].join('\n')
+export const noteText = (n: NoteRec) => [n.title, ...n.blocks.map((b) => [b.text ?? '', ...(b.rows ?? []).map((r) => r.label)].join(' '))].join('\n')

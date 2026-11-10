@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
 import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
-import { filterSlash, indentBlock, mergeUp, moveBlock, outlineMarks, setType, splitBlock } from '../../lib/notes/blocks'
+import { filterSlash, indentBlock, mergeUp, moveBlock, NOTE_SHORTCUTS, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
+import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
 
@@ -126,6 +127,24 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     }
   }
 
+  /** 그 블록 자리에 지금 학급 학생 체크 표를 넣고, 아래에 빈 글 블록 */
+  async function insertRoster(b: NoteBlock) {
+    const cid = await getCurrentClassId(db)
+    const studs = cid ? await listStudents(db, cid, { includeInactive: false }) : []
+    if (!studs.length) {
+      update(b.id, { text: '' })
+      return setMsg('학급 명단이 없습니다. 학급 > 명단에서 학생을 먼저 넣으세요.')
+    }
+    const t = rosterBlock(studs)
+    const nb: NoteBlock = { id: newBlockId(), type: 'p', text: '' }
+    setBlocks((bs) => {
+      const i = bs.findIndex((x) => x.id === b.id)
+      const keep = (b.text ?? '').replace(/^[@/]명렬표\s*$/, '').trim() ? [{ ...b }] : []
+      return [...bs.slice(0, i), ...keep, t, nb, ...bs.slice(i + 1)]
+    })
+    focusNext.current = { id: nb.id, caret: 0 }
+  }
+
   async function chooseSlash(b: NoteBlock, type: NoteBlockType) {
     setSlashSel(0)
     if (type === 'file') {
@@ -152,6 +171,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       if (r) setBlocks((bs) => bs.map((x) => (x.id === b.id ? { id: x.id, type: 'folder', path: r.path } : x)))
       return
     }
+    if (type === 'roster') return insertRoster(b)
     if (type === 'divider') {
       setBlocks((bs) => {
         const i = bs.findIndex((x) => x.id === b.id)
@@ -186,6 +206,23 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       }
     }
     const el = e.currentTarget
+    // 노트 안 단축키(이 칸에 초점이 있을 때만): Ctrl+Alt+1/2 제목, 7 번호, 8 글머리, 9 체크, 0 문단, T 학생 체크 표
+    if (e.ctrlKey && e.altKey && !e.shiftKey) {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : /^Digit(\d)$/.exec(e.code)?.[1] ?? (e.code === 'KeyT' ? 't' : '')
+      const type = NOTE_SHORTCUTS[k]
+      if (type) {
+        e.preventDefault()
+        if (type === 'roster') return void insertRoster(b)
+        const caret = el.selectionStart
+        setBlocks((bs) => setType(bs, b.id, type))
+        focusNext.current = { id: b.id, caret }
+        return
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey && /^[@/]명렬표$/.test((b.text ?? '').trim())) {
+      e.preventDefault()
+      return void insertRoster(b)
+    }
     if (e.key === 'Tab' && b.type !== 'h1' && b.type !== 'h2') {
       e.preventDefault()
       setBlocks((bs) => indentBlock(bs, b.id, e.shiftKey ? -1 : 1))
@@ -286,7 +323,9 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                   <button type="button" role="menuitem" onClick={() => blockAction(b, 'delete')}>지우기</button>
                 </div>
               )}
-              {b.type === 'divider' ? (
+              {b.type === 'roster' ? (
+                <RosterTable b={b} onChange={(patch) => update(b.id, patch)} />
+              ) : b.type === 'divider' ? (
                 <hr />
               ) : b.type === 'file' ? (
                 <button type="button" className="nb-file" onClick={async () => { const f = await readFile(db, b.file_id!); fs.downloadFile(f.name, f.bytes) }}>
@@ -347,5 +386,36 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       </div>
       <p className="muted nb-hint">파일을 끌어다 놓으면 붙습니다(50MB까지).</p>
     </section>
+  )
+}
+
+/** 학생 체크 표 블록 */
+function RosterTable({ b, onChange }: { b: NoteBlock; onChange: (p: Partial<NoteBlock>) => void }) {
+  const rows = b.rows ?? []
+  const done = rows.filter((r) => r.checked).length
+  const set = (fn: (r: NonNullable<NoteBlock['rows']>[number]) => boolean) => onChange({ rows: rows.map((r) => ({ ...r, checked: fn(r) })) })
+  return (
+    <div className="nb-roster">
+      <table className="grid nb-roster-table" aria-label="학생 체크 표">
+        <caption>
+          <div className="row nb-roster-head">
+            <input aria-label="표 제목" placeholder="표 제목(예: 동의서 제출)" value={b.text ?? ''} onChange={(e) => onChange({ text: e.target.value })} />
+            <span className="muted">{`${done} / ${rows.length}`}</span>
+            <button type="button" className="link" onClick={() => set(() => true)}>모두 체크</button>
+            <button type="button" className="link" onClick={() => set(() => false)}>모두 해제</button>
+          </div>
+        </caption>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.sid} className={r.checked ? 'on' : undefined}>
+              <td className="pii">{r.label}</td>
+              <td>
+                <input type="checkbox" aria-label={`${r.label} 체크`} checked={r.checked} onChange={(e) => set((x) => (x.sid === r.sid ? e.target.checked : x.checked))} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

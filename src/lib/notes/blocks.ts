@@ -14,6 +14,7 @@ export const SLASH_ITEMS: { type: NoteBlockType; label: string; keywords: string
   { type: 'divider', label: '구분선', keywords: '선 줄', icon: '—', hint: '가로줄' },
   { type: 'file', label: '파일', keywords: '첨부 붙이기', icon: '📎', hint: '파일 붙이기(50MB까지)' },
   { type: 'folder', label: '폴더', keywords: '연결 탐색기', icon: '📁', hint: '노트북 폴더 연결' },
+  { type: 'roster', label: '명렬표 체크', keywords: '명렬표 학생 체크 표 제출 확인', icon: '☑', hint: '학생 이름 표 + 체크(@명렬표)' },
 ]
 
 export function filterSlash(q: string) {
@@ -87,3 +88,11 @@ export function outlineMarks(blocks: NoteBlock[]): string[] {
     return b.type === 'bullet' ? BULLETS[lv] : ''
   })
 }
+
+/** 학생 체크 표 블록(번호 이름 · 체크). 학생은 만든 때의 명단으로 고정. */
+export function rosterBlock(students: { id: string; number: number; name: string }[], title = ''): NoteBlock {
+  return { id: newBlockId(), type: 'roster', text: title, rows: students.map((s) => ({ sid: s.id, label: `${s.number}번 ${s.name}`, checked: false })) }
+}
+
+/** 노트 안 단축키(Ctrl+Alt+…): 블록 종류 */
+export const NOTE_SHORTCUTS: Record<string, NoteBlockType> = { '1': 'h1', '2': 'h2', '0': 'p', '7': 'number', '8': 'bullet', '9': 'check', t: 'roster' }
