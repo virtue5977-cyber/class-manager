@@ -158,12 +158,12 @@ export default function AiSettings() {
         <p className="notice" role="status">
           {notice}
         </p>
-      <PromptEditor kind="briefing" />
-      <PromptEditor kind="command" />
-      <PromptEditor kind="message" />
+      )}
       <h4>3. 고급: 지시문 고치기</h4>
       <PromptEditor kind="nuga" />
       <PromptEditor kind="briefing" />
+      <PromptEditor kind="command" />
+      <PromptEditor kind="message" />
       <details>
         <summary>누가기록 쓰기 도움말</summary>
         <ul>

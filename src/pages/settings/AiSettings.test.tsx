@@ -75,7 +75,7 @@ test('Antigravity 연결 확인: 설치는 됐지만 로그인이 안 됐으면 
       </AppProviders>,
     )
     await user.click(await screen.findByRole('radio', { name: 'Antigravity(구글 로그인)' }))
-    await user.click(screen.getByRole('button', { name: 'Antigravity 연결 확인' }))
+    await user.click(await screen.findByRole('button', { name: 'Antigravity 연결 확인' }))
     const st = await screen.findByRole('status')
     await waitFor(() => expect(st).toHaveTextContent('로그인이 필요합니다'))
     expect(st).not.toHaveTextContent('연결됨')
