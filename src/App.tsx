@@ -1,10 +1,9 @@
 import { useMemo } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
-import Nav from './components/Nav'
+import Sidebar from './components/Sidebar'
 import BackupBanner from './components/BackupBanner'
 import PinGate from './components/PinGate'
-import HideNames from './components/HideNames'
 import UpdateBanner from './components/UpdateBanner'
 import GoogleAutoSync from './components/GoogleAutoSync'
 import SettingsPage from './pages/settings/SettingsPage'
@@ -15,7 +14,7 @@ import StatsPage from './pages/stats/StatsPage'
 import CounselingPage from './pages/counseling/CounselingPage'
 import HomePage from './pages/home/HomePage'
 import CalendarPage from './pages/calendar/CalendarPage'
-import { GlobalClassContext, SidebarClass } from './pages/common/useClasses'
+import { GlobalClassContext } from './pages/common/useClasses'
 import { createDb, type AppDB } from './lib/db/schema'
 import { createWebFsAdapter } from './lib/fs/web'
 import { createDesktopFsAdapter, type DesktopBackupApi } from './lib/fs/desktop'
@@ -35,14 +34,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <GlobalClassContext.Provider value={true}>
         <div className="layout">
-          <aside className="sidebar">
-            <h1>담임 업무</h1>
-            <SidebarClass />
-            <Nav />
-            <div className="side-bottom">
-              <HideNames />
-            </div>
-          </aside>
+          <Sidebar />
           <main className="content">
             <UpdateBanner />
             <GoogleAutoSync />

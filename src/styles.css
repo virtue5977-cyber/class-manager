@@ -463,3 +463,14 @@ button.pill.status-나이스 { background: var(--c-green-bg); color: var(--c-gre
 .page-head .tools { white-space: nowrap; }
 .page-head .tools label.inline { white-space: nowrap; }
 .todo-dot { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: var(--c-orange); margin-left: 6px; vertical-align: 2px; }
+/* 사이드바: Watson 머리·하위 메뉴·버전 */
+.brand { padding: 4px 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.brand-name { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.brand-sub { font-size: 12px; color: var(--sub); line-height: 1.4; }
+.brand-class { margin-top: 4px; font-size: 12px; min-height: 28px; padding: 2px 6px; background: var(--panel); }
+.subnav { display: flex; flex-direction: column; gap: 1px; margin: 0 0 4px; }
+.subnav a { padding: 4px 8px 4px 32px; font-size: 13px; color: var(--sub); border-radius: 6px; text-decoration: none; }
+.subnav a:hover { background: var(--hover); }
+.subnav a.active { color: var(--ink); font-weight: 600; background: var(--selected); }
+.nav a .badge { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--c-orange); background: var(--c-orange-bg); border-radius: 9999px; padding: 0 6px; }
+.side-bottom .version { font-size: 11px; color: var(--faint); padding: 0 8px; }
