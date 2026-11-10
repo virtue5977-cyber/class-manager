@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import { pickExport } from '../../test/exportMenu'
 import userEvent from '@testing-library/user-event'
 import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
@@ -40,8 +41,10 @@ test('자리: 누르고 칸 누르기로 배치·맞바꿈, 크기, 고정, hwpx
   await user.click(screen.getByRole('button', { name: '크기 적용' }))
   await waitFor(async () => expect((await listSeatingCharts(db, c.id))[0]).toMatchObject({ rows: 3 }))
   expect(seatAt((await listSeatingCharts(db, c.id))[0].seats, 0, 0)!.fixed).toBe(true)
-  await user.click(screen.getByRole('button', { name: 'hwpx로 내보내기' }))
+  await pickExport(user, '한글(hwpx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1학년_5반_자리배치표(11월).hwpx']))
+  await pickExport(user, '엑셀(xlsx)')
+  await waitFor(() => expect(fs.downloads.at(-1)!.name).toBe('1학년_5반_자리배치표(11월).xlsx'))
 })
 
 test('청소: 줄 추가, 구역 이름, 학생 넣기, 자동 분배, hwpx', async () => {
@@ -61,6 +64,6 @@ test('청소: 줄 추가, 구역 이름, 학생 넣기, 자동 분배, hwpx', as
     const col = columnsOf(ch)[1].id
     expect(rowsOf(ch).map((r) => studentsIn(r, col).length)).toEqual([1, 1])
   })
-  await user.click(screen.getByRole('button', { name: 'hwpx로 내보내기' }))
+  await pickExport(user, '한글(hwpx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1학년_5반_청소_구역.hwpx']))
 })

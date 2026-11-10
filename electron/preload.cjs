@@ -28,6 +28,13 @@ contextBridge.exposeInMainWorld('desktop', {
     status: () => ipcRenderer.invoke('ai:status'),
     ask: (req) => ipcRenderer.invoke('ai:ask', req),
   },
+  pdf: {
+    save: (name) => ipcRenderer.invoke('pdf:save', name),
+  },
+  agy: {
+    status: () => ipcRenderer.invoke('ai:agy:status'),
+    ask: (prompt) => ipcRenderer.invoke('ai:agy:ask', prompt),
+  },
   backup: {
     pick: () => ipcRenderer.invoke('backup:pick'),
     current: () => ipcRenderer.invoke('backup:current'),

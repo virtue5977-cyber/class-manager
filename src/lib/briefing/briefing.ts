@@ -4,7 +4,7 @@ import type { BriefingItem, BriefingRec, NoticeRec } from '../db/types'
 import { extractJson, type AiCaller } from '../ai/client'
 import { maskText, unmaskText } from '../ai/mask'
 import { fillInstruction, getPrompt } from '../ai/prompts'
-import { getSettings } from '../settings'
+import { effectiveMask, getSettings } from '../settings'
 
 export type Slot = BriefingRec['slot']
 export const SLOTS: Slot[] = ['조례', '종례']
@@ -40,7 +40,7 @@ export async function saveBriefingItems(db: AppDB, date: string, slot: Slot, ite
 export async function runBriefing(db: AppDB, ai: AiCaller, raw: string, date: string, rosterNames: string[]): Promise<{ 조례: number; 종례: number }> {
   if (!raw.trim()) throw new Error('정리할 글을 붙여넣으세요.')
   const settings = await getSettings(db)
-  const m = maskText(raw, settings.mask_names ? rosterNames : [])
+  const m = maskText(raw, effectiveMask(settings) ? rosterNames : [])
   const reply = extractJson<Partial<Record<Slot, string[]>>>(await ai(buildBriefingPrompt(await getPrompt(db, 'briefing'), m.text, date)))
   await db.notices.add(newRecord({ raw_text: raw, source_kind: 'paste', target_date: date }) as NoticeRec)
   const out = { 조례: 0, 종례: 0 }

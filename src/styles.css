@@ -79,9 +79,10 @@ table.roster-sheet td:first-child, table.roster-sheet th:first-child { width: 4e
 @media print {
   @page { size: A4 portrait; margin: 15mm; }
   body { background: #fff; color: #000; }
-  body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
-  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  /* 따로 인쇄 영역(.print-area)이 있는 화면만 그 부분만 찍는다. 없으면 화면 내용 그대로(틀·도구는 아래에서 뺌). */
+  body:has(.print-area) * { visibility: hidden; }
+  body:has(.print-area) .print-area, body:has(.print-area) .print-area * { visibility: visible; }
+  body:has(.print-area) .print-area { position: absolute; left: 0; top: 0; width: 100%; }
   table.grid th, table.grid td { border-color: #000; color: #000; background: #fff; }
 }
 table.roster-sheet th:nth-child(2), table.roster-sheet td:nth-child(2) { width: 18%; }
@@ -260,6 +261,20 @@ table.grid tbody tr:hover td { background: var(--row-hover); }
 .hide-names-btn { margin-top: 0; width: 100%; justify-content: flex-start; display: flex; gap: 8px; align-items: center; border-color: transparent; background: transparent; color: var(--sub); }
 .hide-names-btn.on { background: var(--c-blue-bg); color: var(--c-blue); }
 /* 출결: 학생 격자 */
+.roster-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; width: 100%; align-items: start; }
+.roster-list { position: sticky; top: 12px; gap: 8px; align-items: stretch; }
+.roster-list ul { max-height: calc(100vh / var(--zoom, 1) - 220px); overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 4px; }
+.roster-item { width: 100%; display: flex; gap: 4px; align-items: center; text-align: left; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; font-size: 14px; }
+.roster-item:hover { background: var(--row-hover); }
+.roster-item[aria-current="true"] { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+.roster-item.inactive { color: var(--sub); }
+.roster-tab { width: 100%; }
+.banner .banner-dismiss { margin-left: auto; color: var(--sub); font-size: 12px; }
+.roster-list input[type="search"] { width: 100%; min-width: 0; }
+.roster-detail .detail { margin: 0; }
+.grid-form label.check { grid-column: 1 / -1; }
+.grid-form input[type="checkbox"] { width: auto; }
+@media (max-width: 720px) { .roster-layout { grid-template-columns: 1fr; } .roster-list { position: static; } }
 .att-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; width: 100%; align-items: start; }
 .att-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh / var(--zoom, 1) - 32px); overflow: auto; }
 ul.student-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
@@ -463,3 +478,32 @@ button.pill.status-나이스 { background: var(--c-green-bg); color: var(--c-gre
 .page-head .tools { white-space: nowrap; }
 .page-head .tools label.inline { white-space: nowrap; }
 .todo-dot { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: var(--c-orange); margin-left: 6px; vertical-align: 2px; }
+/* 사이드바: Watson 머리·하위 메뉴·버전 */
+.brand { padding: 4px 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.brand-name { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.brand-sub { font-size: 12px; color: var(--sub); line-height: 1.4; }
+.brand-class { margin-top: 4px; font-size: 12px; min-height: 28px; padding: 2px 6px; background: var(--panel); }
+.subnav { display: flex; flex-direction: column; gap: 1px; margin: 0 0 4px; }
+.subnav a { padding: 4px 8px 4px 32px; font-size: 13px; color: var(--sub); border-radius: 6px; text-decoration: none; }
+.subnav a:hover { background: var(--hover); }
+.subnav a.active { color: var(--ink); font-weight: 600; background: var(--selected); }
+.nav a .badge { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--c-orange); background: var(--c-orange-bg); border-radius: 9999px; padding: 0 6px; }
+.side-bottom .version { font-size: 11px; color: var(--faint); padding: 0 8px; }
+.hide-names-bar { position: sticky; top: 0; z-index: 30; background: var(--c-purple-bg); color: var(--c-purple); border-radius: 8px; padding: 6px 12px; margin-bottom: 12px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+kbd { font: 600 12px/1.4 ui-monospace, Consolas, monospace; background: var(--c-gray-bg); border: 1px solid var(--line-input); border-radius: 4px; padding: 1px 6px; }
+@media print { .hide-names-bar { display: none; } }
+.export-menu { position: relative; display: inline-block; }
+.export-menu .menu-list { right: 0; left: auto; }
+div.menu .menu-list { position: absolute; z-index: 20; top: calc(100% + 4px); min-width: 160px; display: flex; flex-direction: column; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+div.menu .menu-list > button { border: 0; text-align: left; background: transparent; }
+div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible { background: var(--hover); }
+/* 인쇄·PDF: 화면 틀과 도구는 빼고 내용만 */
+@media print {
+  .sidebar, .page-head .tools, .export-menu, .banner, .w-button, .select-bar, .att-side .row { display: none !important; }
+  .layout { display: block; }
+  .content { padding: 0; max-width: none; }
+}
+.export-menu { position: relative; }
+.export-menu .export-error { position: absolute; right: 0; top: calc(100% + 4px); z-index: 21; white-space: nowrap; font-size: 12px; background: var(--panel); padding: 4px 8px; border-radius: 6px; }
+/* PDF에 화면 제목을 남긴다(자리배치처럼 따로 인쇄 제목이 있는 화면은 그것만). */
+@media print { body:not(:has(.print-title)) .page-head h2 { display: block !important; } }

@@ -1,4 +1,8 @@
-import MonthPicker from '../../components/MonthPicker'
+import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import PageHead from '../../components/PageHead'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
+import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { StudentRec } from '../../lib/db/types'
@@ -17,6 +21,7 @@ export default function StatsPage() {
   const { classes, classId, current, choose } = useClasses()
   /** '' = 학년도 전체, 아니면 YYYY-MM */
   const [month, setMonth] = useState('')
+  useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
   const [table, setTable] = useState<string[][]>([])
   const [message, setMessage] = useState<string>()
   const seq = useRef(0)
@@ -57,12 +62,7 @@ export default function StatsPage() {
 
   return (
     <section className="stack">
-      <div className="page-head">
-        <div>
-          <h2>통계</h2>
-          <span className="muted">결석은 수업일 일수(이어진 묶음 건수), 지각·조퇴·결과는 건수입니다.</span>
-        </div>
-        <div className="tools">
+      <PageHead title="통계" summary="결석은 수업일 일수(이어진 묶음 건수), 지각·조퇴·결과는 건수입니다.">
         {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
         <label className="inline">
           기간
@@ -74,14 +74,8 @@ export default function StatsPage() {
         {month && (
           <MonthPicker value={month} onChange={setMonth} />
         )}
-        <button type="button" className="primary" onClick={() => exportAs('hwpx')}>
-          hwpx로 내보내기
-        </button>
-        <button type="button" onClick={() => exportAs('xlsx')}>
-          엑셀로 내보내기
-        </button>
-        </div>
-      </div>
+        <ExportMenu items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${title}_${range().label}.pdf`.replace(/\s+/g, '_')) }]} />
+      </PageHead>
       {message && (
         <p className="notice" role="status">
           {message}

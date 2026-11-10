@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAi, useDb } from '../../app/context'
 import type { AiPromptRec, AppSettingsRec } from '../../lib/db/types'
-import { getAiKey, getSettings, setAiKey, updateSettings } from '../../lib/settings'
+import { effectiveMask, getAiKey, getSettings, setAiKey, updateSettings } from '../../lib/settings'
 import { DEFAULT_PROMPTS, getPrompt, listPromptVersions, resetPrompt, savePrompt, type PromptKind } from '../../lib/ai/prompts'
 import { buildNugaPrompt } from '../../lib/counseling/nuga'
 import { buildBriefingPrompt } from '../../lib/briefing/briefing'
-import { extractJson, getClaudeCode } from '../../lib/ai/client'
+import { extractJson, getAntigravity, getClaudeCode } from '../../lib/ai/client'
 
 const SAMPLES: Record<PromptKind, string> = {
   nuga: '점심시간 교실 / 친구랑 말다툼하고 혼자 밥 먹음. 이유 물으니 말 오해해서 서운했다고 함. 대화로 풀어보라고 함.',
@@ -22,6 +22,7 @@ export default function AiSettings() {
   const [notice, setNotice] = useState<string>()
   const [cc, setCc] = useState<string>()
   const bridge = getClaudeCode()
+  const agy = getAntigravity()
 
   const load = useCallback(async () => {
     const cur = await getSettings(db)
@@ -49,11 +50,44 @@ export default function AiSettings() {
         <button type="button" role="radio" aria-checked={provider === 'claude-code'} className={provider === 'claude-code' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'claude-code' })}>
           Claude Code(Pro 구독)
         </button>
+        <button type="button" role="radio" aria-checked={provider === 'antigravity'} className={provider === 'antigravity' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'antigravity' })}>
+          Antigravity(구글 로그인)
+        </button>
         <button type="button" role="radio" aria-checked={provider === 'api-key'} className={provider === 'api-key' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'api-key' })}>
           API 키
         </button>
       </div>
-      {provider === 'claude-code' ? (
+      {provider === 'antigravity' ? (
+        <div className="stack">
+          <p className="muted">
+            노트북에 설치한 구글 Antigravity CLI(agy)로 정리합니다. 키 없이 구글 계정 로그인만 하면 됩니다. 설치 후 명령 창에서 <code>agy</code>를 한 번 실행해 로그인하세요. 새 Watson exe에서만 됩니다.
+          </p>
+          <p className="banner">
+            개인 구글 계정은 Antigravity 설정 &gt; Account &gt; General의 <b>Enable Telemetry</b>를 꺼야 입력 내용이 구글의 학습에 쓰이지 않습니다. 그래서 이 연결에서는 학생 이름 가리기를 끌 수 없습니다. 다른 앱에서 agy를 부르는 것에 대한 구글의 공식 답은 아직 없습니다.
+          </p>
+          <div className="row">
+            <button
+              type="button"
+              disabled={!agy}
+              onClick={async () => {
+                setCc('확인 중…')
+                const st = await agy!.status()
+                setCc(
+                  !st.installed
+                    ? 'Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'
+                    : st.loggedIn === false
+                      ? `Antigravity ${st.version ?? ''} 설치됨 · ${st.message ?? '로그인이 필요합니다.'}`
+                      : `Antigravity ${st.version ?? ''} 연결됨`,
+                )
+              }}
+            >
+              Antigravity 연결 확인
+            </button>
+            {!agy && <span className="warn">지금 버전에서는 쓸 수 없습니다. 새 Watson exe가 필요합니다.</span>}
+            {cc && <span role="status">{cc}</span>}
+          </div>
+        </div>
+      ) : provider === 'claude-code' ? (
         <div className="stack">
           <p className="muted">
             노트북에 설치·로그인된 Claude Code로 정리합니다. 키가 필요 없고 Pro 요금제 사용 한도 안에서 쓰입니다(추가 요금 없음). exe 버전에서만 됩니다.
@@ -100,8 +134,8 @@ export default function AiSettings() {
         AI 정리 사용
       </label>
       <label className="inline">
-        <input type="checkbox" checked={s.mask_names} onChange={(e) => patch({ mask_names: e.target.checked })} />
-        학생 이름 가리기(권장)
+        <input type="checkbox" checked={effectiveMask(s)} disabled={provider === 'antigravity'} onChange={(e) => patch({ mask_names: e.target.checked })} />
+        {provider === 'antigravity' ? '학생 이름 가리기(Antigravity는 항상 가림)' : '학생 이름 가리기(권장)'}
       </label>
       <label className="inline">
         누가기록 최대 글자 수(비우면 제한 없음)

@@ -71,7 +71,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
         </div>
         <div>
           <span className="k">미제출 결석신고서</span>
-          {openReports > 0 ? <Link className="v" to="/reports">{`${openReports}건`}</Link> : <span className="v">없음</span>}
+          {openReports > 0 ? <Link className="v" to="/attendance/reports">{`${openReports}건`}</Link> : <span className="v">없음</span>}
         </div>
       </div>
       <GettingStarted />

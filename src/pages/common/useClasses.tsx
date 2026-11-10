@@ -64,19 +64,3 @@ export function NoClass({ title }: { title: string }) {
     </section>
   )
 }
-
-/** 사이드바 학급 전환(학급이 하나뿐이면 이름만 보인다). */
-export function SidebarClass() {
-  const { classes, classId, choose } = useClasses()
-  if (!classes || classes.length === 0) return null
-  if (classes.length === 1) return <div className="class-switch muted">{`${classes[0].school_year}학년도 ${classLabel(classes[0])}`}</div>
-  return (
-    <div className="class-switch">
-      <select aria-label="학급 전환" value={classId} onChange={(e) => choose(e.target.value)}>
-        {classes.map((c) => (
-          <option key={c.id} value={c.id}>{`${c.school_year}학년도 ${classLabel(c)}`}</option>
-        ))}
-      </select>
-    </div>
-  )
-}

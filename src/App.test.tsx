@@ -5,15 +5,18 @@ import { createMemoryFsAdapter } from './lib/fs/memory'
 
 const setup = () => render(<App db={createDb('test-' + crypto.randomUUID())} fs={createMemoryFsAdapter()} />)
 
-test('앱 제목이 보인다', async () => {
+test('앱 이름 Watson이 보인다', async () => {
+  window.location.hash = ''
   setup()
-  expect(await screen.findByRole('heading', { level: 1, name: '담임 업무' })).toBeInTheDocument()
+  expect(await screen.findByText('Watson')).toBeInTheDocument()
 })
 
-test('메뉴 8개가 순서대로 보인다', async () => {
+test('메뉴는 홈·달력·출결·상담일지·학급 순서이고 설정은 맨 아래 따로', async () => {
+  window.location.hash = ''
   setup()
-  const nav = await screen.findByRole('navigation')
-  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '달력', '출결', '상담일지', '학급', '결석신고서', '통계', '설정'])
+  const nav = await screen.findByRole('navigation', { name: '메뉴' })
+  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '달력', '출결', '상담일지', '학급'])
+  expect(within(screen.getByRole('navigation', { name: '설정' })).getByRole('link', { name: '설정' })).toBeInTheDocument()
 })
 
 test('암호구가 없으면 시작 배너가 보인다', async () => {

@@ -59,3 +59,8 @@ export async function getAiKey(db: AppDB): Promise<string> {
 export async function setAiKey(db: AppDB, key: string): Promise<void> {
   await db.device_local.put({ id: 'aiApiKey', value: key.trim() })
 }
+
+/** 실제로 이름을 가릴지. Antigravity(개인 구글 계정)는 약관상 학습에 쓰일 수 있어 늘 가린다. */
+export function effectiveMask(s: Pick<AppSettingsRec, 'mask_names' | 'ai_provider'>): boolean {
+  return s.mask_names || s.ai_provider === 'antigravity'
+}

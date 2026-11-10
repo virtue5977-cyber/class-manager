@@ -15,15 +15,23 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
   const [students, setStudents] = useState<StudentRec[]>([])
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
-  const [editing, setEditing] = useState<StudentRec | 'new' | null>(null)
+  /** 오른쪽에 연 학생(id) 또는 새 학생. null이면 목록 첫 학생. */
+  const [selected, setSelected] = useState<string | 'new' | null>(null)
+  const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string>()
   const [renameOk, setRenameOk] = useState(false)
 
   const reload = useCallback(async () => setStudents(await listStudents(db, classId)), [db, classId])
   useEffect(() => {
     reload()
-    setEditing(null)
+    setSelected(null)
   }, [reload])
+
+  // 재적 학생 먼저(번호순), 전출 학생은 맨 아래.
+  const ordered = useMemo(() => [...students.filter((s) => s.active), ...students.filter((s) => !s.active)], [students])
+  const q = query.trim()
+  const shown = q ? ordered.filter((s) => s.name.includes(q) || String(s.number) === q) : ordered
+  const current = (selected && selected !== 'new' ? students.find((s) => s.id === selected) : undefined) ?? shown[0] ?? ordered[0]
 
   const parsed = useMemo(() => fileRows?.result ?? toRosterRows(parseTsv(pasteText)), [pasteText, fileRows])
   /** 번호는 같은데 이름이 다른 행: 기존 학생 기록이 다른 아이 이름으로 바뀐다. */
@@ -39,12 +47,11 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
     setPasteText('')
     setFileRows(null)
     setRenameOk(false)
-    setEditing(null) // 열려 있던 상세가 옛 값으로 덮어쓰지 않게 닫는다
-    await reload()
+    await reload() // 상세는 updated_at이 바뀌어 새 값으로 다시 열린다(옛 값 덮어쓰기 방지)
   }
 
   return (
-    <div className="stack">
+    <div className="stack roster-tab">
       <div className="toolbar">
         <details className="menu">
           <summary>가져오기·양식 ▾</summary>
@@ -83,7 +90,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
         </button>
           </div>
         </details>
-        <button type="button" className="primary" onClick={() => setEditing('new')}>
+        <button type="button" className="primary" onClick={() => setSelected('new')}>
           학생 추가
         </button>
       </div>
@@ -143,40 +150,32 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
         </div>
       )}
 
-      {editing && (
-        <StudentDetail
-          key={editing === 'new' ? 'new' : editing.id}
-          classId={classId}
-          student={editing === 'new' ? undefined : editing}
-          onDone={() => { setEditing(null); reload() }}
-        />
-      )}
-
-      {students.length === 0 ? (
+      {students.length === 0 && selected !== 'new' ? (
         <p className="muted">아직 학생이 없습니다. 나이스 명렬표 엑셀을 올리거나 붙여넣으세요.</p>
       ) : (
-        <table className="grid clickable" aria-label="학생 명단">
-          <thead>
-            <tr><th>번호</th><th>이름</th><th>성별</th><th>생년월일</th><th>전화번호</th><th>보호자</th><th>관계</th><th>보호자 연락처</th></tr>
-          </thead>
-          <tbody>
-            {students.map((s) => (
-              <tr key={s.id} className={s.active ? undefined : 'inactive'} onClick={() => setEditing(s)}>
-                <td>{s.number}</td>
-                <td className="pii">
-                  {s.name}
-                  {!s.active && <span className="tag">(전출)</span>}
-                </td>
-                <td>{s.gender}</td>
-                <td>{s.birth_date}</td>
-                <td>{s.phone}</td>
-                <td>{s.guardian_name}</td>
-                <td>{s.guardian_relation}</td>
-                <td>{s.guardian_phone}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="roster-layout">
+          <div className="roster-list stack">
+            <input type="search" aria-label="학생 찾기" placeholder="이름·번호 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <ul className="plain" aria-label="학생 명단">
+              {shown.map((s) => (
+                <li key={s.id}>
+                  <button type="button" className={`roster-item${s.active ? '' : ' inactive'}`} aria-current={current?.id === s.id && selected !== 'new' ? 'true' : undefined} onClick={() => setSelected(s.id)}>
+                    <span className="pii">{`${s.number}번 ${s.name}`}</span>
+                    {!s.active && <span className="tag">(전출)</span>}
+                  </button>
+                </li>
+              ))}
+              {shown.length === 0 && <li className="muted">찾는 학생이 없습니다.</li>}
+            </ul>
+          </div>
+          <div className="roster-detail">
+            {selected === 'new' ? (
+              <StudentDetail key="new" classId={classId} onDone={() => { setSelected(null); reload() }} />
+            ) : current ? (
+              <StudentDetail key={current.id + current.updated_at} classId={classId} student={current} closable={false} onDone={() => reload()} />
+            ) : null}
+          </div>
+        </div>
       )}
     </div>
   )

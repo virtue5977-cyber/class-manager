@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
 import { useDb, useFs } from '../../app/context'
 import type { ClassRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
@@ -69,15 +71,7 @@ export default function RosterDocTab({ classRec }: { classRec: ClassRec }) {
         </label>
       </div>
       <div className="row">
-        <button type="button" className="primary" onClick={() => exportFile('hwpx')}>
-          hwpx로 내보내기
-        </button>
-        <button type="button" onClick={() => window.print()}>
-          A4 인쇄
-        </button>
-        <button type="button" onClick={() => exportFile('xlsx')}>
-          엑셀로 내보내기
-        </button>
+        <ExportMenu items={[{ format: 'hwpx', run: () => exportFile('hwpx') }, { format: 'xlsx', run: () => exportFile('xlsx') }, { format: 'pdf', run: () => exportPdf(rosterFileName(classRec, 'hwpx').replace(/\.hwpx$/, '.pdf')) }]} />
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       <div className="print-area" style={{ fontSize: `${opts.fontSizePt}pt` }}>

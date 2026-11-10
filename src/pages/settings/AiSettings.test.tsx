@@ -47,3 +47,39 @@ test('지출 한도 안내는 API 키를 고를 때만, 순서는 연결 방식 
   await user.click(screen.getByRole('radio', { name: 'API 키' }))
   expect(await screen.findByText(/지출 한도/)).toBeInTheDocument()
 })
+
+test('Antigravity(구글 로그인)를 고르면 학습 끄기 안내가 보이고 이름 가림은 늘 켜짐(못 끔)', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <AiSettings />
+    </AppProviders>,
+  )
+  await user.click(await screen.findByRole('radio', { name: 'Antigravity(구글 로그인)' }))
+  expect(await screen.findByText(/Enable Telemetry/)).toBeInTheDocument()
+  const mask = screen.getByLabelText(/학생 이름 가리기/)
+  expect(mask).toBeChecked()
+  expect(mask).toBeDisabled()
+})
+
+test('Antigravity 연결 확인: 설치는 됐지만 로그인이 안 됐으면 "연결됨" 대신 로그인 안내', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const g = globalThis as { desktop?: unknown }
+  g.desktop = { agy: { status: async () => ({ installed: true, version: '1.2.0', loggedIn: false, message: 'Antigravity 로그인이 필요합니다. 명령 창에서 agy 를 한 번 실행해 구글 계정으로 로그인하세요.' }), ask: async () => '' } }
+  try {
+    render(
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <AiSettings />
+      </AppProviders>,
+    )
+    await user.click(await screen.findByRole('radio', { name: 'Antigravity(구글 로그인)' }))
+    await user.click(screen.getByRole('button', { name: 'Antigravity 연결 확인' }))
+    const st = await screen.findByRole('status')
+    await waitFor(() => expect(st).toHaveTextContent('로그인이 필요합니다'))
+    expect(st).not.toHaveTextContent('연결됨')
+  } finally {
+    delete g.desktop
+  }
+})

@@ -10,6 +10,8 @@ import { saveLog } from '../../lib/counseling/counseling'
 import { newRecord } from '../../lib/db/records'
 import type { SchoolCalendarRec } from '../../lib/db/types'
 import CalendarPage from './CalendarPage'
+import { pickExport } from '../../test/exportMenu'
+import { waitFor } from '@testing-library/react'
 
 test('한 달에 학사일정·출결·상담이 함께 보이고, 날짜를 누르면 자세히', async () => {
   const user = userEvent.setup()
@@ -79,4 +81,25 @@ test('고른 날의 "출결 입력"·"상담 기록" 링크는 그 날짜를 넘
   await user.click(await screen.findByRole('gridcell', { name: '11월 12일' }))
   expect(screen.getByRole('link', { name: '출결 입력' })).toHaveAttribute('href', '/attendance?date=2026-11-12')
   expect(screen.getByRole('link', { name: '상담 기록' })).toHaveAttribute('href', '/counseling?date=2026-11-12')
+})
+
+test('달력 내보내기: 이 달 일정·출결·상담을 엑셀·한글로', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const s = await saveStudent(db, c.id, emptyStudent(3, '가나'))
+  await db.school_calendar.add(newRecord({ date: '2026-11-12', title: '체육대회', type: '행사', is_class_day: true, source: 'manual' }) as SchoolCalendarRec)
+  await saveAttendance(db, { student_id: s.id, date: '2026-11-12', kind: '지각', category: '미인정', period: '1', reason: '', evidence_type: null, memo: '' })
+  const fs = createMemoryFsAdapter()
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={fs}>
+        <CalendarPage today="2026-11-06" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  await within(await screen.findByRole('gridcell', { name: '11월 12일' })).findByText('출결 1')
+  await pickExport(user, '엑셀(xlsx)')
+  await pickExport(user, '한글(hwpx)')
+  await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['달력_2026-11.xlsx', '달력_2026-11.hwpx']))
 })

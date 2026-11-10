@@ -1,4 +1,4 @@
-// 담임 업무 데스크톱(Windows 포터블 exe) 진입점.
+// Watson(담임 업무) 데스크톱(Windows exe) 진입점.
 // 화면은 dist(웹 빌드)를 app://local 주소로 보여 주고, 백업 폴더 읽기·쓰기만 Node로 처리한다.
 const { app, BrowserWindow, Menu, protocol, net, ipcMain, dialog, powerMonitor, shell, safeStorage } = require('electron')
 const path = require('node:path')
@@ -7,11 +7,15 @@ const fsSync = require('node:fs')
 const { pathToFileURL } = require('node:url')
 const { spawn } = require('node:child_process')
 const os = require('node:os')
+const { pickUserDataDir } = require('./paths.cjs')
+
+// 이름을 Watson으로 바꿔도 옛 자료 폴더(담임업무)를 그대로 쓴다. ready 전에 정해야 한다.
+app.setPath('userData', pickUserDataDir(app.getPath('appData'), fsSync.existsSync))
 
 const BUILT_DIST = path.join(__dirname, '..', 'dist')
 // ---- 자동 업데이트 ----
 // 화면(dist)만 GitHub에서 받아 바꾼다. exe(이 파일·preload)가 바뀌는 업데이트는 SHELL 번호를 올리고 새 exe를 받아야 한다.
-const SHELL = 2
+const SHELL = 3
 const UPDATE_URL = (!app.isPackaged && process.env.DAMIM_UPDATE_URL) || 'https://raw.githubusercontent.com/virtue5977-cyber/class-manager/updates/update.json'
 const UPDATE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAjiLbLA7jnUY/fIBXaBuyVwSPkFupzLAVU4WXXGemyQs=
@@ -49,7 +53,8 @@ function createWindow() {
     height: 860,
     minWidth: 900,
     minHeight: 600,
-    title: '담임 업무',
+    title: 'Watson',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: !app.isPackaged },
   })
@@ -195,6 +200,16 @@ handle('backup:delete', async (name) => {
 // ---- AI: 노트북에 설치·로그인된 Claude Code에 맡기기(Pro 구독의 프로그램용 크레딧 사용) ----
 // 지시문·메모는 표준 입력으로만 넘기고, 빈 작업 폴더에서 도구 없이 한 번만 답하게 한다.
 const AI_DIR = () => path.join(os.tmpdir(), 'damim-ai')
+/** 시간 초과 때: Windows에서는 셸(cmd.exe)만 끝내면 그 아래 node·claude·agy가 학생 글을 든 채 남으므로 프로세스 나무째 끝낸다. */
+function killTree(child) {
+  const k = require('./agy.cjs').killCommand(process.platform, child.pid)
+  if (!k) return child.kill()
+  try {
+    require('node:child_process').execFileSync(k[0], k[1], { windowsHide: true, stdio: 'ignore' })
+  } catch {
+    child.kill()
+  }
+}
 function runClaude(args, input, timeoutMs) {
   return new Promise((resolve, reject) => {
     fsSync.mkdirSync(AI_DIR(), { recursive: true })
@@ -202,7 +217,7 @@ function runClaude(args, input, timeoutMs) {
     let out = ''
     let err = ''
     const timer = setTimeout(() => {
-      child.kill()
+      killTree(child)
       reject(new Error('Claude Code 응답이 너무 늦습니다. 잠시 뒤 다시 시도하세요.'))
     }, timeoutMs)
     child.stdout.on('data', (d) => (out += d))
@@ -241,6 +256,81 @@ handle('ai:ask', async (req) => {
   }
   if (body.is_error) throw new Error('Claude Code가 오류를 돌려주었습니다. 사용량 한도를 확인하세요.')
   return String(body.result || '')
+})
+
+// ---- AI: Antigravity CLI(agy, 구글 계정 로그인) ----
+// 프롬프트는 인자로만 받으므로 셸을 거치지 않고 부른다(.cmd면 cmd.exe 규칙대로 인용).
+const agyLib = require('./agy.cjs')
+function findAgy() {
+  if (process.platform !== 'win32') return { file: 'agy', viaCmd: false }
+  try {
+    return agyLib.pickAgyPath(require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true }))
+  } catch {
+    return null
+  }
+}
+function runAgy(args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const found = findAgy()
+    if (!found) return reject(new Error('Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'))
+    fsSync.mkdirSync(AI_DIR(), { recursive: true })
+    const line = agyLib.cmdLine(found.file, args)
+    // cmd.exe 한 줄은 8,191자까지라 그보다 길면 나눠 달라고 한다.
+    if (found.viaCmd && line.length > 8000) return reject(new Error('AI에 보낼 글이 너무 깁니다. 내용을 나눠서 정리하세요.'))
+    const child = found.viaCmd
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', line], { cwd: AI_DIR(), windowsHide: true, windowsVerbatimArguments: true, env: process.env })
+      : spawn(found.file, args, { cwd: AI_DIR(), windowsHide: true, env: process.env })
+    let out = ''
+    let err = ''
+    const timer = setTimeout(() => {
+      killTree(child)
+      reject(new Error('Antigravity 응답이 너무 늦습니다. 잠시 뒤 다시 시도하세요.'))
+    }, timeoutMs)
+    child.stdout.on('data', (d) => (out += d))
+    child.stderr.on('data', (d) => (err += d))
+    child.on('error', () => {
+      clearTimeout(timer)
+      reject(new Error('Antigravity CLI(agy)를 실행하지 못했습니다.'))
+    })
+    child.on('close', () => {
+      clearTimeout(timer)
+      resolve({ out, err })
+    })
+    child.stdin.end()
+  })
+}
+handle('ai:agy:status', async () => {
+  try {
+    const { out } = await runAgy(['--version'], 20000)
+    if (!out.trim()) return { installed: false }
+    // 버전만으로는 로그인 여부를 모르므로 아주 짧은 시험 질문을 한 번 보낸다(학생 자료 없음).
+    let probe
+    try {
+      const r = await runAgy(agyLib.agyArgs(agyLib.PROBE_PROMPT), 45000)
+      probe = agyLib.parseAgyOutput(r.out || r.err)
+    } catch (e) {
+      probe = { error: e instanceof Error ? e.message : String(e) }
+    }
+    return agyLib.statusFrom(out, probe)
+  } catch {
+    return { installed: false }
+  }
+})
+handle('ai:agy:ask', async (prompt) => {
+  const { out, err } = await runAgy(agyLib.agyArgs(String(prompt || '')), 60000)
+  const r = agyLib.parseAgyOutput(out || err)
+  if (r.error) throw new Error(r.error)
+  return r.text
+})
+
+// ---- PDF: 지금 화면을 A4 PDF로 저장(인쇄용 CSS 적용) ----
+handle('pdf:save', async (name) => {
+  const base = String(name || 'Watson.pdf').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120)
+  const r = await dialog.showSaveDialog(win, { title: 'PDF로 저장', defaultPath: path.join(app.getPath('documents'), base.endsWith('.pdf') ? base : base + '.pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] })
+  if (r.canceled || !r.filePath) return false
+  const data = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } })
+  await fs.writeFile(r.filePath, data)
+  return true
 })
 
 handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION }))

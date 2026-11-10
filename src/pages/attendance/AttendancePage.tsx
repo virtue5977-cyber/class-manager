@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import PageHead from '../../components/PageHead'
 import { useDb } from '../../app/context'
 import type { AbsenceReportRec, AttendanceRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
@@ -8,6 +9,7 @@ import { listReportsByStudents, loadReportContext } from '../../lib/absenceRepor
 import { addDays, toYmd, type SchoolDays } from '../../lib/schoolDays'
 import { gridNext } from '../../lib/ui/gridNav'
 import { ymdParam } from '../../lib/ui/hashParam'
+import { useShortcut } from '../../lib/ui/shortcuts'
 import AttendanceForm from './AttendanceForm'
 import ReportPanel from './ReportPanel'
 
@@ -64,6 +66,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
     for (let d = addDays(date, dir), i = 0; i < 14; i++, d = addDays(d, dir)) if (!days || days.isClassDay(d)) return d
     return addDays(date, dir)
   }
+  useShortcut('step', (a) => a.kind === 'step' && setDate(stepDay(a.dir)))
   const reportsOn = (sid: string) => (reports[sid] ?? []).filter((r) => r.start_date <= date && date <= r.end_date)
   const student = students.find((s) => s.id === selected)
   // 지금 보이는 날짜의 조회가 끝나기 전에는 입력 칸을 열지 않는다(이전 날짜 기록을 고치는 일을 막음).
@@ -76,17 +79,17 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
 
   return (
     <section className="stack">
-      <div className="page-head">
-        <div>
-          <h2>출결</h2>
+      <PageHead
+        title="출결"
+        summary={
           <div className="att-summary" aria-label="오늘 출결 요약">
             <span>{`재적 ${students.length}명`}</span>
             {counts.map(([k, n]) => (
               <span key={k} className={n ? `chip-${k}` : 'zero'}>{`${k} ${n}`}</span>
             ))}
           </div>
-        </div>
-        <div className="tools">
+        }
+      >
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
           <div className="date-bar">
             <button type="button" aria-label="전날" title="전 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(-1))}>
@@ -102,8 +105,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
               </button>
             )}
           </div>
-        </div>
-      </div>
+      </PageHead>
       {days && !days.isClassDay(date) && <p className="banner">수업일이 아닙니다(휴업일·주말).</p>}
       {days && !days.hasCalendarFor(date) && <p className="muted">학사일정을 가져오지 않아 공휴일 일부를 모를 수 있습니다.</p>}
       {notice && (

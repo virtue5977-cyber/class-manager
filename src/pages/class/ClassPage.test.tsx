@@ -7,10 +7,10 @@ import { createClass, setCurrentClassId, emptyStudent, saveStudent } from '../..
 import ClassPage from './ClassPage'
 
 const fresh = () => createDb('test-' + crypto.randomUUID())
-const renderPage = (db: AppDB) =>
+const renderPage = (db: AppDB, sub: 'roster' | 'sheet' | 'seating' | 'cleaning' = 'roster') =>
   render(
     <AppProviders db={db} fs={createMemoryFsAdapter()}>
-      <ClassPage />
+      <ClassPage sub={sub} />
     </AppProviders>,
   )
 
@@ -21,7 +21,8 @@ async function withClass() {
   return { db, c }
 }
 
-const rosterRows = () => within(screen.getByRole('table', { name: '학생 명단' })).getAllByRole('row').slice(1)
+const rosterRows = () => within(screen.getByRole('list', { name: '학생 명단' })).getAllByRole('button')
+const detail = () => screen.getByRole('form', { name: '학생 정보' })
 
 test('학급이 없으면 안내 문구, 학급 추가 후 선택된다', async () => {
   const user = userEvent.setup()
@@ -47,7 +48,7 @@ test('붙여넣기 미리보기에 2명이 보이고 등록하면 명단에 번�
   expect(within(screen.getByRole('table', { name: '붙여넣기 미리보기' })).getAllByRole('row')).toHaveLength(3)
   await user.click(screen.getByRole('button', { name: '등록' }))
   expect(await screen.findByText('새로 2명, 갱신 0명을 등록했습니다.')).toBeInTheDocument()
-  await waitFor(() => expect(rosterRows().map((r) => r.textContent)).toEqual(['1가보호010-1', '2나']))
+  await waitFor(() => expect(rosterRows().map((r) => r.textContent)).toEqual(['1번 가', '2번 나']))
 })
 
 test('오류가 있으면 줄 번호와 함께 보이고 등록 버튼이 비활성', async () => {
@@ -80,7 +81,7 @@ test('학생 상세에서 재적을 해제하면 명단에 (전출) 표시', asy
   const { db, c } = await withClass()
   await saveStudent(db, c.id, emptyStudent(1, '가'))
   renderPage(db)
-  await user.click(await screen.findByText('가'))
+  await user.click(await screen.findByRole('button', { name: '1번 가' }))
   await user.click(screen.getByLabelText('재적'))
   await user.click(screen.getByRole('button', { name: '저장' }))
   expect(await screen.findByText('(전출)')).toBeInTheDocument()
@@ -104,11 +105,11 @@ test('학생 삭제는 화면 안 확인 후 실행된다', async () => {
   const { db, c } = await withClass()
   await saveStudent(db, c.id, emptyStudent(1, '가'))
   renderPage(db)
-  await user.click(await screen.findByText('가'))
+  await user.click(await screen.findByRole('button', { name: '1번 가' }))
   await user.click(screen.getByRole('button', { name: '삭제' }))
   expect(screen.getByText('이 학생을 삭제할까요?')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '삭제 확인' }))
-  await waitFor(() => expect(screen.queryByText('가')).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('button', { name: '1번 가' })).not.toBeInTheDocument())
 })
 
 test('선택한 학급이 다시 열어도 유지된다', async () => {
@@ -120,13 +121,12 @@ test('선택한 학급이 다시 열어도 유지된다', async () => {
   await waitFor(() => expect((screen.getByLabelText('학급 선택') as HTMLSelectElement).value).toBe(c2.id))
 })
 
-test('자리배치·청소배치 탭이 열린다', async () => {
-  const user = userEvent.setup()
+test('자리배치·청소배치 하위 화면이 열린다', async () => {
   const { db } = await withClass()
-  renderPage(db)
-  await user.click(await screen.findByRole('tab', { name: '자리배치' }))
+  const a = renderPage(db, 'seating')
   expect(await screen.findByRole('grid', { name: '자리배치' })).toBeInTheDocument()
-  await user.click(screen.getByRole('tab', { name: '청소배치' }))
+  a.unmount()
+  renderPage(db, 'cleaning')
   expect(await screen.findByRole('button', { name: '구역(줄) 추가' })).toBeInTheDocument()
 })
 
@@ -144,17 +144,17 @@ test('번호가 같은데 이름이 다르면 이름 변경을 보여주고 확�
   expect(screen.getByRole('button', { name: '등록' })).toBeEnabled()
 })
 
-test('붙여넣기 등록 후 열려 있던 학생 상세는 닫힌다(옛 내용으로 덮어쓰기 방지)', async () => {
+test('붙여넣기 등록 후 열려 있던 학생 상세는 새 값으로 다시 열린다(옛 내용으로 덮어쓰기 방지)', async () => {
   const user = userEvent.setup()
   const { db, c } = await withClass()
   await saveStudent(db, c.id, emptyStudent(1, '가'))
   renderPage(db)
-  await user.click(await screen.findByText('가'))
-  expect(screen.getByRole('form', { name: '학생 정보' })).toBeInTheDocument()
+  await user.click(await screen.findByRole('button', { name: '1번 가' }))
+  expect(within(detail()).getByLabelText('보호자 연락처')).toHaveValue('')
   await user.click(screen.getByRole('button', { name: '엑셀에서 붙여넣기' }))
   await user.click(screen.getByLabelText('엑셀에서 복사한 내용'))
-  await user.paste('1\t가\t보호자\t010-9')
+  await user.paste('번호\t이름\t보호자 성함\t보호자 번호\n1\t가\t보호자\t010-9')
   await user.click(screen.getByRole('button', { name: '등록' }))
   await screen.findByText('새로 0명, 갱신 1명을 등록했습니다.')
-  expect(screen.queryByRole('form', { name: '학생 정보' })).not.toBeInTheDocument()
+  await waitFor(() => expect(within(detail()).getByLabelText('보호자 연락처')).toHaveValue('010-9'))
 })

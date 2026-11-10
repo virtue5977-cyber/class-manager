@@ -1,9 +1,15 @@
-import MonthPicker from '../../components/MonthPicker'
+import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import PageHead from '../../components/PageHead'
+import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import { listReportsForMonth, setSubmittedMany, type ReportRow } from '../../lib/absenceReports/list'
 import { updateReport } from '../../lib/absenceReports/reconcile'
 import { buildAbsenceHwpx } from '../../lib/hwpx/absence/build'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
+import { reportsXlsx } from '../../lib/export/sheets'
+import { isHideNames } from '../../components/HideNames'
 import { toYmd } from '../../lib/schoolDays'
 import { periodText } from '../attendance/AttendanceForm'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
@@ -15,6 +21,7 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
   const fs = useFs()
   const { classes, classId, choose } = useClasses()
   const [month, setMonth] = useState(initialMonth)
+  useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
   const [rows, setRows] = useState<ReportRow[]>([])
   const [onlyOpen, setOnlyOpen] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -71,12 +78,7 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
 
   return (
     <section className="stack">
-      <div className="page-head">
-        <div>
-          <h2>결석신고서</h2>
-          <span className="muted">{`전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}</span>
-        </div>
-        <div className="tools">
+      <PageHead title="결석신고서" summary={`전체 ${rows.length}건 · 미제출 ${open}건 · 진단서 미수령 ${missingDiag}건`}>
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
           <MonthPicker value={month} onChange={setMonth} />
           <label className="inline">
@@ -88,8 +90,16 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
               {`미제출 ${openRows.length}건 hwpx`}
             </button>
           )}
-        </div>
-      </div>
+          {shown.length > 0 && (
+            <ExportMenu
+              items={[
+                { format: 'hwpx', run: () => exportRows(shown, 'one') },
+                { format: 'xlsx', run: () => act(async () => { const name = `결석신고서_${month}.xlsx`; fs.downloadFile(name, await reportsXlsx(shown, (st) => (isHideNames() ? '' : st.name)) ); setMessages([`${name} 파일을 만들었습니다.`]) }) },
+                { format: 'pdf', run: () => exportPdf(`결석신고서_${month}.pdf`) },
+              ]}
+            />
+          )}
+      </PageHead>
       {messages.length > 0 && (
         <div className="notice" role="status">
           {messages.map((m) => (

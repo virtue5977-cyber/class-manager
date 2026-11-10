@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { setHideNames, useHideNames } from '../../components/HideNames'
+import { SHORTCUT_TABLE } from '../../lib/ui/shortcuts'
 import { THEMES, ACCENTS, DEFAULT_APPEARANCE, readAppearance, saveAppearance, SIZES, type Appearance } from '../../lib/ui/appearance'
 
 export default function AppearanceSettings() {
   const [a, setA] = useState<Appearance>(readAppearance)
+  const hidden = useHideNames()
   const set = (p: Partial<Appearance>) => {
     const next = { ...a, ...p }
     setA(next)
@@ -37,6 +40,28 @@ export default function AppearanceSettings() {
           </button>
         ))}
       </div>
+      <label className="inline">
+        <input type="checkbox" checked={hidden} onChange={(e) => setHideNames(e.target.checked)} />
+        학생 이름 가리기(교실 TV·프로젝터에 띄울 때, Ctrl+Shift+H)
+      </label>
+      <table className="grid" aria-label="단축키">
+        <thead>
+          <tr>
+            <th>키</th>
+            <th>하는 일</th>
+          </tr>
+        </thead>
+        <tbody>
+          {SHORTCUT_TABLE.map((r) => (
+            <tr key={r.keys}>
+              <td>
+                <kbd>{r.keys}</kbd>
+              </td>
+              <td>{r.label}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <div className="row">
         <span className="muted">이 노트북에만 적용됩니다. 출결 색(결석 빨강·지각 주황 등)은 뜻이 있어 바뀌지 않습니다.</span>
         <button type="button" className="link" onClick={() => set(DEFAULT_APPEARANCE)}>
