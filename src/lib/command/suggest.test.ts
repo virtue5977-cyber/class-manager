@@ -28,7 +28,7 @@ test('@ 뒤에는 학생(초성)과 노트', () => {
 
 test('명령이 기대하는 다음 낱말', () => {
   expect(s('/출결 @3 ').map((x) => x.label)).toEqual(['결석', '지각', '조퇴', '결과'])
-  expect(s('/출결 @3 결석 ').map((x) => x.label)).toEqual(['미인정', '질병', '출석인정', '기타'])
+  expect(s('/출결 @3 결석 ').map((x) => x.label)).toEqual(['미인정', '질병', '출석인정'])
   expect(s('/일정 달력 #').map((x) => x.label)).toEqual(['#개인', '#업무'])
 })
 

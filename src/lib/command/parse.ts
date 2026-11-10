@@ -26,6 +26,8 @@ export interface Parsed {
   missing: string[]
   tags: string[]
   date: string
+  /** 날짜 말을 직접 썼는지(할 일 마감일 등) */
+  dateGiven: boolean
   time: string | null
   kind?: string
   category?: string
@@ -68,7 +70,7 @@ export function findStudents(q: string, students: StudentRec[]): StudentRec[] {
 
 export function parseCommand(input: string, ctx: ParseCtx, names: Record<string, string>, subs: Record<string, string[]> = {}): Parsed {
   const toks = tokenize(input)
-  const p: Parsed = { cmd: null, sub: null, students: [], ambiguous: [], missing: [], tags: [], date: ctx.today, time: null, rest: '', parts: [], errors: [] }
+  const p: Parsed = { cmd: null, sub: null, students: [], ambiguous: [], missing: [], tags: [], date: ctx.today, dateGiven: false, time: null, rest: '', parts: [], errors: [] }
   let i = 0
   if (toks[0]?.kind === 'cmd') {
     const name = toks[0].text.slice(1)
@@ -115,7 +117,10 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
     }
     const dt = parseDateWords(words, i, ctx.today)
     if (dt.used) {
-      if (dt.date) p.date = dt.date
+      if (dt.date) {
+        p.date = dt.date
+        p.dateGiven = true
+      }
       if (dt.time) p.time = dt.time
       i += dt.used
       continue
