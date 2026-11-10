@@ -1,3 +1,4 @@
+import { HeadTools } from '../../components/PageHead'
 import { useEffect, useMemo, useState } from 'react'
 import ExportMenu from '../../components/ExportMenu'
 import { exportPdf } from '../../lib/export/pdf'
@@ -70,9 +71,9 @@ export default function RosterDocTab({ classRec }: { classRec: ClassRec }) {
           전출 학생 포함
         </label>
       </div>
-      <div className="row">
+      <HeadTools>
         <ExportMenu items={[{ format: 'hwpx', run: () => exportFile('hwpx') }, { format: 'xlsx', run: () => exportFile('xlsx') }, { format: 'pdf', run: () => exportPdf(rosterFileName(classRec, 'hwpx').replace(/\.hwpx$/, '.pdf')) }]} />
-      </div>
+      </HeadTools>
       {error && <p className="error" role="alert">{error}</p>}
       <div className="print-area" style={{ fontSize: `${opts.fontSizePt}pt` }}>
         <h3 className="print-title">{opts.title}</h3>

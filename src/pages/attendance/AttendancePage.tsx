@@ -91,19 +91,17 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
         }
       >
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
-          <div className="date-bar">
-            <button type="button" aria-label="전날" title="전 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(-1))}>
-              ◀ 전날
+          <div className="stepper" role="group" aria-label="날짜 이동">
+            <button type="button" className="step-btn" aria-label="전날" title="전 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(-1))}>
+              ‹
             </button>
             <input type="date" aria-label="날짜" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
-            <button type="button" aria-label="다음날" title="다음 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(1))}>
-              다음날 ▶
+            <button type="button" className="step-btn" aria-label="다음날" title="다음 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(1))}>
+              ›
             </button>
-            {date !== today && (
-              <button type="button" className="link" onClick={() => setDate(today)}>
-                오늘
-              </button>
-            )}
+            <button type="button" className="ghost" disabled={date === today} onClick={() => setDate(today)}>
+              오늘
+            </button>
           </div>
       </PageHead>
       {days && !days.isClassDay(date) && <p className="banner">수업일이 아닙니다(휴업일·주말).</p>}

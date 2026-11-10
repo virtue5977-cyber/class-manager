@@ -183,14 +183,14 @@ export default function AttendanceForm({
           <button type="button" className="primary" title="사유·메모 칸에서 Enter" onClick={() => run('save')}>
             저장
           </button>
-          {editingId && (
-            <button type="button" onClick={() => run('delete')}>
-              삭제
-            </button>
-          )}
           <button type="button" onClick={onClose}>
             닫기
           </button>
+          {editingId && (
+            <button type="button" className="danger-text push-right" onClick={() => run('delete')}>
+              삭제
+            </button>
+          )}
         </div>
       )}
     </div>

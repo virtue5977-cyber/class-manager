@@ -101,10 +101,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
     <section className="stack">
       <PageHead title="달력">
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
-          <button type="button" onClick={() => { setMonth(today.slice(0, 7)); setPicked(today) }}>
-            오늘
-          </button>
-          <MonthPicker value={month} onChange={setMonth} label="달" />
+          <MonthPicker value={month} onChange={setMonth} label="달" current={today.slice(0, 7)} onToday={() => { setMonth(today.slice(0, 7)); setPicked(today) }} />
           <label className="inline">
             <input type="checkbox" checked={weekends} onChange={(e) => setWeekends(e.target.checked)} />
             주말 보기

@@ -76,15 +76,15 @@ export default function StudentDetail({ classId, student, onDone, closable = tru
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       <div className="row">
-        <button type="submit">저장</button>
-        {student && !confirmDelete && (
-          <button type="button" onClick={() => setConfirmDelete(true)}>
-            삭제
-          </button>
-        )}
+        <button type="submit" className="primary">저장</button>
         {closable && (
           <button type="button" onClick={onDone}>
             {student ? '닫기' : '취소'}
+          </button>
+        )}
+        {student && !confirmDelete && (
+          <button type="button" className="danger-text push-right" onClick={() => setConfirmDelete(true)}>
+            삭제
           </button>
         )}
       </div>

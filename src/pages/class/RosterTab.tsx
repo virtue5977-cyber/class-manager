@@ -1,3 +1,4 @@
+import { HeadTools } from '../../components/PageHead'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { StudentRec } from '../../lib/db/types'
@@ -52,7 +53,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
 
   return (
     <div className="stack roster-tab">
-      <div className="toolbar">
+      <HeadTools>
         <details className="menu">
           <summary>가져오기·양식 ▾</summary>
           <div className="menu-list" onClick={(e) => { const d = e.currentTarget.closest("details"); if (d) d.open = false }}>
@@ -94,7 +95,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
         <button type="button" className="primary" onClick={() => setSelected('new')}>
           학생 추가
         </button>
-      </div>
+      </HeadTools>
       {notice && <p className="notice" role="status">{notice}</p>}
 
       {pasteOpen && (

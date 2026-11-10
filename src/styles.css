@@ -234,7 +234,7 @@ button:hover:not(:disabled) { background: var(--hover); }
 button[type="submit"] { background: var(--panel); color: var(--ink); border-color: var(--btn-line); }
 button.primary, button[type="submit"].primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 button.primary:hover:not(:disabled) { background: var(--accent-hover); }
-button.link { border: 0; background: transparent; color: var(--sub); padding: 4px 8px; min-height: 0; }
+button.link { border: 0; background: transparent; color: var(--sub); padding: 4px 8px; min-height: 0; text-decoration: none; border-radius: 6px; }
 button.link:hover { color: var(--ink); background: var(--hover); }
 button.ghost { border-color: transparent; background: transparent; }
 .tabs { gap: 0; border-bottom: 1px solid var(--line); }
@@ -697,3 +697,20 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 :root[data-theme="dark"] .paper { filter: brightness(.9); }
 @media (prefers-color-scheme: dark) { :root[data-theme="auto"] .paper { filter: brightness(.9); } }
 @media print { .paper { filter: none !important; } }
+/* 날짜·달 이동(모든 화면 같은 모양) */
+.stepper { display: inline-flex; align-items: center; gap: 4px; }
+.stepper strong { min-width: 96px; text-align: center; font-size: 15px; }
+.stepper input[type='date'] { width: 150px; }
+.stepper .step-btn { width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); background: transparent; border-radius: 8px; font-size: 20px; line-height: 1; color: var(--ink); }
+.stepper .step-btn:hover { background: var(--hover); }
+.stepper .ghost { height: 32px; padding: 0 10px; }
+/* 단추 4가지: 기본(테두리) · .primary(화면에 하나) · .link/.ghost(테두리 없음, 밑줄 없음) · .danger-text(지우기). 꺼진 단추는 점선으로 확실히. */
+button:disabled, button:disabled:hover { opacity: .5; cursor: not-allowed; border-style: dashed; background: transparent; }
+button.primary:disabled { background: var(--accent); border-style: solid; }
+button.danger-text { border-color: transparent; background: transparent; color: var(--c-red); }
+button.danger-text:hover:not(:disabled) { background: var(--c-red-bg, var(--hover)); }
+p button.link, li button.link.inline { text-decoration: underline; }
+.row > .push-right { margin-left: auto; }
+.page-head { align-items: center; }
+.page-head .head-slot { display: contents; }
+.page-head .page-title { display: flex; flex-direction: column; gap: 2px; }

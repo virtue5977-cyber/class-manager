@@ -1,3 +1,4 @@
+import { HeadTools } from '../../components/PageHead'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAi, useDb, useFs } from '../../app/context'
@@ -134,7 +135,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     <div className="reflection">
       <div className="row between">
         <span className="muted">{`이번 학년도 ${thisYear}건${over ? ` · 넘치는 줄 ${over}개` : ''}`}</span>
-        <div className="row">
+        <HeadTools>
           <div className="seg paper-mode" role="radiogroup" aria-label="용지">
             {(['B4', 'A4'] as const).map((m) => (
               <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : undefined} onClick={() => setMode(m)}>
@@ -167,7 +168,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               } },
             ]}
           />
-        </div>
+        </HeadTools>
       </div>
       {msg && <p className="notice" role="status">{msg}</p>}
       {pendingSid && (
@@ -269,7 +270,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
                 사유
                 <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 수업 중 휴대폰 사용" />
               </label>
-              <button type="button" className="primary" disabled={busy} onClick={() => act(async () => {
+              <button type="button" disabled={busy} onClick={() => act(async () => {
                 setBusy(true)
                 try {
                   setLines(await fillByAi(db, ai, reason, students.map((s) => s.name), mode))
