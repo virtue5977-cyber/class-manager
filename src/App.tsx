@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
 import Sidebar from './components/Sidebar'
+import Shortcuts from './components/Shortcuts'
 import BackupBanner from './components/BackupBanner'
 import PinGate from './components/PinGate'
 import UpdateBanner from './components/UpdateBanner'
@@ -34,6 +35,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <GlobalClassContext.Provider value={true}>
         <div className="layout">
+          <Shortcuts />
           <Sidebar />
           <main className="content">
             <UpdateBanner />

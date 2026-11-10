@@ -1,4 +1,5 @@
-import MonthPicker from '../../components/MonthPicker'
+import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
@@ -26,6 +27,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
   const db = useDb()
   const { classes, classId, choose } = useClasses()
   const [month, setMonth] = useState(today.slice(0, 7))
+  useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
   const [picked, setPicked] = useState(today)
   const [weekends, setWeekends] = useState(false)
   const [data, setData] = useState<Record<string, DayData>>({})

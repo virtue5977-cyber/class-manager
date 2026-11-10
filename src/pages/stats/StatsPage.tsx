@@ -1,4 +1,5 @@
-import MonthPicker from '../../components/MonthPicker'
+import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { StudentRec } from '../../lib/db/types'
@@ -17,6 +18,7 @@ export default function StatsPage() {
   const { classes, classId, current, choose } = useClasses()
   /** '' = 학년도 전체, 아니면 YYYY-MM */
   const [month, setMonth] = useState('')
+  useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
   const [table, setTable] = useState<string[][]>([])
   const [message, setMessage] = useState<string>()
   const seq = useRef(0)

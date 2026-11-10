@@ -8,6 +8,7 @@ import { listReportsByStudents, loadReportContext } from '../../lib/absenceRepor
 import { addDays, toYmd, type SchoolDays } from '../../lib/schoolDays'
 import { gridNext } from '../../lib/ui/gridNav'
 import { ymdParam } from '../../lib/ui/hashParam'
+import { useShortcut } from '../../lib/ui/shortcuts'
 import AttendanceForm from './AttendanceForm'
 import ReportPanel from './ReportPanel'
 
@@ -64,6 +65,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
     for (let d = addDays(date, dir), i = 0; i < 14; i++, d = addDays(d, dir)) if (!days || days.isClassDay(d)) return d
     return addDays(date, dir)
   }
+  useShortcut('step', (a) => a.kind === 'step' && setDate(stepDay(a.dir)))
   const reportsOn = (sid: string) => (reports[sid] ?? []).filter((r) => r.start_date <= date && date <= r.end_date)
   const student = students.find((s) => s.id === selected)
   // 지금 보이는 날짜의 조회가 끝나기 전에는 입력 칸을 열지 않는다(이전 날짜 기록을 고치는 일을 막음).

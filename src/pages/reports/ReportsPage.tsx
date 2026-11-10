@@ -1,4 +1,5 @@
-import MonthPicker from '../../components/MonthPicker'
+import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import { listReportsForMonth, setSubmittedMany, type ReportRow } from '../../lib/absenceReports/list'
@@ -15,6 +16,7 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
   const fs = useFs()
   const { classes, classId, choose } = useClasses()
   const [month, setMonth] = useState(initialMonth)
+  useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
   const [rows, setRows] = useState<ReportRow[]>([])
   const [onlyOpen, setOnlyOpen] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
