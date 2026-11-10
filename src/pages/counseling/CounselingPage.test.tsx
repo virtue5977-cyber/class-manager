@@ -169,3 +169,22 @@ test('이름 가림 중에는 내보낸 파일 이름에 학생 이름 대신 �
     setHideNames(false)
   }
 })
+
+test('그 학생 반성문이 있으면 상담일지에 "반성문 n건" 링크', async () => {
+  const { saveReflection, DEFAULT_LINES } = await import('../../lib/reflection/store')
+  const { MemoryRouter } = await import('react-router-dom')
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const s = await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  await saveReflection(db, { student_id: s.id, date: '2026-11-10', reason: '지각', lines: DEFAULT_LINES, t1: '', t2: '', mode: 'B4' })
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <CounselingPage />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: /^1번/ }))
+  expect(await screen.findByRole('link', { name: '반성문 1건' })).toHaveAttribute('href', `/class/reflection?sid=${s.id}`)
+})

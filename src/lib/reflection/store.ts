@@ -69,3 +69,8 @@ export async function starPhrase(db: AppDB, text: string): Promise<void> {
 }
 
 export const unstarPhrase = (db: AppDB, id: string) => softDelete(db.reflection_phrases, id)
+
+/** 모음 읽기만(넣지 않음) — liveQuery 안에서 쓴다. 처음 넣기는 listPhrases. */
+export async function readPhrases(db: AppDB): Promise<ReflectionPhraseRec[]> {
+  return (await db.reflection_phrases.toArray()).filter((p) => !p.deleted).sort((a, b) => b.starred_at.localeCompare(a.starred_at))
+}
