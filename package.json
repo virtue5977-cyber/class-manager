@@ -1,7 +1,7 @@
 {
   "name": "class-manager",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -42,11 +42,11 @@
     "vitest": "^2.1.9"
   },
   "main": "electron/main.cjs",
-  "description": "담임 업무(출결·결석신고서·상담일지·학급)",
+  "description": "Watson — 담임 업무(출결·결석신고서·상담일지·학급)",
   "author": "class-manager",
   "build": {
     "appId": "kr.classmanager.app",
-    "productName": "담임업무",
+    "productName": "Watson",
     "files": [
       "dist/**",
       "electron/**",
@@ -65,7 +65,8 @@
           ]
         }
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "icon": "build/icon.ico"
     },
     "portable": {
       "artifactName": "담임업무_${version}_포터블.exe"

@@ -1,4 +1,4 @@
-// 담임 업무 데스크톱(Windows 포터블 exe) 진입점.
+// Watson(담임 업무) 데스크톱(Windows exe) 진입점.
 // 화면은 dist(웹 빌드)를 app://local 주소로 보여 주고, 백업 폴더 읽기·쓰기만 Node로 처리한다.
 const { app, BrowserWindow, Menu, protocol, net, ipcMain, dialog, powerMonitor, shell, safeStorage } = require('electron')
 const path = require('node:path')
@@ -7,11 +7,15 @@ const fsSync = require('node:fs')
 const { pathToFileURL } = require('node:url')
 const { spawn } = require('node:child_process')
 const os = require('node:os')
+const { pickUserDataDir } = require('./paths.cjs')
+
+// 이름을 Watson으로 바꿔도 옛 자료 폴더(담임업무)를 그대로 쓴다. ready 전에 정해야 한다.
+app.setPath('userData', pickUserDataDir(app.getPath('appData'), fsSync.existsSync))
 
 const BUILT_DIST = path.join(__dirname, '..', 'dist')
 // ---- 자동 업데이트 ----
 // 화면(dist)만 GitHub에서 받아 바꾼다. exe(이 파일·preload)가 바뀌는 업데이트는 SHELL 번호를 올리고 새 exe를 받아야 한다.
-const SHELL = 2
+const SHELL = 3
 const UPDATE_URL = (!app.isPackaged && process.env.DAMIM_UPDATE_URL) || 'https://raw.githubusercontent.com/virtue5977-cyber/class-manager/updates/update.json'
 const UPDATE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAjiLbLA7jnUY/fIBXaBuyVwSPkFupzLAVU4WXXGemyQs=
@@ -49,7 +53,8 @@ function createWindow() {
     height: 860,
     minWidth: 900,
     minHeight: 600,
-    title: '담임 업무',
+    title: 'Watson',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: !app.isPackaged },
   })
