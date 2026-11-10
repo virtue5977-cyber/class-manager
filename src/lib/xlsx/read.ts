@@ -12,6 +12,10 @@ function colIndex(ref: string): number {
 }
 
 /** 첫 번째 시트를 글자 표로 읽는다(숫자는 그대로 문자열, 날짜 서식은 엑셀 일련번호로 남음). */
+/** 명렬표에 충분한 크기. 이보다 먼 줄·칸은 버린다(셀 주소만 커다란 파일로 메모리를 채우지 못하게). */
+const MAX_ROWS = 5000
+const MAX_COLS = 200
+
 export async function readFirstSheet(bytes: Uint8Array): Promise<string[][]> {
   let zip: JSZip
   try {
@@ -36,6 +40,7 @@ export async function readFirstSheet(bytes: Uint8Array): Promise<string[][]> {
   const out: string[][] = []
   for (const rm of sheet.matchAll(/<(?:\w+:)?row\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
     const r = Number(rm[1].match(/\br="(\d+)"/)?.[1] ?? out.length + 1) - 1
+    if (r >= MAX_ROWS) continue
     const row: string[] = []
     let next = 0
     for (const cm of rm[2].matchAll(/<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g)) {
@@ -43,6 +48,7 @@ export async function readFirstSheet(bytes: Uint8Array): Promise<string[][]> {
       const ref = attrs.match(/\br="([A-Z]+\d+)"/)?.[1]
       const ci = ref ? colIndex(ref) : next
       next = ci + 1
+      if (ci >= MAX_COLS) continue
       const body = cm[2] ?? ''
       const type = attrs.match(/\bt="(\w+)"/)?.[1]
       const v = body.match(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/)?.[1]

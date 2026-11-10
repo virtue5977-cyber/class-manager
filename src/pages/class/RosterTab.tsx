@@ -71,8 +71,9 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
           type="button"
           onClick={async () => {
             setNotice(undefined)
-            const f = await fs.pickFileToRead('.xlsx,.csv,.txt')
+            const f = await fs.pickFileToRead('.xlsx,.csv,.txt', { maxBytes: 10 * 1024 * 1024 })
             if (!f) return
+            if (f.tooBig) return setNotice('명렬표 파일이 너무 큽니다(10MB까지).')
             try {
               const cells = /\.(csv|txt)$/i.test(f.name) ? parseTsv(new TextDecoder().decode(f.bytes).replace(/,/g, '\t')) : await readFirstSheet(f.bytes)
               setFileRows({ name: f.name, result: toRosterRows(cells) })

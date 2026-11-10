@@ -69,7 +69,7 @@ export function createWebFsAdapter(db: AppDB): FsAdapter {
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     },
-    pickFileToRead(accept = '.enc') {
+    pickFileToRead(accept = '.enc', opts = {}) {
       return new Promise((resolve) => {
         const input = document.createElement('input')
         input.type = 'file'
@@ -77,6 +77,8 @@ export function createWebFsAdapter(db: AppDB): FsAdapter {
         input.onchange = async () => {
           const file = input.files?.[0]
           if (!file) return resolve(null)
+          // 너무 큰 파일은 읽지 않는다(메모리에 다 올리기 전에 알림).
+          if (opts.maxBytes != null && file.size > opts.maxBytes) return resolve({ name: file.name, bytes: new Uint8Array(0), tooBig: true })
           resolve({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })
         }
         input.oncancel = () => resolve(null)

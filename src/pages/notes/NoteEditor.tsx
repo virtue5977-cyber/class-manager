@@ -87,7 +87,13 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         setMsg('50MB까지 붙일 수 있습니다.')
         continue
       }
-      const rec = await attachFile(db, note.id, { name: f.name, mime: f.type, bytes: await fileBytes(f) })
+      let rec
+      try {
+        rec = await attachFile(db, note.id, { name: f.name, mime: f.type, bytes: await fileBytes(f) })
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : String(e))
+        break
+      }
       setFileInfo((m) => ({ ...m, [rec.id]: { name: rec.name, size: rec.size } }))
       const nb: NoteBlock = { id: newBlockId(), type: 'file', file_id: rec.id }
       setBlocks((bs) => {
@@ -102,11 +108,16 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   async function chooseSlash(b: NoteBlock, type: NoteBlockType) {
     setSlashSel(0)
     if (type === 'file') {
-      const f = await fs.pickFileToRead()
+      const f = await fs.pickFileToRead('', { maxBytes: MAX_FILE })
       update(b.id, { text: '' })
       if (f) {
-        if (f.bytes.length > MAX_FILE) return setMsg('50MB까지 붙일 수 있습니다.')
-        const rec = await attachFile(db, note.id, { name: f.name, mime: '', bytes: f.bytes })
+        if (f.tooBig || f.bytes.length > MAX_FILE) return setMsg('50MB까지 붙일 수 있습니다.')
+        let rec
+        try {
+          rec = await attachFile(db, note.id, { name: f.name, mime: '', bytes: f.bytes })
+        } catch (e) {
+          return setMsg(e instanceof Error ? e.message : String(e))
+        }
         setFileInfo((m) => ({ ...m, [rec.id]: { name: rec.name, size: rec.size } }))
         setBlocks((bs) => bs.map((x) => (x.id === b.id ? { id: x.id, type: 'file', file_id: rec.id } : x)))
       }

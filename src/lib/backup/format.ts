@@ -41,7 +41,8 @@ export function decodeBackupFile(bytes: Uint8Array): {
   for (let i = 0; i < MAGIC.length; i++) if (bytes[i] !== MAGIC[i]) throw new BackupFormatError()
   if (bytes[4] !== 1) throw new BackupFormatError()
   const iterations = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(5, false)
-  if (iterations < 1) throw new BackupFormatError()
+  // 남이 만든 파일의 큰 값으로 키 만들기가 끝없이 걸리지 않게
+  if (iterations < 1 || iterations > 10_000_000) throw new BackupFormatError()
   return {
     header: { formatVersion: 1, iterations, salt: bytes.slice(9, HEADER_LENGTH) },
     headerBytes: bytes.slice(0, HEADER_LENGTH),

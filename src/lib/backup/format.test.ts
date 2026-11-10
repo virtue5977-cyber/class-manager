@@ -41,3 +41,8 @@ test('iterations가 big-endian으로 저장된다', () => {
   const f = encodeBackupFile({ formatVersion: 1, iterations: 600000, salt: new Uint8Array(16) }, new Uint8Array(12), new Uint8Array(16))
   expect([...f.slice(5, 9)]).toEqual([0x00, 0x09, 0x27, 0xc0])
 })
+
+test('iterations가 터무니없이 크면(1천만 넘음) 열지 않는다(멈춤 방지)', () => {
+  expect(() => decodeBackupFile(encodeBackupFile({ formatVersion: 1, iterations: 4_000_000_000, salt }, iv, ct))).toThrow(BackupFormatError)
+  expect(decodeBackupFile(encodeBackupFile({ formatVersion: 1, iterations: 10_000_000, salt }, iv, ct)).header.iterations).toBe(10_000_000)
+})

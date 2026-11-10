@@ -65,8 +65,9 @@ export default function ReportSettings() {
   }
 
   async function upload() {
-    const f = await fs.pickFileToRead('.hwpx')
+    const f = await fs.pickFileToRead('.hwpx', { maxBytes: 20 * 1024 * 1024 })
     if (!f) return
+    if (f.tooBig) return setNotice(['양식 파일이 너무 큽니다(20MB까지).'])
     const r = await installTemplate(db, f.name.replace(/\.hwpx$/i, ''), f.bytes)
     const msgs = r.ok ? ['새 양식을 적용했습니다.', `찾은 표시 ${r.found.length}개`] : [r.error ?? '양식을 적용하지 못했습니다.']
     if (r.unknown.length) msgs.push(`알 수 없는 표시: ${r.unknown.map((u) => `{{${u}}}`).join(', ')}`)

@@ -110,13 +110,12 @@ function sendUpdate(state) {
 }
 async function checkForUpdate() {
   sendUpdate({ status: 'checking', current: RUNNING_VERSION })
-  const res = await net.fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' })
-  if (!res.ok) throw new Error('update.json ' + res.status)
-  const info = await res.json()
+  const { fetchCapped } = require('./fetchcap.cjs')
+  const info = JSON.parse((await fetchCapped((u, i) => net.fetch(u, i), UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' }, { timeoutMs: 20000, maxBytes: 1024 * 1024 })).toString('utf8'))
   if (!newer(info.version, RUNNING_VERSION)) return sendUpdate({ status: 'latest', current: RUNNING_VERSION })
   if (info.shell > SHELL) return sendUpdate({ status: 'need-exe', current: RUNNING_VERSION, version: info.version, note: info.note || '' })
   const bundleUrl = new URL(info.bundle, UPDATE_URL).toString()
-  const bytes = Buffer.from(await (await net.fetch(bundleUrl, { cache: 'no-store' })).arrayBuffer())
+  const bytes = await fetchCapped((u, i) => net.fetch(u, i), bundleUrl, { cache: 'no-store' }, { timeoutMs: 180000, maxBytes: 60 * 1024 * 1024 })
   const crypto = require('node:crypto')
   const sha = crypto.createHash('sha256').update(bytes).digest('hex')
   const signed = `${info.version}\n${info.shell}\n${sha}`
