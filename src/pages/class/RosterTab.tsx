@@ -45,7 +45,10 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
 
   return (
     <div className="stack">
-      <div className="row">
+      <div className="toolbar">
+        <details className="menu">
+          <summary>가져오기·양식 ▾</summary>
+          <div className="menu-list" onClick={(e) => { const d = e.currentTarget.closest("details"); if (d) d.open = false }}>
         <button
           type="button"
           onClick={async () => {
@@ -78,7 +81,9 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
         <button type="button" onClick={() => { setPasteOpen(true); setFileRows(null); setNotice(undefined) }}>
           엑셀에서 붙여넣기
         </button>
-        <button type="button" onClick={() => setEditing('new')}>
+          </div>
+        </details>
+        <button type="button" className="primary" onClick={() => setEditing('new')}>
           학생 추가
         </button>
       </div>

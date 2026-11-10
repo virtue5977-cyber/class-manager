@@ -7,6 +7,7 @@ import { runNuga } from '../../lib/counseling/nuga'
 import { getSettings } from '../../lib/settings'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
+import { ymdParam } from '../../lib/ui/hashParam'
 import { addDays, toYmd } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
@@ -22,6 +23,8 @@ async function copy(text: string): Promise<boolean> {
 }
 
 export default function CounselingPage({ today = toYmd(new Date()) }: { today?: string }) {
+  // 달력에서 날짜를 골라 오면 새 기록 날짜가 그날로 잡힌다.
+  const [newLogDate] = useState(() => ymdParam() ?? today)
   const db = useDb()
   const fs = useFs()
   const ai = useAi()
@@ -202,7 +205,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
               {(adding || logs.length === 0) && (
                 <NewLog
                   key={student.id}
-                  today={today}
+                  today={newLogDate}
                   onCancel={logs.length ? () => setAdding(false) : undefined}
                   onSave={async (input) => {
                     let ok = false

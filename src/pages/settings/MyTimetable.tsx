@@ -80,7 +80,9 @@ export default function MyTimetable({ today = toYmd(new Date()) }: { today?: str
   return (
     <div className="card stack">
       <h3>내 시간표</h3>
-      {!periods ? (
+      {!periods && mine.length > 0 ? (
+        <p className="muted">{`저장된 내 시간표 ${mine.length}시간이 홈에 보입니다. 시간표를 다시 맞추려면 '학교·나이스' 탭에서 이번 주 급식·시간표를 가져오세요.`}</p>
+      ) : !periods ? (
         <p className="muted">먼저 '이번 주 급식·시간표 가져오기'를 하세요.</p>
       ) : (
         <>

@@ -115,8 +115,8 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
                     {`${e.time ? e.time + ' ' : ''}${e.title}`}
                   </span>
                 ))}
-                {absent > 0 && <span className="cal-att">{`출결 ${absent}`}</span>}
-                {dd && dd.logs.length > 0 && <span className="cal-log">{`상담 ${dd.logs.length}`}</span>}
+                {absent > 0 && <span className="cal-att" title={dd!.atts.map(({ a, s }) => `${s.number}번 ${s.name} ${a.kind}`).join(', ')}>{`출결 ${absent}`}</span>}
+                {dd && dd.logs.length > 0 && <span className="cal-log" title={dd.logs.map(({ s }) => `${s.number}번 ${s.name}`).join(', ')}>{`상담 ${dd.logs.length}`}</span>}
               </button>
             )
           })}
@@ -166,8 +166,8 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
             </>
           )}
           <div className="row">
-            <Link to="/attendance">출결 입력</Link>
-            <Link to="/counseling">상담 기록</Link>
+            <Link to={`/attendance?date=${picked}`}>출결 입력</Link>
+            <Link to={`/counseling?date=${picked}`}>상담 기록</Link>
           </div>
         </aside>
       </div>

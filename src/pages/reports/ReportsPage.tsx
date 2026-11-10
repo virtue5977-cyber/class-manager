@@ -59,13 +59,15 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
     await reload()
   }
 
-  const exportPicked = (mode: 'one' | 'zip') =>
+  const exportRows = (list: ReportRow[], mode: 'one' | 'zip') =>
     act(async () => {
-      if (!pickedRows.length) throw new Error('내보낼 신고서를 고르세요.')
-      const out = await buildAbsenceHwpx(db, pickedRows.map((r) => r.report), { stuName, mode })
+      if (!list.length) throw new Error('내보낼 신고서를 고르세요.')
+      const out = await buildAbsenceHwpx(db, list.map((r) => r.report), { stuName, mode })
       fs.downloadFile(out.fileName, out.bytes)
       setMessages(out.warnings.length ? out.warnings : [`${out.fileName} 파일을 만들었습니다.`])
     })
+  const exportPicked = (mode: 'one' | 'zip') => exportRows(pickedRows, mode)
+  const openRows = rows.filter((r) => !r.report.submitted)
 
   return (
     <section className="stack">
@@ -81,6 +83,11 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
             <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
             미제출만
           </label>
+          {openRows.length > 0 && (
+            <button type="button" className="primary" onClick={() => exportRows(openRows, 'one')}>
+              {`미제출 ${openRows.length}건 hwpx`}
+            </button>
+          )}
         </div>
       </div>
       {messages.length > 0 && (
@@ -123,7 +130,11 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
                     <td>
                       <input type="checkbox" aria-label={`${label} 선택`} checked={picked.has(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} />
                     </td>
-                    <td className="pii">{who}</td>
+                    <td className="pii">
+                      <a href={`#/attendance?date=${r.start_date}`} title="그날 출결 화면으로">
+                        {who}
+                      </a>
+                    </td>
                     <td>
                       {periodText(r)}
                       {r.stale && <span className="tag warn"> 다시 확인</span>}
@@ -133,26 +144,32 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
                     <td>{r.evidence_type}</td>
                     <td>
                       {r.diagnosis_required ? (
-                        <label className="inline">
-                          <input
-                            type="checkbox"
-                            aria-label={`${label} 진단서 수령`}
-                            checked={r.diagnosis_received}
-                            onChange={(e) => act(async () => void (await updateReport(db, r.id, { diagnosis_received: e.target.checked })))}
-                          />
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-label={`${label} 진단서 수령`}
+                          aria-checked={r.diagnosis_received}
+                          className={`pill ${r.diagnosis_received ? 'status-나이스' : 'warn-pill'}`}
+                          onClick={() => act(async () => void (await updateReport(db, r.id, { diagnosis_received: !r.diagnosis_received })))}
+                        >
                           {r.diagnosis_received ? '수령' : '필요'}
-                        </label>
+                        </button>
                       ) : (
                         <span className="muted">-</span>
                       )}
                     </td>
                     <td>
-                      <input
-                        type="checkbox"
+                      <button
+                        type="button"
+                        role="switch"
                         aria-label={`${label} 제출`}
-                        checked={r.submitted}
-                        onChange={(e) => act(() => setSubmittedMany(db, [r.id], e.target.checked))}
-                      />
+                        aria-checked={r.submitted}
+                        title="눌러서 바꾸기"
+                        className={`pill ${r.submitted ? 'status-나이스' : 'status-미정리'}`}
+                        onClick={() => act(() => setSubmittedMany(db, [r.id], !r.submitted))}
+                      >
+                        {r.submitted ? '제출' : '미제출'}
+                      </button>
                     </td>
                   </tr>
                 )
@@ -161,25 +178,27 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
           </table>
         </div>
       )}
-      <div className="row">
+      {pickedRows.length > 0 && (
+      <div className="row select-bar">
         <span className="muted">{`${pickedRows.length}건 선택`}</span>
-        <button type="button" disabled={!pickedRows.length} onClick={() => act(() => setSubmittedMany(db, pickedRows.map((r) => r.report.id), true))}>
+        <button type="button" onClick={() => act(() => setSubmittedMany(db, pickedRows.map((r) => r.report.id), true))}>
           선택 제출로 표시
         </button>
-        <button type="button" disabled={!pickedRows.length} onClick={() => act(() => setSubmittedMany(db, pickedRows.map((r) => r.report.id), false))}>
+        <button type="button" onClick={() => act(() => setSubmittedMany(db, pickedRows.map((r) => r.report.id), false))}>
           선택 미제출로 표시
         </button>
         <label className="inline">
           <input type="checkbox" checked={stuName} onChange={(e) => setStuName(e.target.checked)} />
           학생 성명 칸에 이름 인쇄
         </label>
-        <button type="button" className="primary" disabled={!pickedRows.length} onClick={() => exportPicked('one')}>
+        <button type="button" onClick={() => exportPicked('one')}>
           선택 hwpx 한 파일
         </button>
-        <button type="button" disabled={!pickedRows.length} onClick={() => exportPicked('zip')}>
+        <button type="button" onClick={() => exportPicked('zip')}>
           학생별 zip
         </button>
       </div>
+      )}
     </section>
   )
 }

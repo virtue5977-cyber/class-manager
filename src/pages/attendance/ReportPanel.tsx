@@ -15,7 +15,7 @@ const FIELD_LABEL: Record<OverridableField, string> = {
   confirmed_date: '담임 확인일',
 }
 
-function ReportCard({ report, onSaved }: { report: AbsenceReportRec; onSaved: () => Promise<void> }) {
+function ReportCard({ report, onSaved, open }: { report: AbsenceReportRec; onSaved: () => Promise<void>; open: boolean }) {
   const db = useDb()
   const fs = useFs()
   const [detail, setDetail] = useState(report.detail)
@@ -49,8 +49,14 @@ function ReportCard({ report, onSaved }: { report: AbsenceReportRec; onSaved: ()
   }
 
   return (
-    <div className="card stack report-card" aria-label={`신고서 ${periodText(report)}`}>
-      <h4>{`${periodText(report)} ${report.kind}${report.period ? ` ${report.period}교시` : ''}(${report.category})${report.kind === '결석' ? ` · 수업일 ${report.school_days}일` : ''}`}</h4>
+    <details className="report-card" open={open} aria-label={`신고서 ${periodText(report)}`}>
+      <summary>
+        <strong>{`${periodText(report)} ${report.kind}${report.period ? ` ${report.period}교시` : ''}(${report.category})`}</strong>
+        {report.kind === '결석' && <span className="muted">{` 수업일 ${report.school_days}일`}</span>}
+        <span className={`tag ${report.submitted ? 'status-나이스' : 'status-미정리'}`}>{report.submitted ? '제출' : '미제출'}</span>
+        {report.diagnosis_required && !report.diagnosis_received && <span className="tag warn">진단서 필요</span>}
+      </summary>
+      <div className="stack report-body">
       {report.stale && <p className="warn">출결이 바뀌었습니다. 내용을 확인하세요.</p>}
       <div className="row">
         <label>
@@ -128,7 +134,8 @@ function ReportCard({ report, onSaved }: { report: AbsenceReportRec; onSaved: ()
           ))}
         </ul>
       )}
-    </div>
+      </div>
+    </details>
   )
 }
 
@@ -141,18 +148,19 @@ export default function ReportPanel({ student, onChanged }: { student: StudentRe
   }, [load])
   if (!reports || reports.length === 0) return null
   return (
-    <div className="stack">
-      <h3>{`${student.name} 결석신고서`}</h3>
+    <section className="card stack report-panel" aria-label="결석신고서">
+      <h3>{`결석신고서 ${reports.length}건`}</h3>
       {reports.map((r) => (
         <ReportCard
           key={r.id}
           report={r}
+          open={reports.length === 1 || !r.submitted}
           onSaved={async () => {
             await load()
             onChanged()
           }}
         />
       ))}
-    </div>
+    </section>
   )
 }

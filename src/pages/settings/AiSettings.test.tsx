@@ -31,3 +31,19 @@ test('키 저장(기기 전용), 켜기, 지시문 저장·되돌리기, 샘플 
   await user.click(screen.getAllByRole('button', { name: '기본값으로 되돌리기' })[0])
   await waitFor(async () => expect(await getPrompt(db, 'nuga')).toBe(DEFAULT_PROMPTS.nuga))
 })
+
+test('지출 한도 안내는 API 키를 고를 때만, 순서는 연결 방식 → AI 정리 사용', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <AiSettings />
+    </AppProviders>,
+  )
+  const radio = await screen.findByRole('radio', { name: 'Claude Code(Pro 구독)' })
+  await user.click(radio)
+  await waitFor(() => expect(screen.queryByText(/지출 한도/)).not.toBeInTheDocument())
+  expect(radio.compareDocumentPosition(screen.getByLabelText('AI 정리 사용')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  await user.click(screen.getByRole('radio', { name: 'API 키' }))
+  expect(await screen.findByText(/지출 한도/)).toBeInTheDocument()
+})

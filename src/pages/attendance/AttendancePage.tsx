@@ -7,6 +7,7 @@ import { listAttendanceByDate } from '../../lib/attendance/attendance'
 import { listReportsByStudents, loadReportContext } from '../../lib/absenceReports/reconcile'
 import { addDays, toYmd, type SchoolDays } from '../../lib/schoolDays'
 import { gridNext } from '../../lib/ui/gridNav'
+import { ymdParam } from '../../lib/ui/hashParam'
 import AttendanceForm from './AttendanceForm'
 import ReportPanel from './ReportPanel'
 
@@ -15,7 +16,7 @@ const label = (r: AttendanceRec) => `${r.kind}${r.period ? ` ${r.period}교시` 
 export default function AttendancePage({ today = toYmd(new Date()) }: { today?: string }) {
   const db = useDb()
   const { classes, classId, choose } = useClasses()
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(() => ymdParam() ?? today)
   const [students, setStudents] = useState<StudentRec[]>([])
   const [records, setRecords] = useState<AttendanceRec[]>([])
   const [reports, setReports] = useState<Record<string, AbsenceReportRec[]>>({})
@@ -81,7 +82,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
           <div className="att-summary" aria-label="오늘 출결 요약">
             <span>{`재적 ${students.length}명`}</span>
             {counts.map(([k, n]) => (
-              <span key={k}>{`${k} ${n}`}</span>
+              <span key={k} className={n ? `chip-${k}` : 'zero'}>{`${k} ${n}`}</span>
             ))}
           </div>
         </div>

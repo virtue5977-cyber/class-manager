@@ -5,6 +5,7 @@ import { createMemoryFsAdapter } from '../../lib/fs/memory'
 import { AppProviders } from '../../app/context'
 import { putCache } from '../../lib/neis/cache'
 import type { ClassPeriod } from '../../lib/neis/timetable'
+import { saveManualSlot } from '../../lib/timetable/estimate'
 import MyTimetable from './MyTimetable'
 
 const p = (date: string, grade: number, classNo: string, period: number, subject: string): ClassPeriod => ({ date, grade, classNo, period, subject })
@@ -89,4 +90,12 @@ test('고른 학급·과목은 다시 열어도 유지된다', async () => {
   renderWith(db)
   expect(await screen.findByLabelText('1-1')).toBeChecked()
   expect(await screen.findByLabelText('수학')).toBeChecked()
+})
+
+test('가져온 주 정보가 없어도 저장된 내 시간표가 있으면 안내 대신 시간표를 보여 준다', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  await saveManualSlot(db, { weekday: 1, period: 2, subject: '도덕', class_label: '1-5' })
+  renderWith(db)
+  expect(await screen.findByText(/저장된 내 시간표 1시간/)).toBeInTheDocument()
+  expect(screen.queryByText("먼저 '이번 주 급식·시간표 가져오기'를 하세요.")).not.toBeInTheDocument()
 })

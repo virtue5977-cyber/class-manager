@@ -97,7 +97,13 @@ export default function SchoolSettings({ today = toYmd(new Date()) }: { today?: 
           NEIS 인증키
           <input type="password" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} autoComplete="off" />
         </label>
-        {hasKey && <p>인증키가 저장되어 있습니다.</p>}
+        {hasKey ? (
+          <p>인증키가 저장되어 있습니다.</p>
+        ) : (
+          <p className="muted">
+            인증키 받는 법: <a href="https://open.neis.go.kr/" target="_blank" rel="noreferrer">나이스 교육정보 개방 포털</a>에 회원가입 → 마이페이지 '인증키 신청'(무료, 활용 용도는 '교육') → 발급된 키를 여기에 붙여넣기.
+          </p>
+        )}
         <p className="muted">인증키는 이 노트북에만 저장되고 백업에 들어가지 않습니다.</p>
         <button type="submit" disabled={busy}>
           인증키 저장

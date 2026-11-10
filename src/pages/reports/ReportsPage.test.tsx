@@ -33,9 +33,10 @@ test('월 목록·요약, 제출 체크, 미제출 필터', async () => {
   expect(await screen.findByText('1번 가나')).toBeInTheDocument()
   expect(screen.getByText('2번 다라')).toBeInTheDocument()
   expect(screen.getByText('전체 2건 · 미제출 2건 · 진단서 미수령 1건')).toBeInTheDocument()
-  await user.click(screen.getByRole('checkbox', { name: '1번 가나 11/9~11/11 제출' }))
+  await user.click(screen.getByRole('switch', { name: '1번 가나 11/9~11/11 제출' }))
   await waitFor(async () => expect((await listReportsByStudent(db, s1.id))[0].submitted).toBe(true))
   expect(await screen.findByText('전체 2건 · 미제출 1건 · 진단서 미수령 1건')).toBeInTheDocument()
+  expect(screen.getByRole('switch', { name: '1번 가나 11/9~11/11 제출' })).toHaveAttribute('aria-checked', 'true')
   await user.click(screen.getByLabelText('미제출만'))
   expect(screen.queryByText('1번 가나')).not.toBeInTheDocument()
   expect(screen.getByText('2번 다라')).toBeInTheDocument()
@@ -55,4 +56,18 @@ test('선택 건 일괄 제출과 hwpx 내보내기', async () => {
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['결석신고서_2026-11-09_2명.hwpx']))
   await user.click(screen.getByRole('button', { name: '학생별 zip' }))
   await waitFor(() => expect(fs.downloads.at(-1)!.name).toMatch(/\.zip$/))
+})
+
+test('아무것도 고르지 않으면 선택 버튼 줄이 숨고, 위에 "미제출 모두 hwpx"가 있다', async () => {
+  const user = userEvent.setup()
+  const { fs } = await setup()
+  await screen.findByText('1번 가나')
+  expect(screen.queryByRole('button', { name: '선택 제출로 표시' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '미제출 2건 hwpx' }))
+  await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['결석신고서_2026-11-09_2명.hwpx']))
+})
+
+test('학생 이름은 그 신고서 첫날의 출결 화면으로 가는 링크다', async () => {
+  await setup()
+  expect(await screen.findByRole('link', { name: '1번 가나' })).toHaveAttribute('href', '#/attendance?date=2026-11-09')
 })

@@ -93,3 +93,10 @@ test('이번 주 급식·시간표 가져오기 → 끼니·칸 수 문구', asy
   await user.click(await screen.findByRole('button', { name: '이번 주 급식·시간표 가져오기' }))
   await waitFor(() => expect(screen.getByText('급식 1끼, 시간표 2칸을 가져왔습니다.')).toBeInTheDocument())
 })
+
+test('인증키가 없으면 받는 곳 안내와 링크가 보인다', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  renderWith(db, async () => new Response('{}'))
+  const link = await screen.findByRole('link', { name: '나이스 교육정보 개방 포털' })
+  expect(link).toHaveAttribute('href', 'https://open.neis.go.kr/')
+})

@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useDb } from '../../app/context'
+import { getNeisKey, getSettings } from '../../lib/settings'
 import BackupSettings from './BackupSettings'
 import SchoolSettings from './SchoolSettings'
 import MyTimetable from './MyTimetable'
@@ -10,7 +13,7 @@ import GoogleSettings from './GoogleSettings'
 import AppearanceSettings from './AppearanceSettings'
 
 export const SETTINGS_TABS = [
-  { id: 'backup', label: '백업·잠금' },
+  { id: 'backup', label: '잠금·백업' },
   { id: 'school', label: '학교·나이스' },
   { id: 'timetable', label: '내 시간표' },
   { id: 'reports', label: '결석신고서' },
@@ -24,22 +27,32 @@ export type SettingsTab = (typeof SETTINGS_TABS)[number]['id']
 /** 설정은 탭으로 나눈다. 주소의 ?tab= 으로 다른 화면에서 바로 열 수 있다. */
 export default function SettingsPage({ backupIterations }: { backupIterations?: number }) {
   const [params, setParams] = useSearchParams()
+  const db = useDb()
+  // 할 일이 남은 탭에 점을 붙인다(처음 쓰는 사람이 무엇부터 할지 보이게).
+  const [todo, setTodo] = useState<Partial<Record<SettingsTab, boolean>>>({})
+  useEffect(() => {
+    ;(async () => {
+      const s = await getSettings(db)
+      setTodo({ backup: !(await db.device_local.get('backupKey')), school: !((await getNeisKey(db)) && s.neis_school_code) })
+    })()
+  }, [db, params])
   const tab = (SETTINGS_TABS.find((t) => t.id === params.get('tab'))?.id ?? 'backup') as SettingsTab
   return (
     <section className="stack">
       <h2>설정</h2>
       <div className="tabs settings-tabs" role="tablist" aria-label="설정 메뉴">
         {SETTINGS_TABS.map((t) => (
-          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'active' : undefined} onClick={() => setParams({ tab: t.id }, { replace: true })}>
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-label={todo[t.id] ? `${t.label} · 할 일 있음` : undefined} className={tab === t.id ? 'active' : undefined} onClick={() => setParams({ tab: t.id }, { replace: true })}>
             {t.label}
+            {todo[t.id] && <span className="todo-dot" aria-hidden="true" />}
           </button>
         ))}
       </div>
       <div className="stack gap settings-body" role="tabpanel">
         {tab === 'backup' && (
           <>
-            <BackupSettings iterations={backupIterations} />
             <PinSettings />
+            <BackupSettings iterations={backupIterations} />
           </>
         )}
         {tab === 'school' && <SchoolSettings />}

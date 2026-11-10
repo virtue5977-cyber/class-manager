@@ -125,3 +125,12 @@ test('전날·다음날은 주말·휴업일을 건너뛴다', async () => {
   await user.click(screen.getByRole('button', { name: '전날' }))
   await waitFor(() => expect(screen.getByLabelText('날짜')).toHaveValue('2026-11-06'))
 })
+
+test('주소에 날짜가 있으면(달력에서 넘어옴) 그 날짜로 연다', async () => {
+  const { db } = await setup()
+  window.location.hash = '#/attendance?date=2026-11-12'
+  renderAt(db, '2026-11-06')
+  await screen.findByRole('button', { name: /^1번 가나/ })
+  expect(screen.getByLabelText('날짜')).toHaveValue('2026-11-12')
+  window.location.hash = ''
+})

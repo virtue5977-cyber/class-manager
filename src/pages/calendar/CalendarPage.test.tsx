@@ -30,6 +30,8 @@ test('한 달에 학사일정·출결·상담이 함께 보이고, 날짜를 누
   expect(await within(day).findByText('체육대회')).toBeInTheDocument()
   expect(await within(day).findByText('출결 1')).toBeInTheDocument()
   expect(within(day).getByText('상담 1')).toBeInTheDocument()
+  expect(within(day).getByText('출결 1')).toHaveAttribute('title', '3번 가나 지각')
+  expect(within(day).getByText('상담 1')).toHaveAttribute('title', '3번 가나')
   expect(screen.queryByRole('columnheader', { name: '토' })).not.toBeInTheDocument()
   await user.click(day)
   const side = screen.getByRole('complementary', { name: '고른 날' })
@@ -61,4 +63,20 @@ test('구글에서 가져온 일정도 달력과 고른 날에 보인다(여러 
   expect(within(screen.getByRole('gridcell', { name: '11월 18일' })).getByText('연수')).toBeInTheDocument()
   await user.click(screen.getByRole('gridcell', { name: '11월 12일' }))
   expect(within(screen.getByRole('complementary', { name: '고른 날' })).getByText('15:30 학부모 상담')).toBeInTheDocument()
+})
+
+test('고른 날의 "출결 입력"·"상담 기록" 링크는 그 날짜를 넘긴다', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <CalendarPage today="2026-11-06" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('gridcell', { name: '11월 12일' }))
+  expect(screen.getByRole('link', { name: '출결 입력' })).toHaveAttribute('href', '/attendance?date=2026-11-12')
+  expect(screen.getByRole('link', { name: '상담 기록' })).toHaveAttribute('href', '/counseling?date=2026-11-12')
 })

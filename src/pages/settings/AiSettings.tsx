@@ -41,16 +41,9 @@ export default function AiSettings() {
     <div className="card stack wide" aria-label="AI 설정">
       <h3>AI</h3>
       <p className="muted">
-        AI는 버튼을 누를 때만 쓰며, 학생 이름과 전화번호·학번은 가려서 보냅니다. 다른 반 학생 이름은 명단에 없어 가려지지 않으니 메모에 쓸 때 주의하세요. Claude 콘솔에서 월 지출 한도를 꼭 걸어 두세요.
+        AI는 버튼을 누를 때만 쓰며, 학생 이름과 전화번호·학번은 가려서 보냅니다. 다른 반 학생 이름은 명단에 없어 가려지지 않으니 메모에 쓸 때 주의하세요.
       </p>
-      <label className="inline">
-        <input type="checkbox" checked={s.ai_enabled} onChange={(e) => patch({ ai_enabled: e.target.checked })} />
-        AI 정리 사용
-      </label>
-      <label className="inline">
-        <input type="checkbox" checked={s.mask_names} onChange={(e) => patch({ mask_names: e.target.checked })} />
-        학생 이름 가리기(권장)
-      </label>
+      <h4>1. 연결 방식</h4>
       <div className="row choice" role="radiogroup" aria-label="AI 연결 방식">
         <span className="muted">연결</span>
         <button type="button" role="radio" aria-checked={provider === 'claude-code'} className={provider === 'claude-code' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'claude-code' })}>
@@ -98,9 +91,18 @@ export default function AiSettings() {
           >
             키 저장
           </button>
-          <span className="muted">키 사용료는 Pro 요금과 따로 콘솔 충전금에서 나갑니다.</span>
+          <span className="muted">키 사용료는 Pro 요금과 따로 콘솔 충전금에서 나갑니다. Claude 콘솔에서 월 지출 한도를 꼭 걸어 두세요.</span>
         </div>
       )}
+      <h4>2. 켜기</h4>
+      <label className="inline">
+        <input type="checkbox" checked={s.ai_enabled} onChange={(e) => patch({ ai_enabled: e.target.checked })} />
+        AI 정리 사용
+      </label>
+      <label className="inline">
+        <input type="checkbox" checked={s.mask_names} onChange={(e) => patch({ mask_names: e.target.checked })} />
+        학생 이름 가리기(권장)
+      </label>
       <label className="inline">
         누가기록 최대 글자 수(비우면 제한 없음)
         <input
@@ -120,6 +122,7 @@ export default function AiSettings() {
           {notice}
         </p>
       )}
+      <h4>3. 고급: 지시문 고치기</h4>
       <PromptEditor kind="nuga" />
       <PromptEditor kind="briefing" />
       <details>
