@@ -398,7 +398,7 @@ handle('stt:install', async (model) => {
       await fs.rename(path.join(tmp, 'whisper-cli.exe'), path.join(dir, 'whisper-cli.exe'))
       await fs.rm(tmp, { recursive: true, force: true })
     }
-    await sttLib.downloadVerified(f, m.url, path.join(dir, m.file), m.sha256, { maxBytes: m.maxBytes, timeoutMs: 6 * 3600000, idleMs: 60000, signal: ctl.signal, onProgress: idle('model') })
+    await sttLib.downloadVerified(f, m.url, path.join(dir, m.file), m.sha256 ?? m.sha1, { maxBytes: m.maxBytes, timeoutMs: 6 * 3600000, idleMs: 60000, signal: ctl.signal, onProgress: idle('model') })
     return sttStatus()
   } finally {
     await fs.rm(zipPath, { force: true })
@@ -417,7 +417,7 @@ handle('stt:run', async ({ path: input, wav, model } = {}) => {
   const work = path.join(STT_WORK(), require('node:crypto').randomUUID())
   try {
     const st = sttStatus()
-    const key = model && st.models.includes(model) ? model : st.models.includes('accurate') ? 'accurate' : st.models[0]
+    const key = model && st.models.includes(model) ? model : ['best', 'accurate', 'fast'].find((k) => st.models.includes(k))
     if (!st.bin || !key) throw new Error('먼저 설정에서 음성 받아쓰기를 받으세요.')
     await fs.mkdir(work, { recursive: true })
     // 받아쓰기 프로그램은 영문 경로가 안전하다: 녹음을 작업 폴더에 in.확장자로 옮겨 쓴다

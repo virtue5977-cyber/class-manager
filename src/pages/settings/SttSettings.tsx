@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { getSttBridge, MODEL_LABEL, type SttModel, type SttStatus } from '../../lib/stt/stt'
+import { getSttBridge, MODEL_HINT, MODEL_LABEL, type SttModel, type SttStatus } from '../../lib/stt/stt'
 
 /** 설정 > AI 아래: 음성 받아쓰기 선택 내려받기. */
 export default function SttSettings() {
   const bridge = getSttBridge()
   const [st, setSt] = useState<SttStatus | null>(null)
-  const [model, setModel] = useState<SttModel>('fast')
+  const [model, setModel] = useState<SttModel>('best')
   const [prog, setProg] = useState<{ label: string; pct: number } | null>(null)
   const [msg, setMsg] = useState<string>()
   useEffect(() => {
@@ -44,12 +44,13 @@ export default function SttSettings() {
         <>
           {st.bin && st.models.length > 0 && <p>{`받아 둠: ${st.models.map((m) => MODEL_LABEL[m]).join(', ')}`}</p>}
           <div className="seg" role="radiogroup" aria-label="모델">
-            {(['fast', 'accurate'] as SttModel[]).map((m) => (
+            {(['fast', 'accurate', 'best'] as SttModel[]).map((m) => (
               <button key={m} type="button" role="radio" aria-checked={model === m} className={model === m ? 'on' : undefined} onClick={() => setModel(m)}>
                 {MODEL_LABEL[m]}
               </button>
             ))}
           </div>
+          <p className="muted">{MODEL_HINT[model]}</p>
           {prog ? (
             <div className="row">
               <span>{`${prog.label} 받는 중 ${prog.pct}%`}</span>

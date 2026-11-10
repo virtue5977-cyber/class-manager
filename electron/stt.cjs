@@ -24,14 +24,23 @@ const STT_FILES = {
       label: '정확(약 0.5GB)',
       maxBytes: 700 * 1024 * 1024,
     },
+    // 최고: large-v3-turbo(양자화). 정확보다 낫고 빠르다. 해시는 whisper.cpp 공식 models/README의 SHA-1.
+    best: {
+      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin',
+      sha1: 'e050f7970618a659205450ad97eb95a18d69c9ee',
+      file: 'ggml-large-v3-turbo-q5_0.bin',
+      label: '최고(약 0.55GB)',
+      maxBytes: 700 * 1024 * 1024,
+    },
   },
 }
 
 const TOO_BIG = '받을 파일이 너무 큽니다.'
-const BAD_HASH = '파일 확인(SHA-256)에 실패했습니다.'
+const BAD_HASH = '파일 확인(해시)에 실패했습니다.'
 
 /** dest.part에 흘려 쓰며 해시를 재고, 맞으면 dest로 바꾼다. 실패·취소면 .part를 지운다. */
-async function downloadVerified(fetchFn, url, dest, sha256, { onProgress, maxBytes, timeoutMs, idleMs, signal } = {}) {
+/** expected: 64자리면 SHA-256, 40자리면 SHA-1 */
+async function downloadVerified(fetchFn, url, dest, expected, { onProgress, maxBytes, timeoutMs, idleMs, signal } = {}) {
   const part = dest + '.part'
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), timeoutMs)
@@ -53,7 +62,7 @@ async function downloadVerified(fetchFn, url, dest, sha256, { onProgress, maxByt
     if (total > maxBytes) throw new Error(TOO_BIG)
     fs.mkdirSync(path.dirname(dest), { recursive: true })
     out = fs.createWriteStream(part)
-    const hash = crypto.createHash('sha256')
+    const hash = crypto.createHash(expected.length === 40 ? 'sha1' : 'sha256')
     const reader = res.body.getReader()
     let received = 0
     for (;;) {
@@ -68,7 +77,7 @@ async function downloadVerified(fetchFn, url, dest, sha256, { onProgress, maxByt
     }
     await new Promise((resolve, reject) => out.end((e) => (e ? reject(e) : resolve())))
     out = null
-    if (hash.digest('hex') !== sha256) throw new Error(BAD_HASH)
+    if (hash.digest('hex') !== expected.toLowerCase()) throw new Error(BAD_HASH)
     fs.renameSync(part, dest)
   } catch (e) {
     if (out) await new Promise((r) => { out.once('close', r); out.destroy() })

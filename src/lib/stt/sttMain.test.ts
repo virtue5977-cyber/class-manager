@@ -37,7 +37,7 @@ test('받기: 해시가 맞으면 저장, 틀리면 아무것도 남기지 않�
   expect(fs.readFileSync(path.join(dir, 'a.bin'), 'utf8')).toBe('abc')
   expect(fs.existsSync(path.join(dir, 'a.bin.part'))).toBe(false)
   expect(seen[seen.length - 1]).toBe(3)
-  await expect(stt.downloadVerified(ok, 'u', path.join(dir, 'b.bin'), sha('xyz'), { maxBytes: 100, timeoutMs: 1000 })).rejects.toThrow('파일 확인(SHA-256)에 실패했습니다.')
+  await expect(stt.downloadVerified(ok, 'u', path.join(dir, 'b.bin'), sha('xyz'), { maxBytes: 100, timeoutMs: 1000 })).rejects.toThrow('파일 확인(해시)에 실패했습니다.')
   expect(fs.readdirSync(dir)).toEqual(['a.bin'])
 })
 
@@ -82,4 +82,16 @@ test('받기: idleMs 동안 아무것도 안 오면 멈춤으로 보고 그만�
     Promise.resolve(new Response(new ReadableStream({ pull: () => new Promise((_r, rej) => init.signal!.addEventListener('abort', () => rej(new Error('aborted')))) })))) as unknown as typeof fetch
   await expect(stt.downloadVerified(slow, 'u', path.join(dir, 'c.bin'), sha('x'), { maxBytes: 100, timeoutMs: 10000, idleMs: 30 } as never)).rejects.toThrow('시간이 너무 오래 걸려')
   expect(fs.readdirSync(dir)).toEqual([])
+})
+
+test('최고 모델(large-v3-turbo-q5_0): 공식 whisper.cpp 목록의 SHA-1로 확인, 40자리 해시는 SHA-1로 잰다', async () => {
+  const m = (stt.STT_FILES.models as Record<string, { url: string; sha1?: string; file: string }>).best
+  expect(m.url).toBe('https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin')
+  expect(m.sha1).toBe('e050f7970618a659205450ad97eb95a18d69c9ee')
+  const dir = tmp()
+  const ok = (async () => new Response('abc')) as unknown as typeof fetch
+  const sha1 = createHash('sha1').update('abc').digest('hex')
+  await stt.downloadVerified(ok, 'u', path.join(dir, 'a.bin'), sha1, { maxBytes: 100, timeoutMs: 1000 })
+  expect(fs.readFileSync(path.join(dir, 'a.bin'), 'utf8')).toBe('abc')
+  await expect(stt.downloadVerified(ok, 'u', path.join(dir, 'b.bin'), '0'.repeat(40), { maxBytes: 100, timeoutMs: 1000 })).rejects.toThrow('파일 확인')
 })
