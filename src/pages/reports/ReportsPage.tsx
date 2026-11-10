@@ -5,6 +5,10 @@ import { useDb, useFs } from '../../app/context'
 import { listReportsForMonth, setSubmittedMany, type ReportRow } from '../../lib/absenceReports/list'
 import { updateReport } from '../../lib/absenceReports/reconcile'
 import { buildAbsenceHwpx } from '../../lib/hwpx/absence/build'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
+import { reportsXlsx } from '../../lib/export/sheets'
+import { isHideNames } from '../../components/HideNames'
 import { toYmd } from '../../lib/schoolDays'
 import { periodText } from '../attendance/AttendanceForm'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
@@ -89,6 +93,15 @@ export default function ReportsPage({ month: initialMonth = toYmd(new Date()).sl
             <button type="button" className="primary" onClick={() => exportRows(openRows, 'one')}>
               {`미제출 ${openRows.length}건 hwpx`}
             </button>
+          )}
+          {shown.length > 0 && (
+            <ExportMenu
+              items={[
+                { format: 'hwpx', run: () => exportRows(shown, 'one') },
+                { format: 'xlsx', run: () => act(async () => { const name = `결석신고서_${month}.xlsx`; fs.downloadFile(name, await reportsXlsx(shown, (st) => (isHideNames() ? '' : st.name)) ); setMessages([`${name} 파일을 만들었습니다.`]) }) },
+                { format: 'pdf', run: () => exportPdf(`결석신고서_${month}.pdf`) },
+              ]}
+            />
           )}
         </div>
       </div>

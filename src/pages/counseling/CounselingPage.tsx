@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
@@ -242,12 +244,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
                 <button type="button" disabled={busy || !unorganized.length} onClick={() => organize(unorganized)}>
                   {busy ? '정리 중…' : `미정리 ${unorganized.length}건 누가기록으로 정리`}
                 </button>
-                <button type="button" className="link" disabled={!logs.length} onClick={() => exportLogs('hwpx')}>
-                  hwpx로 내보내기
-                </button>
-                <button type="button" className="link" disabled={!logs.length} onClick={() => exportLogs('xlsx')}>
-                  엑셀로 내보내기
-                </button>
+                {logs.length > 0 && <ExportMenu items={[{ format: 'hwpx', run: () => exportLogs('hwpx') }, { format: 'xlsx', run: () => exportLogs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${student.number}번_${student.name}_상담일지.pdf`) }]} />}
               </div>
               {shown.length === 0 && <p className="muted">{logs.length ? '해당하는 기록이 없습니다.' : '아직 기록이 없습니다.'}</p>}
               {[...shown].reverse().map((l) => (

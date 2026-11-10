@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
 import { useDb, useFs } from '../../app/context'
 import type { ClassRec, CleaningChartRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
@@ -67,12 +69,7 @@ export default function CleaningTab({ classRec }: { classRec: ClassRec }) {
           <input value={chart.title} onChange={(e) => setChart({ ...chart, title: e.target.value })} onBlur={() => commit(chart)} />
         </label>
         <span className="spacer" />
-        <button type="button" className="link" onClick={() => exportAs('xlsx')}>
-          엑셀로 내보내기
-        </button>
-        <button type="button" className="primary" onClick={() => exportAs('hwpx')}>
-          hwpx로 내보내기
-        </button>
+        <ExportMenu items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${chart.title || '청소구역'}.pdf`) }]} />
       </div>
       <div className="toolbar">
         {studentCols.length > 1 && (

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import { pickExport } from '../../test/exportMenu'
 import userEvent from '@testing-library/user-event'
 import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
@@ -23,7 +24,7 @@ test('학년도 누적 표와 hwpx·엑셀 내보내기', async () => {
   )
   expect(await screen.findByText('가나')).toBeInTheDocument()
   expect(screen.getAllByText('2일(1건)')).toHaveLength(2)
-  await user.click(screen.getByRole('button', { name: 'hwpx로 내보내기' }))
-  await user.click(screen.getByRole('button', { name: '엑셀로 내보내기' }))
+  await pickExport(user, '한글(hwpx)')
+  await pickExport(user, '엑셀(xlsx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name).sort().join('|')).toBe('1학년_5반_출결_통계_2026학년도_전체.hwpx|1학년_5반_출결_통계_2026학년도_전체.xlsx'))
 })

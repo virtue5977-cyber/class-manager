@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
 import { useDb, useFs } from '../../app/context'
 import type { ClassRec, SeatingChartRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
@@ -8,6 +10,7 @@ import {
 } from '../../lib/seating/seating'
 import { buildSeatingHwpx, seatLabel } from '../../lib/docs/seating-doc'
 import { toYmd } from '../../lib/schoolDays'
+import { seatingXlsx } from '../../lib/export/sheets'
 
 const DRAG = 'text/x-student'
 
@@ -74,6 +77,11 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
     fs.downloadFile(name, bytes)
     setMessages([`${name} 파일을 만들었습니다.`, ...warnings])
   }
+  async function exportXlsx() {
+    const name = `${chart!.title.replace(/\s+/g, '_')}.xlsx`
+    fs.downloadFile(name, await seatingXlsx(chart!, students))
+    setMessages([`${name} 파일을 만들었습니다.`])
+  }
 
   const rows = Array.from({ length: chart.rows }, (_, r) => r)
   const cols = Array.from({ length: chart.cols }, (_, c) => c)
@@ -109,12 +117,7 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
           </button>
         )}
         <span className="spacer" />
-        <button type="button" className="link" onClick={() => window.print()}>
-          인쇄
-        </button>
-        <button type="button" className="primary" onClick={exportHwpx}>
-          hwpx로 내보내기
-        </button>
+        <ExportMenu items={[{ format: 'hwpx', run: exportHwpx }, { format: 'xlsx', run: exportXlsx }, { format: 'pdf', run: () => exportPdf(`${chart.title || '자리배치'}.pdf`) }]} />
       </div>
       <div className="toolbar">
         <button

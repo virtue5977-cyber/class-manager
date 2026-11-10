@@ -2,7 +2,12 @@ import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useDb } from '../../app/context'
+import { useDb, useFs } from '../../app/context'
+import ExportMenu from '../../components/ExportMenu'
+import { isHideNames } from '../../components/HideNames'
+import { exportPdf } from '../../lib/export/pdf'
+import { calendarXlsx } from '../../lib/export/sheets'
+import { buildTableHwpx } from '../../lib/docs/table-doc'
 import type { AttendanceRec, CounselingLogRec, GoogleEventRec, SchoolCalendarRec, StudentRec } from '../../lib/db/types'
 import { listGoogleEvents } from '../../lib/google/google'
 import { listStudents } from '../../lib/roster/roster'
@@ -25,6 +30,7 @@ interface DayData {
 /** 한 달 달력: 학사일정 + 출결 + 상담 기록(위로그 캘린더를 담임용으로). */
 export default function CalendarPage({ today = toYmd(new Date()) }: { today?: string }) {
   const db = useDb()
+  const fs = useFs()
   const { classes, classId, choose } = useClasses()
   const [month, setMonth] = useState(today.slice(0, 7))
   useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
@@ -66,6 +72,26 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
 
   const sel = data[picked] ?? { events: [], google: [], atts: [], logs: [] }
 
+  /** 이 달의 일정·출결·상담을 날짜순 한 줄씩(이름 가림 중이면 번호만). */
+  const monthItems = () => {
+    const who = (st: StudentRec) => (isHideNames() ? `${st.number}번` : `${st.number}번 ${st.name}`)
+    const items: { date: string; kind: string; text: string }[] = []
+    for (const [d, dd] of Object.entries(data)) {
+      if (!d.startsWith(month)) continue
+      for (const e of dd.events) items.push({ date: d, kind: '학사', text: e.title })
+      for (const e of dd.google) items.push({ date: d, kind: '구글', text: `${e.time ? e.time + ' ' : ''}${e.title}` })
+      for (const { a, s: st } of dd.atts) items.push({ date: d, kind: '출결', text: `${who(st)} ${shortKind(a)}` })
+      for (const { s: st } of dd.logs) items.push({ date: d, kind: '상담', text: who(st) })
+    }
+    return items.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0))
+  }
+  const exportCal = async (kind: 'hwpx' | 'xlsx') => {
+    const items = monthItems()
+    const name = `달력_${month}.${kind}`
+    const bytes = kind === 'xlsx' ? await calendarXlsx(items) : await buildTableHwpx({ title: `${Number(month.slice(5))}월 달력`, subtitle: month, header: ['날짜', '구분', '내용'], rows: items.map((i) => [i.date, i.kind, i.text]), colRatios: [2, 1, 6] })
+    fs.downloadFile(name, bytes)
+  }
+
   return (
     <section className="stack">
       <div className="page-head">
@@ -80,9 +106,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
             <input type="checkbox" checked={weekends} onChange={(e) => setWeekends(e.target.checked)} />
             주말 보기
           </label>
-          <button type="button" className="link" onClick={() => window.print()}>
-            인쇄
-          </button>
+          <ExportMenu items={[{ format: 'hwpx', run: () => exportCal('hwpx') }, { format: 'xlsx', run: () => exportCal('xlsx') }, { format: 'pdf', run: () => exportPdf(`달력_${month}.pdf`) }]} />
         </div>
       </div>
       <div className="cal-layout">

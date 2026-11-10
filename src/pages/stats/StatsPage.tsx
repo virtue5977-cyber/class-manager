@@ -1,4 +1,6 @@
 import MonthPicker, { shiftMonth } from '../../components/MonthPicker'
+import ExportMenu from '../../components/ExportMenu'
+import { exportPdf } from '../../lib/export/pdf'
 import { useShortcut } from '../../lib/ui/shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
@@ -76,12 +78,7 @@ export default function StatsPage() {
         {month && (
           <MonthPicker value={month} onChange={setMonth} />
         )}
-        <button type="button" className="primary" onClick={() => exportAs('hwpx')}>
-          hwpx로 내보내기
-        </button>
-        <button type="button" onClick={() => exportAs('xlsx')}>
-          엑셀로 내보내기
-        </button>
+        <ExportMenu items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${title}_${range().label}.pdf`.replace(/\s+/g, '_')) }]} />
         </div>
       </div>
       {message && (

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import { pickExport } from '../../test/exportMenu'
 import userEvent from '@testing-library/user-event'
 import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
@@ -70,4 +71,13 @@ test('아무것도 고르지 않으면 선택 버튼 줄이 숨고, 위에 "미�
 test('학생 이름은 그 신고서 첫날의 출결 화면으로 가는 링크다', async () => {
   await setup()
   expect(await screen.findByRole('link', { name: '1번 가나' })).toHaveAttribute('href', '#/attendance?date=2026-11-09')
+})
+
+test('내보내기 메뉴: 보이는 신고서를 엑셀 목록으로', async () => {
+  const user = userEvent.setup()
+  const { fs } = await setup()
+  await screen.findByText('1번 가나')
+  await pickExport(user, '엑셀(xlsx)')
+  await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['결석신고서_2026-11.xlsx']))
+  expect(fs.downloads[0].bytes[0]).toBe(0x50)
 })

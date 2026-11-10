@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
+import { pickExport } from '../../test/exportMenu'
 import userEvent from '@testing-library/user-event'
 import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
@@ -40,7 +41,7 @@ test('기록 추가 → AI 정리(가짜) → 나이스 입력 완료, 미입력
   await waitFor(async () => expect((await listLogsByStudent(db, s.id))[0].nuga_status).toBe('나이스 입력 완료'))
   await user.selectOptions(screen.getByLabelText('보기'), '나이스 미입력')
   expect(await screen.findByText('해당하는 기록이 없습니다.')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'hwpx로 내보내기' }))
+  await pickExport(user, '한글(hwpx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1번_김지훈_상담일지.hwpx']))
 })
 
