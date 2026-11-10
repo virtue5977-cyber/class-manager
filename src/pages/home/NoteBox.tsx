@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import Icon from '../../components/Icon'
 import { useDb } from '../../app/context'
 import type { NoteRec } from '../../lib/db/types'
 import { createNote } from '../../lib/notes/notes'
@@ -19,7 +20,10 @@ export default function NoteBox({ notes }: { notes: NoteRec[] }) {
       <ul className="plain">
         {notes.slice(0, 5).map((n) => (
           <li key={n.id}>
-            <Link to={`/notes?id=${n.id}`}>{`${n.pinned ? '📌 ' : ''}${n.title || '제목 없음'}`}</Link>
+            <Link to={`/notes?id=${n.id}`} className="note-link">
+              {n.pinned && <Icon name="pin" size={12} />}
+              {n.title || '제목 없음'}
+            </Link>
           </li>
         ))}
       </ul>

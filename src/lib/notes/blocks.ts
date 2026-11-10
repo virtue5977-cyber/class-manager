@@ -31,7 +31,7 @@ export function splitBlock(blocks: NoteBlock[], id: string, caret: number): { bl
     const next = blocks.map((x) => (x.id === id ? { id: x.id, type: 'p' as const, text: '' } : x))
     return { blocks: next, focusId: id }
   }
-  const nb: NoteBlock = { id: newBlockId(), type: LIST.includes(b.type) ? b.type : 'p', text: text.slice(caret), ...(b.type === 'check' ? { checked: false } : {}) }
+  const nb: NoteBlock = { id: newBlockId(), type: LIST.includes(b.type) ? b.type : 'p', text: text.slice(caret), ...(b.type === 'check' ? { checked: false } : {}), ...(b.indent ? { indent: b.indent } : {}) }
   const next = [...blocks.slice(0, i), { ...b, text: text.slice(0, caret) }, nb, ...blocks.slice(i + 1)]
   return { blocks: next, focusId: nb.id }
 }
@@ -39,6 +39,8 @@ export function splitBlock(blocks: NoteBlock[], id: string, caret: number): { bl
 /** 맨 앞에서 Backspace: 위 글 블록 끝에 붙인다(위가 구분선·파일이면 그것을 지운다). */
 export function mergeUp(blocks: NoteBlock[], id: string): { blocks: NoteBlock[]; focusId: string; caret: number } {
   const i = blocks.findIndex((b) => b.id === id)
+  // 들여쓴 블록이면 먼저 한 칸 내어쓴다.
+  if (i >= 0 && (blocks[i].indent ?? 0) > 0) return { blocks: indentBlock(blocks, id, -1), focusId: id, caret: 0 }
   if (i <= 0) {
     if (i === 0 && blocks[0].type !== 'p') return { blocks: setType(blocks, id, 'p'), focusId: id, caret: 0 }
     return { blocks, focusId: id, caret: 0 }
@@ -60,5 +62,28 @@ export function moveBlock(blocks: NoteBlock[], id: string, toIndex: number): Not
 }
 
 export function setType(blocks: NoteBlock[], id: string, type: NoteBlockType): NoteBlock[] {
-  return blocks.map((b) => (b.id === id ? { id: b.id, type, text: b.text ?? '', ...(type === 'check' ? { checked: false } : {}) } : b))
+  return blocks.map((b) => (b.id === id ? { id: b.id, type, text: b.text ?? '', ...(type === 'check' ? { checked: false } : {}), ...(b.indent ? { indent: b.indent } : {}) } : b))
+}
+
+export const MAX_INDENT = 4
+
+/** Tab(+1)·Shift+Tab(-1): 0~4 */
+export function indentBlock(blocks: NoteBlock[], id: string, dir: 1 | -1): NoteBlock[] {
+  return blocks.map((b) => (b.id === id ? { ...b, indent: Math.max(0, Math.min(MAX_INDENT, (b.indent ?? 0) + dir)) } : b))
+}
+
+const GANA = '가나다라마바사아자차카타파하'
+const NUMBER_STYLE = [(n: number) => `${n}.`, (n: number) => `${GANA[(n - 1) % 14]}.`, (n: number) => `${n})`, (n: number) => `${GANA[(n - 1) % 14]})`, (n: number) => `(${n})`]
+const BULLETS = ['•', '◦', '▪', '•', '◦']
+
+/** 개요 표시: 번호 목록은 깊이별 1. → 가. → 1) → 가) → (1), 글머리는 • ◦ ▪. 얕거나 같은 깊이의 다른 블록이 오면 그 깊이부터 다시 센다. */
+export function outlineMarks(blocks: NoteBlock[]): string[] {
+  const count = [0, 0, 0, 0, 0]
+  return blocks.map((b) => {
+    const lv = Math.max(0, Math.min(MAX_INDENT, b.indent ?? 0))
+    for (let k = lv + 1; k <= MAX_INDENT; k++) count[k] = 0
+    if (b.type === 'number') return NUMBER_STYLE[lv](++count[lv])
+    count[lv] = 0
+    return b.type === 'bullet' ? BULLETS[lv] : ''
+  })
 }

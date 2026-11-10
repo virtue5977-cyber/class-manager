@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
 import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
-import { filterSlash, mergeUp, moveBlock, setType, splitBlock } from '../../lib/notes/blocks'
+import { filterSlash, indentBlock, mergeUp, moveBlock, outlineMarks, setType, splitBlock } from '../../lib/notes/blocks'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
 
@@ -149,6 +149,12 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       }
     }
     const el = e.currentTarget
+    if (e.key === 'Tab' && b.type !== 'h1' && b.type !== 'h2') {
+      e.preventDefault()
+      setBlocks((bs) => indentBlock(bs, b.id, e.shiftKey ? -1 : 1))
+      focusNext.current = { id: b.id, caret: el.selectionStart }
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       const r = splitBlock(blocks, b.id, el.selectionStart)
@@ -184,20 +190,21 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     addFiles(files)
   }
 
-  let num = 0
+  const marks = outlineMarks(blocks)
   return (
     <section className="note-editor" aria-label="노트 편집" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
       {msg && <p className="notice" role="status">{msg}</p>}
       <div className="note-blocks">
         {blocks.map((b, i) => {
-          num = b.type === 'number' ? num + 1 : 0
+          const lv = b.indent ?? 0
           const q = slashOf(b)
           const items = q !== null ? filterSlash(q) : []
           return (
             <div
               key={b.id}
-              className={`nb nb-${b.type}${dragId === b.id ? ' dragging' : ''}`}
+              className={`nb nb-${b.type} nb-l${lv}${dragId === b.id ? ' dragging' : ''}`}
+              style={lv ? { paddingLeft: `${lv * 26}px` } : undefined}
               onDragOver={(e) => dragId && e.preventDefault()}
               onDrop={(e) => {
                 if (!dragId) return
@@ -240,8 +247,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
               ) : (
                 <>
                   {b.type === 'check' && <input type="checkbox" aria-label="체크" checked={!!b.checked} onChange={(e) => update(b.id, { checked: e.target.checked })} />}
-                  {b.type === 'bullet' && <span className="nb-mark">•</span>}
-                  {b.type === 'number' && <span className="nb-mark">{`${num}.`}</span>}
+                  {(b.type === 'bullet' || b.type === 'number') && <span className={`nb-mark nb-mark-${b.type}`}>{marks[i]}</span>}
                   <textarea
                     ref={(el) => (el ? refs.current.set(b.id, el) : refs.current.delete(b.id))}
                     aria-label={`블록 ${i + 1}`}

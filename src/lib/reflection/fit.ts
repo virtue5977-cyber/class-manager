@@ -52,3 +52,12 @@ export function fitLine(text: string, o: FitOpts): Fit {
 
 /** 16줄(번호 '1. ' 포함 폭으로) 맞춤 결과 */
 export const linesFit = (lines: string[], mode: PaperMode, o?: Parameters<typeof bodyOpts>[1]) => lines.map((l, i) => fitLine(l ? `${i + 1}. ${l}` : '', bodyOpts(mode, o)))
+
+/**
+ * AI에게 줄 한 문장 글자 수(띄어쓰기 포함): 12pt·자간 0에서 한 줄을 거의 채우는 길이 ~ 자간을 조금 줄여 들어가는 길이.
+ * 보통 문장은 한글 85%·띄어쓰기 15% 정도라 글자당 평균 0.9em으로 본다.
+ */
+export function lineTarget(mode: PaperMode): { min: number; max: number } {
+  const cap = (widthPt(mode) / 12 - 1.18) / 0.9
+  return { min: Math.round(cap) - 2, max: Math.round(cap * 1.1) }
+}

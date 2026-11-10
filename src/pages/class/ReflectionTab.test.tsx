@@ -78,3 +78,15 @@ test('좋은 문장 모음에서 고른 줄에 넣기', async () => {
   await user.click(within(box).getAllByRole('button', { name: '넣기' })[0])
   expect((screen.getByRole('textbox', { name: '3번 줄' }) as HTMLInputElement).value).not.toBe('')
 })
+
+test('A4를 고르면 한글 파일도 A4 쪽 크기', async () => {
+  const JSZip = (await import('jszip')).default
+  const { MODES } = await import('../../lib/reflection/fit')
+  const user = userEvent.setup()
+  const { fs } = await setup()
+  await user.click(await screen.findByRole('radio', { name: 'A4' }))
+  await pickExport(user, '한글(hwpx)')
+  await waitFor(() => expect(fs.downloads).toHaveLength(1))
+  const sec = await (await JSZip.loadAsync(fs.downloads[0].bytes)).file('Contents/section0.xml')!.async('string')
+  expect(sec).toContain(`width="${MODES.A4.pageW}" height="${MODES.A4.pageH}"`)
+})

@@ -264,6 +264,8 @@ export interface NoteBlock {
   checked?: boolean
   file_id?: string
   path?: string
+  /** 개요 깊이 0~4 */
+  indent?: number
 }
 export interface NoteRec extends BaseRecord {
   title: string

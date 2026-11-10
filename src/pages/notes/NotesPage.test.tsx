@@ -79,3 +79,16 @@ test('폴더 블록: 옛 exe·HTML판이면 새 exe 안내', async () => {
   await user.keyboard('{Enter}')
   expect(await screen.findByText('폴더 연결은 새 Watson exe에서만 됩니다.')).toBeInTheDocument()
 })
+
+test('개요: 번호 목록에서 Tab이면 한 칸 들어가 "가."로', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('/번호')
+  await user.keyboard('{Enter}')
+  await user.keyboard('목적{Enter}')
+  await user.keyboard('{Tab}세부')
+  expect(screen.getByText('가.')).toBeInTheDocument()
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.map((b) => [b.type, b.text, b.indent ?? 0])).toEqual([['number', '목적', 0], ['number', '세부', 1]]), { timeout: 3000 })
+})

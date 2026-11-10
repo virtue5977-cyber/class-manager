@@ -15,3 +15,18 @@ test('사유만 보내고(이름 가림) 16줄을 받는다', async () => {
   await updateSettings(db, { ai_enabled: false })
   await expect(fillByAi(db, async () => '', '지각', [])).rejects.toThrow('AI가 꺼져 있습니다')
 })
+
+test('줄을 꽉 채우도록 용지에 맞는 글자 수를 지시한다(B4가 A4보다 길게)', async () => {
+  const { lineTarget } = await import('./fit')
+  const db = createDb('test-' + crypto.randomUUID())
+  await updateSettings(db, { ai_enabled: true })
+  const b4 = lineTarget('B4')
+  const a4 = lineTarget('A4')
+  expect(b4.min).toBeGreaterThan(a4.min)
+  expect(b4.max).toBeGreaterThan(b4.min)
+  const sent: AiRequest[] = []
+  const lines = Array.from({ length: 16 }, () => '문장')
+  await fillByAi(db, async (r) => (sent.push(r), JSON.stringify({ lines })), '지각', [], 'A4')
+  expect(sent[0].system).toContain(`${a4.min}~${a4.max}자`)
+  expect(sent[0].system).not.toContain('45~70자')
+})

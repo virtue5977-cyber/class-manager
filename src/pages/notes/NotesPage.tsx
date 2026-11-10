@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import Icon from '../../components/Icon'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDb, useFs } from '../../app/context'
 import type { NoteRec, TodoRec } from '../../lib/db/types'
@@ -60,7 +61,9 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
               <li key={n.id} className={`note-item${n.id === id ? ' on' : ''}`}>
                 <Link to={`/notes?id=${n.id}`}>{n.title || '제목 없음'}</Link>
                 {files.has(n.id) && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
-                <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => saveNote(db, { ...n, pinned: !n.pinned })}>📌</button>
+                <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => saveNote(db, { ...n, pinned: !n.pinned })}>
+              <Icon name="pin" size={14} />
+            </button>
                 <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={async () => { await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>×</button>
               </li>
             ))}

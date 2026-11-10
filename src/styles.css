@@ -593,6 +593,11 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .notice-row.pinned { background: var(--accent-soft); border-radius: 6px; }
 .notice-period { font-size: 12px; color: var(--sub); }
 .icon-btn.on { color: var(--accent); }
+.icon-btn svg { display: block; }
+.note-item .icon-btn:not(.on) { opacity: 0; }
+.note-item:hover .icon-btn, .note-item .icon-btn:focus-visible { opacity: 1; }
+.note-link { display: inline-flex; align-items: center; gap: 4px; }
+.note-link svg { color: var(--accent); }
 .notice-range { width: 100%; padding-left: 26px; gap: 6px; }
 .notice-add input[aria-label='새 전달사항'] { flex: 1; min-width: 160px; }
 /* 노트함 */
@@ -616,7 +621,13 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .nb-h2 textarea { font-size: 17px; font-weight: 600; }
 .nb-check input[type='checkbox'] { margin-top: 8px; }
 .nb-check:has(input:checked) textarea { color: var(--sub); text-decoration: line-through; }
-.nb-mark { margin-top: 4px; min-width: 16px; color: var(--sub); }
+.nb-mark { margin-top: 4px; min-width: 18px; color: var(--sub); text-align: right; font-variant-numeric: tabular-nums; }
+.nb-mark-number { min-width: 24px; }
+.nb-h1 { margin-top: 14px; }
+.nb-h2 { margin-top: 8px; }
+.nb-l1 textarea, .nb-l2 textarea { font-size: 14.5px; }
+.nb-l3 textarea, .nb-l4 textarea { font-size: 14px; color: var(--ink); }
+.nb-l2 .nb-mark, .nb-l3 .nb-mark, .nb-l4 .nb-mark { font-size: 13px; }
 .nb hr { flex: 1; border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .nb-handle { opacity: 0; border: 0; background: transparent; color: var(--sub); cursor: grab; padding: 4px 2px; min-height: 0; font-size: 11px; letter-spacing: -2px; }
 .nb:hover .nb-handle, .nb-handle:focus { opacity: 1; }
@@ -662,3 +673,6 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .cal-tag-업무 { background: var(--c-green-bg); color: var(--c-green); }
 .cal-add { border-top: 1px solid var(--line); padding-top: 8px; gap: 6px; }
 .cal-add input[aria-label='일정 제목'] { width: 100%; }
+.paper-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.paper-mode button { border: 0; border-radius: 0; background: transparent; padding: 6px 10px; color: var(--sub); }
+.paper-mode button.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }

@@ -110,6 +110,13 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
       <div className="row between">
         <span className="muted">{`이번 학년도 ${thisYear}건${over ? ` · 넘치는 줄 ${over}개` : ''}`}</span>
         <div className="row">
+          <div className="seg paper-mode" role="radiogroup" aria-label="용지">
+            {(['B4', 'A4'] as const).map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : undefined} onClick={() => setMode(m)}>
+                {m === 'B4' ? 'B4(원본)' : 'A4'}
+              </button>
+            ))}
+          </div>
           <button type="button" onClick={fresh}>새로 쓰기</button>
           <button type="button" className="primary" disabled={!student} onClick={() => act(async () => {
             const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode }, editId)
@@ -206,7 +213,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               <button type="button" className="primary" disabled={busy} onClick={() => act(async () => {
                 setBusy(true)
                 try {
-                  setLines(await fillByAi(db, ai, reason, students.map((s) => s.name)))
+                  setLines(await fillByAi(db, ai, reason, students.map((s) => s.name), mode))
                   setMsg('AI가 16줄을 채웠습니다. 읽어 보고 고치세요.')
                 } finally {
                   setBusy(false)

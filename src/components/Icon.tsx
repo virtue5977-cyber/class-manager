@@ -4,6 +4,7 @@ const P: Record<string, string> = {
   calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
   check: 'M4 5h16v15H4zM8 12l3 3 5-6',
   note: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5',
+  pin: 'M9 4h6l-1 6 3 3v1H7v-1l3-3zM12 14v6',
   book: 'M4 4h7a2 2 0 0 1 2 2v14a1.5 1.5 0 0 0-1.5-1.5H4zM20 4h-7a2 2 0 0 0-2 2v14a1.5 1.5 0 0 1 1.5-1.5H20z',
   users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5a6.5 6.5 0 0 1 3.5 5.5',
   file: 'M6 3h9l4 4v14H6zM14 3v5h5M9 14l2 2 4-4',
