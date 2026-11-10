@@ -167,7 +167,7 @@ export interface TeacherTimetableRec extends BaseRecord {
 }
 
 export interface AiPromptRec extends BaseRecord {
-  kind: 'nuga' | 'briefing'
+  kind: 'nuga' | 'briefing' | 'command' | 'message' | 'reflection'
   instruction: string
   version: number
   active: boolean

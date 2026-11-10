@@ -10,8 +10,11 @@ import { extractJson, getAntigravity, getClaudeCode } from '../../lib/ai/client'
 const SAMPLES: Record<PromptKind, string> = {
   nuga: '점심시간 교실 / 친구랑 말다툼하고 혼자 밥 먹음. 이유 물으니 말 오해해서 서운했다고 함. 대화로 풀어보라고 함.',
   briefing: '[교무부] 11/7(금) 3교시 후 강당에서 학교폭력 예방교육. 학생들 실내화 착용.\n[담임 필독] 내일까지 현장체험학습 동의서 회수 바랍니다.\n[행정실] 교직원 회의 16시.',
+  command: '내일 3번 박도윤 1교시 지각 미인정으로 해줘',
+  message: '받는 사람: 박도윤 보호자 / 전할 내용: 내일 체육복 지참',
+  reflection: '사유: 수업 중 휴대폰 사용',
 }
-const KIND_LABEL: Record<PromptKind, string> = { nuga: '누가기록 정리', briefing: '조례·종례 전달사항 정리' }
+const KIND_LABEL: Record<PromptKind, string> = { nuga: '누가기록 정리', briefing: '전달사항 정리', command: '문장 → 명령 바꾸기', message: '학부모·교사 문자 초안', reflection: '반성문 16줄' }
 
 export default function AiSettings() {
   const db = useDb()
@@ -155,7 +158,9 @@ export default function AiSettings() {
         <p className="notice" role="status">
           {notice}
         </p>
-      )}
+      <PromptEditor kind="briefing" />
+      <PromptEditor kind="command" />
+      <PromptEditor kind="message" />
       <h4>3. 고급: 지시문 고치기</h4>
       <PromptEditor kind="nuga" />
       <PromptEditor kind="briefing" />

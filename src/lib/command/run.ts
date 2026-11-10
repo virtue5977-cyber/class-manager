@@ -44,7 +44,7 @@ export async function executeInput(
   try {
     if (aiFallback && (!parsed.cmd || meta?.mode !== 'rule')) {
       const r = await aiFallback(text, ctx, env)
-      if (r) return log(r.pending ? '확인 필요' : '성공', r.summary, r, undefined, meta?.mode === 'hybrid' ? 'hybrid' : 'ai')
+      if (r) return log(r.failed ? '실패' : r.pending ? '확인 필요' : '성공', r.summary, r, undefined, meta?.mode === 'hybrid' ? 'hybrid' : 'ai')
     }
     if (!parsed.cmd) return log('확인 필요', parsed.errors[0] ?? '명령은 /로 시작합니다. /를 눌러 고르세요.')
     if (parsed.ambiguous.length) return log('확인 필요', `'${parsed.ambiguous[0]}'에 맞는 학생이 여럿입니다. @를 눌러 고르세요.`)

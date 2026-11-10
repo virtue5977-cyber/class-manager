@@ -41,6 +41,8 @@ export interface RunResult {
   form?: { kind: 'attendance' | 'counsel'; studentId: string; date: string }
   /** 저장하지 않은 결과(확인 필요) */
   pending?: boolean
+  /** 실패로 기록(AI 꺼짐 등) */
+  failed?: boolean
 }
 
 export interface Handler {
