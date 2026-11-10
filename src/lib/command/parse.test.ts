@@ -60,7 +60,8 @@ test('사유 속 숫자·날짜 말은 날짜가 아니다(앞쪽 날짜 말만 
 })
 
 test('없는 날짜는 오류', () => {
-  expect(p('/출결 @3 31일 결석 질병').errors).toEqual(['날짜가 올바르지 않습니다: 31일'])
+  expect(p('/일정 달력 31일 회의').errors).toEqual(['날짜가 올바르지 않습니다: 31일'])
+  expect(p('/출결 @3 31일 결석 질병').date).toBe('2026-10-31') // 출결은 지난달 31일
   expect(p('/출결 @3 2/30 결석 질병').errors).toEqual(['날짜가 올바르지 않습니다: 2/30'])
 })
 
@@ -73,4 +74,12 @@ test('학생 이름과 같은 제목의 노트가 있어도 @이름은 학생', 
   const n2 = { ...newRecord({ title: '박도윤', blocks: [], pinned: false }) } as NoteRec
   const r = parseCommand('/출결 @박도윤 결석 질병', { ...ctx, notes: [note, n2] }, names, subs)
   expect(r.students.map((s) => s.name)).toEqual(['박도윤'])
+})
+
+test('출결은 지난 요일로, 미리보기에 다른 해면 연도', () => {
+  const r = parseCommand('/출결 @3 월요일 결석 질병', { ...ctx, today: '2026-11-11' }, names, subs)
+  expect(r.date).toBe('2026-11-09')
+  const y = parseCommand('/출결 @3 12/22 결석 질병', { ...ctx, today: '2027-01-05' }, names, subs)
+  expect(y.date).toBe('2026-12-22')
+  expect(describeParsed(y, () => '출결')).toContain('2026년 12/22')
 })

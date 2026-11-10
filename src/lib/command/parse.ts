@@ -30,6 +30,8 @@ export interface Parsed {
   date: string
   /** 날짜 말을 직접 썼는지(할 일 마감일 등) */
   dateGiven: boolean
+  /** 올해가 아닌 날짜(미리보기에 연도 표시) */
+  otherYear?: boolean
   time: string | null
   kind?: string
   category?: string
@@ -120,7 +122,7 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
       continue
     }
     // 날짜·시각 말은 앞쪽(사유·내용이 시작되기 전)에서만 읽는다. 할 일·일정은 맨 끝의 날짜 말도 마감일·날짜로.
-    const dt = parseDateWords(words, i, ctx.today)
+    const dt = parseDateWords(words, i, ctx.today, p.cmd === 'attendance' || p.cmd === 'counsel' ? 'past' : 'future')
     const isTodo = p.cmd === 'todo' || (p.cmd === 'event' && p.sub === '할일')
     const atEnd = i + dt.used === toks.length
     if (dt.used && (!restWords.length || ((isTodo || p.cmd === 'event') && atEnd))) {
@@ -135,6 +137,7 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
         if (dt.date) {
           p.date = dt.date
           p.dateGiven = true
+          p.otherYear = dt.date.slice(0, 4) !== ctx.today.slice(0, 4)
         }
         if (dt.time && !isTodo) p.time = dt.time
         i += used
@@ -169,7 +172,7 @@ export function describe(p: Parsed, label: (id: string) => string): string {
   const bits: string[] = []
   if (p.cmd) bits.push(label(p.cmd) + (p.sub ? ` ${p.sub}` : ''))
   for (const s of p.students) bits.push(`${s.number}번 ${s.name}`)
-  bits.push(shortDate(p.date) + (p.time ? ` ${p.time}` : ''))
+  bits.push((p.otherYear ? `${p.date.slice(0, 4)}년 ` : '') + shortDate(p.date) + (p.time ? ` ${p.time}` : ''))
   if (p.kind) bits.push(`${p.kind}${p.period ? ` ${p.period}교시` : ''}${p.category ? `(${p.category})` : ''}`)
   for (const t of p.tags) bits.push(`#${t}`)
   if (p.rest) bits.push(`${p.cmd === 'attendance' ? '사유' : '내용'}: ${p.rest}`)
