@@ -4,7 +4,7 @@ import { useDb } from '../../app/context'
 import type { ChatRec, StudentRec, AttendanceRec, CounselingLogRec } from '../../lib/db/types'
 import type { SearchHit } from '../../lib/command/handlers'
 import { addNotice } from '../../lib/notices/notices'
-import { recall } from './session'
+import { useRecall } from './session'
 import FloatingForm from './FloatingForm'
 
 const MODE_LABEL = { rule: '규칙', hybrid: '규칙+AI', ai: 'AI' } as const
@@ -12,14 +12,19 @@ const MODE_LABEL = { rule: '규칙', hybrid: '규칙+AI', ai: 'AI' } as const
 /** 실행 결과 카드: 요약·링크·되돌리기(10초)·초안/확인/학생/검색 카드·입력 창. */
 export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRun?: (input: string) => void; today: string }) {
   const db = useDb()
-  const live = recall(chat.id)
+  const live = useRecall(chat.id)
   const r = live?.result
-  const [left, setLeft] = useState(() => (live?.undo ? Math.max(0, Math.ceil((live.undo.expiresAt - Date.now()) / 1000)) : 0))
+  const [left, setLeft] = useState(0)
   const [note, setNote] = useState<string>()
-  const [formOpen, setFormOpen] = useState(!!r?.form)
+  const [formOpen, setFormOpen] = useState(false)
+  // 결과가 들어오면 남은 되돌리기 시간·입력 창을 정한다.
+  useEffect(() => {
+    if (live?.undo) setLeft(Math.max(0, Math.ceil((live.undo.expiresAt - Date.now()) / 1000)))
+    if (live?.result.form) setFormOpen(true)
+  }, [live])
   const [added, setAdded] = useState<Set<number>>(new Set())
   useEffect(() => {
-    if (left <= 0) return
+    if (left <= 0) return undefined
     const t = setTimeout(() => setLeft((s) => s - 1), 1000)
     return () => clearTimeout(t)
   }, [left])

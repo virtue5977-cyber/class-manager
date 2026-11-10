@@ -70,3 +70,24 @@ test('다른 화면의 W: 누르면 입력 칸, Esc로 접힘', async () => {
   expect(screen.queryByRole('combobox', { name: '명령 입력' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: /명령 입력 열기/ })).toBeInTheDocument()
 })
+
+test('대화 기록 끝으로 스크롤해도(Promise를 돌려주는 브라우저) 화면이 깨지지 않는다', async () => {
+  const orig = Element.prototype.scrollIntoView
+  Element.prototype.scrollIntoView = function () {
+    return Promise.resolve() as unknown as void
+  }
+  try {
+    const user = userEvent.setup()
+    await setup()
+    const input = await screen.findByRole('combobox', { name: '명령 입력' })
+    await waitFor(() => expect(input).toBeEnabled())
+    await user.type(input, '/노트 회의록')
+    await user.keyboard('{Escape}{Enter}')
+    expect(await screen.findByRole('article', { name: '결과' })).toHaveTextContent('회의록')
+    await user.type(input, '/노트 두번째')
+    await user.keyboard('{Escape}{Enter}')
+    await waitFor(() => expect(screen.getAllByRole('article', { name: '결과' })).toHaveLength(2))
+  } finally {
+    Element.prototype.scrollIntoView = orig
+  }
+})

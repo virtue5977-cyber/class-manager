@@ -37,7 +37,8 @@ export async function executeInput(
   const text = input.trim()
   const parsed = parseCommand(text, ctx, commandNames(), commandSubs())
   const meta = COMMAND_META.find((c) => c.id === parsed.cmd)
-  const mode = meta?.mode === 'ai' ? 'ai' : meta?.mode === 'hybrid' ? 'hybrid' : 'rule'
+  // AI를 쓰지 않고 규칙으로 끝난 실행은 '규칙'으로 기록한다(AI 경로는 아래에서 따로 표시).
+  const mode = 'rule' as const
   const log = (status: ChatRec['status'], summary: string, result?: RunResult, detail?: string, m: ChatRec['mode'] = mode) =>
     appendChat(env.db, { input: text, mode: m, summary, links: result?.links ?? [], status, ...(detail ? { detail } : {}) }).then((chat) => ({ chat, result, parsed }))
 

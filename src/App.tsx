@@ -4,6 +4,7 @@ import { AppProviders } from './app/context'
 import Sidebar from './components/Sidebar'
 import Shortcuts from './components/Shortcuts'
 import WButton from './components/command/WButton'
+import StartupTasks from './components/StartupTasks'
 import HideNamesBar from './components/HideNames'
 import BackupBanner from './components/BackupBanner'
 import PinGate from './components/PinGate'
@@ -38,6 +39,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
         <GlobalClassContext.Provider value={true}>
         <div className="layout">
           <Shortcuts />
+          <StartupTasks />
           <Sidebar />
           <main className="content">
             <HideNamesBar />

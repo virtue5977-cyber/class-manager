@@ -64,3 +64,10 @@ test('AI가 꺼져 있으면 실패 + 설정 링크, 규칙 명령은 그대로'
   expect((await executeInput('/출결 @3 결석 질병 감기', ctx, env, aiFallback)).chat.status).toBe('성공')
   expect(await db.attendance.count()).toBe(1)
 })
+
+test('/전달 학생은 AI를 쓰지 않으므로 규칙으로 기록', async () => {
+  const { env, ctx, sent } = await setup(() => '')
+  const r = await executeInput('/전달 학생 체육복', ctx, env, aiFallback)
+  expect(r.chat.mode).toBe('rule')
+  expect(sent).toHaveLength(0)
+})

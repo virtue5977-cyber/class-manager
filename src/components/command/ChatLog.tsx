@@ -12,7 +12,10 @@ export default function ChatLog({ today, onRun }: { today: string; onRun: (input
   const db = useDb()
   const list = useLive<ChatRec[]>(() => listChat(db, schoolYearOf(today)), [db, today], [])
   const end = useRef<HTMLDivElement>(null)
-  useEffect(() => end.current?.scrollIntoView?.({ block: 'end' }), [list.length])
+  useEffect(() => {
+    // 새 Chromium의 scrollIntoView는 Promise를 돌려주므로 효과 함수가 그것을 반환하지 않게 감싼다.
+    void end.current?.scrollIntoView?.({ block: 'end' })
+  }, [list.length])
   return (
     <section className="chat-log" aria-label="대화 기록">
       {list.length === 0 && <p className="muted chat-empty">아래 입력 막대에 /를 쳐 보세요. 예: /출결 @3 결석 질병 감기 · /할일 동의서 걷기 내일 · /찾기 감기</p>}
