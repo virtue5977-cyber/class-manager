@@ -67,3 +67,9 @@ export async function listAttendanceByStudent(db: AppDB, studentId: string): Pro
     .filter((r) => !r.deleted)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 }
+
+/** 고른 학생들의 기간 안 출결(날짜 순서로 한 번에 읽음). */
+export async function listAttendanceInRange(db: AppDB, ids: string[], from: string, to: string): Promise<AttendanceRec[]> {
+  const set = new Set(ids)
+  return (await db.attendance.where('date').between(from, to, true, true).toArray()).filter((r) => !r.deleted && set.has(r.student_id))
+}

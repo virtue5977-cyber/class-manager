@@ -6,8 +6,8 @@ import type { AttendanceRec, CounselingLogRec, GoogleEventRec, SchoolCalendarRec
 import { listGoogleEvents } from '../../lib/google/google'
 import { listStudents } from '../../lib/roster/roster'
 import { listCalendar } from '../../lib/neis/schedule'
-import { listAttendanceByStudent } from '../../lib/attendance/attendance'
-import { listLogsByStudent, logTags } from '../../lib/counseling/counseling'
+import { listAttendanceInRange } from '../../lib/attendance/attendance'
+import { listLogsByStudents, logTags } from '../../lib/counseling/counseling'
 import { addDays, toYmd, weekday } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
@@ -47,10 +47,12 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
     for (const e of await listCalendar(db, from, to)) if (e.title && e.title !== '토요휴업일') day(e.date).events.push(e)
     for (const ge of await listGoogleEvents(db, from, to)) for (let d = ge.date; d <= ge.end_date && d <= to; d = addDays(d, 1)) day(d).google.push(ge)
     if (classId) {
-      for (const s of await listStudents(db, classId, { includeInactive: true })) {
-        for (const a of await listAttendanceByStudent(db, s.id)) if (a.date >= from && a.date <= to) day(a.date).atts.push({ a, s })
-        for (const l of await listLogsByStudent(db, s.id)) if (l.date >= from && l.date <= to) day(l.date).logs.push({ l, s })
-      }
+      const studs = await listStudents(db, classId, { includeInactive: true })
+      const byId = new Map(studs.map((s) => [s.id, s]))
+      const ids = studs.map((s) => s.id)
+      for (const a of await listAttendanceInRange(db, ids, from, to)) day(a.date).atts.push({ a, s: byId.get(a.student_id)! })
+      const logs = await listLogsByStudents(db, ids)
+      for (const list of Object.values(logs)) for (const l of list) if (l.date >= from && l.date <= to) day(l.date).logs.push({ l, s: byId.get(l.student_id)! })
     }
     if (n === seq.current) setData(map)
   }, [db, classId, month])

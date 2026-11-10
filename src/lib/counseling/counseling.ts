@@ -48,6 +48,14 @@ export async function listLogsByStudent(db: AppDB, studentId: string): Promise<C
   return (await db.counseling_logs.where('student_id').equals(studentId).toArray()).filter((l) => !l.deleted).sort(byDate)
 }
 
+/** 여러 학생의 상담 기록을 한 번에 읽어 학생별로(날짜순) 묶는다. */
+export async function listLogsByStudents(db: AppDB, ids: string[]): Promise<Record<string, CounselingLogRec[]>> {
+  const out: Record<string, CounselingLogRec[]> = Object.fromEntries(ids.map((id) => [id, []]))
+  for (const l of await db.counseling_logs.where('student_id').anyOf(ids).toArray()) if (!l.deleted) out[l.student_id]?.push(l)
+  for (const list of Object.values(out)) list.sort(byDate)
+  return out
+}
+
 export async function updateNuga(db: AppDB, id: string, patch: { nuga_text?: string; nuga_status?: NugaStatus }): Promise<CounselingLogRec> {
   return db.transaction('rw', db.counseling_logs, async () => {
     const cur = await db.counseling_logs.get(id)

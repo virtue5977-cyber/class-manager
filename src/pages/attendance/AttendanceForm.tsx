@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useDb } from '../../app/context'
 import type { AbsenceReportRec, AttendanceCategory, AttendanceKind, AttendanceRec, RecognizedEvidence, StudentRec } from '../../lib/db/types'
 import { deleteAttendance, saveAttendance, type AttendanceInput } from '../../lib/attendance/attendance'
@@ -56,6 +56,24 @@ export default function AttendanceForm({
     setPending(null)
   }
 
+  // 글자 칸 밖에서 숫자키 1~4로 구분을 고른다(학생 칸에 커서가 있어도 된다).
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.ctrlKey || e.altKey || e.metaKey || (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
+      const k = KINDS[Number(e.key) - 1]
+      if (k) setKind(k)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const enterSaves = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      run('save')
+    }
+  }
+
   const busy = useRef(false)
   const input = (): AttendanceInput => ({
     student_id: student.id,
@@ -107,7 +125,7 @@ export default function AttendanceForm({
       )}
       <div className="row seg" role="group" aria-label="구분">
         {KINDS.map((k) => (
-          <button key={k} type="button" aria-pressed={kind === k} className={kind === k ? 'active' : undefined} onClick={() => setKind(k)}>
+          <button key={k} type="button" aria-pressed={kind === k} className={kind === k ? 'active' : undefined} title={`숫자키 ${KINDS.indexOf(k) + 1}`} onClick={() => setKind(k)}>
             {k}
           </button>
         ))}
@@ -139,11 +157,11 @@ export default function AttendanceForm({
       </div>
       <label className="wide">
         사유
-        <input value={reason} onChange={(e) => setReason(e.target.value)} />
+        <input value={reason} onChange={(e) => setReason(e.target.value)} onKeyDown={enterSaves} />
       </label>
       <label className="wide">
         메모
-        <input value={memo} onChange={(e) => setMemo(e.target.value)} />
+        <input value={memo} onChange={(e) => setMemo(e.target.value)} onKeyDown={enterSaves} />
       </label>
       {error && (
         <p className="error" role="alert">
@@ -162,7 +180,7 @@ export default function AttendanceForm({
         </div>
       ) : (
         <div className="row">
-          <button type="button" className="primary" onClick={() => run('save')}>
+          <button type="button" className="primary" title="사유·메모 칸에서 Enter" onClick={() => run('save')}>
             저장
           </button>
           {editingId && (

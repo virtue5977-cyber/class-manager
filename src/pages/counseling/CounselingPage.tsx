@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
-import { deleteLog, listLogsByStudent, logTags, METHODS, nugaCopyText, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
+import { deleteLog, listLogsByStudent, listLogsByStudents, logTags, METHODS, nugaCopyText, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
 import { runNuga } from '../../lib/counseling/nuga'
 import { getSettings } from '../../lib/settings'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
-import { toYmd } from '../../lib/schoolDays'
+import { addDays, toYmd } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
 type Filter = '전체' | '미정리' | '나이스 미입력'
@@ -30,6 +30,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   const [selected, setSelected] = useState<string>()
   const [logs, setLogs] = useState<CounselingLogRec[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [lastDate, setLastDate] = useState<Record<string, string>>({})
+  const [sort, setSort] = useState<'번호순' | '오래된 순'>('번호순')
   const [filter, setFilter] = useState<Filter>('전체')
   const [topic, setTopic] = useState('')
   const [query, setQuery] = useState('')
@@ -39,6 +41,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState<string>() // 원문 고치는 기록 id
   const [adding, setAdding] = useState(false)
+  const [aiOff, setAiOff] = useState(false)
+  const [flash, setFlash] = useState<string>()
   const seq = useRef(0)
 
   const student = students.find((s) => s.id === selected)
@@ -47,12 +51,13 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
     if (!classId) return
     const n = ++seq.current
     const studs = await listStudents(db, classId)
-    const c: Record<string, number> = {}
-    for (const s of studs) c[s.id] = (await listLogsByStudent(db, s.id)).length
-    const mine = selected ? await listLogsByStudent(db, selected) : []
+    const all = await listLogsByStudents(db, studs.map((s) => s.id))
+    const c: Record<string, number> = Object.fromEntries(studs.map((s) => [s.id, all[s.id].length]))
+    const mine = selected ? (all[selected] ?? (await listLogsByStudent(db, selected))) : []
     if (n !== seq.current) return
     setStudents(studs)
     setCounts(c)
+    setLastDate(Object.fromEntries(studs.map((s) => [s.id, all[s.id].at(-1)?.date ?? ''])))
     setLogs(mine)
   }, [db, classId, selected])
   useEffect(() => {
@@ -75,7 +80,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   async function organize(targets: CounselingLogRec[]) {
     if (!student) return
     const s = await getSettings(db)
-    if (!s.ai_enabled) return setMessages(['설정 > AI에서 AI 정리를 켜고 키를 입력하세요.'])
+    setAiOff(!s.ai_enabled)
+    if (!s.ai_enabled) return setMessages([])
     if (!targets.length) return setMessages(['정리할 기록이 없습니다.'])
     setBusy(true)
     await act(async () => {
@@ -127,6 +133,11 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
         </form>
         </div>
       </div>
+      {aiOff && (
+        <p className="banner" role="status">
+          AI가 꺼져 있습니다. 연결 방식(Claude Code 또는 API 키)을 고르고 'AI 정리 사용'을 켜세요. <a href="#/settings?tab=ai">설정 &gt; AI 열기</a>
+        </p>
+      )}
       {messages.length > 0 && (
         <div className="notice" role="status">
           {messages.map((m) => (
@@ -145,16 +156,32 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
         </div>
       )}
       <div className="counsel-layout">
+        <div className="stack">
+        <label className="inline">
+          정렬
+          <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+            <option>번호순</option>
+            <option>오래된 순</option>
+          </select>
+        </label>
         <ul className="plain student-list compact" aria-label="학생 목록">
-          {students.map((s) => (
-            <li key={s.id}>
-              <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setMessages([]); setEditing(undefined); setAdding(false) }}>
-                <span className="num pii">{`${s.number}번 ${s.name}`}</span>
-                {counts[s.id] ? <span className="att">{`${counts[s.id]}건`}</span> : null}
-              </button>
-            </li>
-          ))}
+          {(sort === '번호순' ? students : [...students].sort((a, b) => (lastDate[a.id] ?? '').localeCompare(lastDate[b.id] ?? '') || a.number - b.number)).map((s) => {
+            const last = lastDate[s.id]
+            // 한 달 넘게 기록이 없는 학생은 놓치지 않게 표시한다(조용한 학생 챙기기).
+            const stale = !!last && last < addDays(today, -30)
+            return (
+              <li key={s.id}>
+                <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setMessages([]); setEditing(undefined); setAdding(false) }}>
+                  <span className="num pii">{`${s.number}번 ${s.name}`}</span>
+                  <span className={`att${stale || !last ? ' stale' : ''}`}>
+                    {last ? `${counts[s.id]}건 · ${Number(last.slice(5, 7))}/${Number(last.slice(8))}${stale ? ' · 한 달 넘음' : ''}` : '기록 없음'}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
+        </div>
         <div className="stack wide">
           {!student && <p className="muted">학생을 고르세요.</p>}
           {student && (
@@ -180,8 +207,10 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
                   onSave={async (input) => {
                     let ok = false
                     await act(async () => {
-                      await saveLog(db, { ...input, student_id: student.id })
+                      const rec = await saveLog(db, { ...input, student_id: student.id })
                       ok = true
+                      setFlash(rec.id)
+                      setTimeout(() => setFlash((f) => (f === rec.id ? undefined : f)), 2500)
                     })
                     if (ok) setAdding(false)
                     return ok
@@ -222,6 +251,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
                 <LogCard
                   key={l.id}
                   log={l}
+                  flash={flash === l.id}
                   busy={busy}
                   editing={editing === l.id}
                   warnings={warnings[l.id] ?? []}
@@ -316,6 +346,7 @@ function NewLog({ today, onSave, onCancel }: { today: string; onSave: (f: LogFie
 
 function LogCard(p: {
   log: CounselingLogRec
+  flash?: boolean
   busy: boolean
   editing: boolean
   warnings: string[]
@@ -330,11 +361,13 @@ function LogCard(p: {
 }) {
   const l = p.log
   const [nuga, setNuga] = useState(l.nuga_text)
+  const [writing, setWriting] = useState(false)
+  const hasNuga = !!l.nuga_text || writing
   // AI 정리 등으로 저장값이 바뀌면 칸도 따라간다(카드를 다시 만들지 않아 포커스·클릭이 끊기지 않음).
   useEffect(() => setNuga(l.nuga_text), [l.nuga_text])
   const head = nugaHeader(l.date, l.place)
   return (
-    <article className="log" aria-label={`${head} 기록`}>
+    <article className={`log${p.flash ? ' flash' : ''}`} aria-label={`${head} 기록`}>
       <div className="row wide">
         <strong>{head}</strong>
         {logTags(l) && <span className="muted">{logTags(l)}</span>}
@@ -345,11 +378,15 @@ function LogCard(p: {
       ) : (
         <p className="pre pii">{l.content}</p>
       )}
+      {hasNuga && (
+      <>
       <label className="wide">
         누가기록
-        <textarea className="pii" rows={3} value={nuga} onChange={(e) => setNuga(e.target.value)} onBlur={() => nuga !== l.nuga_text && p.onSaveNuga(nuga.trim())} placeholder="AI로 정리하거나 직접 쓰세요." />
+        <textarea className="pii" rows={3} autoFocus={writing && !l.nuga_text} value={nuga} onChange={(e) => setNuga(e.target.value)} onBlur={() => nuga !== l.nuga_text && p.onSaveNuga(nuga.trim())} placeholder="AI로 정리하거나 직접 쓰세요." />
       </label>
       <span className="muted">{`${nuga.length}자`}</span>
+      </>
+      )}
       {p.warnings.map((w) => (
         <p key={w} className="warn">
           {`⚠ ${w}`}
@@ -359,15 +396,25 @@ function LogCard(p: {
         <button type="button" disabled={p.busy} onClick={p.onOrganize}>
           {l.nuga_text ? '다시 정리' : '누가기록으로 정리'}
         </button>
-        <button type="button" onClick={() => p.onCopy(nuga.trim())}>
-          복사
-        </button>
-        <label className="inline">
-          <input type="checkbox" checked={l.nuga_status === '나이스 입력 완료'} onChange={(e) => p.onStatus(e.target.checked)} />
-          나이스 입력 완료
-        </label>
+        {!hasNuga && (
+          <button type="button" className="link" onClick={() => setWriting(true)}>
+            직접 쓰기
+          </button>
+        )}
+        {hasNuga && (
+          <>
+            <button type="button" onClick={() => p.onCopy(nuga.trim())}>
+              복사
+            </button>
+            <label className="inline">
+              <input type="checkbox" checked={l.nuga_status === '나이스 입력 완료'} onChange={(e) => p.onStatus(e.target.checked)} />
+              나이스 입력 완료
+            </label>
+          </>
+        )}
+        <span className="spacer" />
         {!p.editing && (
-          <button type="button" onClick={p.onEdit}>
+          <button type="button" className="link" onClick={p.onEdit}>
             원문 고치기
           </button>
         )}

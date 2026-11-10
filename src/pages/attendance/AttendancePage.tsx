@@ -4,8 +4,9 @@ import type { AbsenceReportRec, AttendanceRec, StudentRec } from '../../lib/db/t
 import { listStudents } from '../../lib/roster/roster'
 import { ClassSelect, useClasses } from '../common/useClasses'
 import { listAttendanceByDate } from '../../lib/attendance/attendance'
-import { listReportsByStudent, loadReportContext } from '../../lib/absenceReports/reconcile'
+import { listReportsByStudents, loadReportContext } from '../../lib/absenceReports/reconcile'
 import { addDays, toYmd, type SchoolDays } from '../../lib/schoolDays'
+import { gridNext } from '../../lib/ui/gridNav'
 import AttendanceForm from './AttendanceForm'
 import ReportPanel from './ReportPanel'
 
@@ -30,8 +31,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
     const seq = ++loadSeq.current
     const [studs, ctx] = await Promise.all([listStudents(db, classId, { includeInactive: false }), loadReportContext(db)])
     const recs = await listAttendanceByDate(db, studs.map((s) => s.id), date)
-    const reps: Record<string, AbsenceReportRec[]> = {}
-    for (const s of studs) reps[s.id] = await listReportsByStudent(db, s.id)
+    const reps = await listReportsByStudents(db, studs.map((s) => s.id))
     // 날짜·학급을 빨리 바꾸면 늦게 끝난 이전 조회가 새 화면을 덮어쓰지 않도록 버린다.
     if (seq !== loadSeq.current) return
     setStudents(studs)
@@ -50,15 +50,19 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
   useEffect(() => setSelected(null), [classId])
 
   function moveFocus(e: KeyboardEvent) {
-    const step = { ArrowDown: 1, ArrowUp: -1, ArrowRight: 1, ArrowLeft: -1 }[e.key]
-    if (!step) return
-    const buttons = [...(listRef.current?.querySelectorAll('button') ?? [])]
+    const buttons = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('button.student-cell') ?? [])]
     const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
-    const next = buttons[Math.min(buttons.length - 1, Math.max(0, i + step))]
-    next?.focus()
+    const j = gridNext(buttons.map((b) => b.offsetTop), i, e.key)
+    if (j === null) return
+    buttons[j]?.focus()
     e.preventDefault()
   }
 
+  /** 다음·전 수업일. 2주 안에 수업일이 없으면(방학) 하루만 옮긴다. */
+  const stepDay = (dir: 1 | -1) => {
+    for (let d = addDays(date, dir), i = 0; i < 14; i++, d = addDays(d, dir)) if (!days || days.isClassDay(d)) return d
+    return addDays(date, dir)
+  }
   const reportsOn = (sid: string) => (reports[sid] ?? []).filter((r) => r.start_date <= date && date <= r.end_date)
   const student = students.find((s) => s.id === selected)
   // 지금 보이는 날짜의 조회가 끝나기 전에는 입력 칸을 열지 않는다(이전 날짜 기록을 고치는 일을 막음).
@@ -84,11 +88,11 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
         <div className="tools">
           {classes && <ClassSelect classes={classes} classId={classId} onChange={choose} />}
           <div className="date-bar">
-            <button type="button" aria-label="전날" title="전날" onClick={() => setDate(addDays(date, -1))}>
+            <button type="button" aria-label="전날" title="전 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(-1))}>
               ◀ 전날
             </button>
             <input type="date" aria-label="날짜" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
-            <button type="button" aria-label="다음날 ▶" title="다음날" onClick={() => setDate(addDays(date, 1))}>
+            <button type="button" aria-label="다음날" title="다음 수업일(주말·휴업일 건너뜀)" onClick={() => setDate(stepDay(1))}>
               다음날 ▶
             </button>
             {date !== today && (
@@ -113,7 +117,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
             const reps = reportsOn(s.id)
             return (
               <li key={s.id}>
-                <button type="button" className={`student-cell${selected === s.id ? ' active' : ''}`} aria-pressed={selected === s.id} onClick={() => { setSelected(s.id); setNotice(undefined) }}>
+                <button type="button" data-sid={s.id} className={`student-cell${selected === s.id ? ' active' : ''}`} aria-pressed={selected === s.id} onClick={() => { setSelected(s.id); setNotice(undefined) }}>
                   <span className="num pii">{`${s.number}번 ${s.name}`}</span>
                   {(mine.length > 0 || reps.length > 0) && (
                     <span className="marks">
@@ -137,8 +141,12 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
               date={date}
               records={dayRecords.filter((r) => r.student_id === student.id)}
               onDone={async (m) => {
+                const sid = student.id
                 setNotice(m)
+                setSelected(null)
                 await reloadRef.current()
+                // 저장 뒤에는 그 학생 칸으로 돌아가 방향키로 바로 다음 학생을 고를 수 있게 한다.
+                listRef.current?.querySelector<HTMLButtonElement>(`button[data-sid="${sid}"]`)?.focus()
               }}
               onClose={() => setSelected(null)}
             />

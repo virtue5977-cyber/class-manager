@@ -92,10 +92,36 @@ test('미인정 지각은 저장되지만 신고서 뱃지 없음', async () => 
   expect(within(row('가나')).queryByText('신고서')).not.toBeInTheDocument()
 })
 
-test('전날·다음날 버튼으로 날짜가 바뀐다', async () => {
+test('저장하면 입력 칸이 닫히고 그 학생 칸으로 커서가 돌아간다', async () => {
   const user = userEvent.setup()
   const { db } = await setup()
   renderAt(db, '2026-11-06')
-  await user.click(await screen.findByRole('button', { name: '다음날 ▶' }))
-  expect(screen.getByLabelText('날짜')).toHaveValue('2026-11-07')
+  await user.click(await screen.findByRole('button', { name: /^1번 가나/ }))
+  await user.click(screen.getByRole('button', { name: '저장' }))
+  await waitFor(() => expect(screen.queryByRole('button', { name: '저장' })).not.toBeInTheDocument())
+  await waitFor(() => expect(row('가나')).toHaveFocus())
+})
+
+test('숫자키 1~4로 구분을 고르고, 사유 칸에서 Enter로 저장한다', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  renderAt(db, '2026-11-06')
+  await user.click(await screen.findByRole('button', { name: /^1번 가나/ }))
+  await user.keyboard('2')
+  expect(screen.getByRole('button', { name: '지각' })).toHaveAttribute('aria-pressed', 'true')
+  await user.type(screen.getByLabelText('교시'), '1')
+  await user.click(screen.getByRole('button', { name: '미인정' }))
+  await user.type(screen.getByLabelText('사유'), '늦잠{Enter}')
+  await waitFor(() => expect(row('가나')).toHaveTextContent('지각 1교시(미인정)'))
+})
+
+test('전날·다음날은 주말·휴업일을 건너뛴다', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  renderAt(db, '2026-11-06') // 금요일
+  await screen.findByRole('button', { name: /^1번 가나/ })
+  await user.click(screen.getByRole('button', { name: '다음날' }))
+  await waitFor(() => expect(screen.getByLabelText('날짜')).toHaveValue('2026-11-09'))
+  await user.click(screen.getByRole('button', { name: '전날' }))
+  await waitFor(() => expect(screen.getByLabelText('날짜')).toHaveValue('2026-11-06'))
 })

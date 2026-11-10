@@ -22,6 +22,14 @@ export async function listReportsByStudent(db: AppDB, studentId: string): Promis
     .sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : a.kind < b.kind ? -1 : 1))
 }
 
+/** 여러 학생의 신고서를 한 번에 읽어 학생별로 묶는다(학생 수만큼 따로 묻지 않게). */
+export async function listReportsByStudents(db: AppDB, ids: string[]): Promise<Record<string, AbsenceReportRec[]>> {
+  const out: Record<string, AbsenceReportRec[]> = Object.fromEntries(ids.map((id) => [id, []]))
+  for (const r of await db.absence_reports.where('student_id').anyOf(ids).toArray()) if (!r.deleted) out[r.student_id]?.push(r)
+  for (const list of Object.values(out)) list.sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : a.kind < b.kind ? -1 : 1))
+  return out
+}
+
 export async function getReportAttendanceIds(db: AppDB, reportId: string): Promise<string[]> {
   return (await db.report_attendance.where('report_id').equals(reportId).toArray()).filter((l) => !l.deleted).map((l) => l.attendance_id)
 }

@@ -203,7 +203,7 @@ function Briefing({ today }: { today: string }) {
   async function organize() {
     setMessage(undefined)
     const s = await getSettings(db)
-    if (!s.ai_enabled) return setMessage('설정 > AI에서 AI 정리를 켜고 키를 입력하세요. 아래 칸에 직접 적어도 됩니다.')
+    if (!s.ai_enabled) return setMessage('AI가 꺼져 있습니다. 설정 > AI에서 연결 방식을 고르고 켜세요. 위 칸에 직접 적어도 됩니다.')
     setBusy(true)
     try {
       const cid = await getCurrentClassId(db)

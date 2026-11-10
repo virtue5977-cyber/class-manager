@@ -5,7 +5,7 @@ import { createMemoryFsAdapter } from '../../lib/fs/memory'
 import { AppProviders } from '../../app/context'
 import { createClass, emptyStudent, saveStudent } from '../../lib/roster/roster'
 import { updateSettings } from '../../lib/settings'
-import { listLogsByStudent } from '../../lib/counseling/counseling'
+import { listLogsByStudent, saveLog } from '../../lib/counseling/counseling'
 import type { AiRequest } from '../../lib/ai/client'
 import CounselingPage from './CounselingPage'
 
@@ -58,7 +58,8 @@ test('AI가 꺼져 있으면 안내', async () => {
   await user.type(screen.getByLabelText('내용(개조식 메모나 녹음 글)'), '메모')
   await user.click(screen.getByRole('button', { name: '기록 추가' }))
   await user.click(await screen.findByRole('button', { name: '누가기록으로 정리' }))
-  expect(await screen.findByText('설정 > AI에서 AI 정리를 켜고 키를 입력하세요.')).toBeInTheDocument()
+  expect(await screen.findByText(/AI가 꺼져 있습니다/)).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '설정 > AI 열기' })).toHaveAttribute('href', '#/settings?tab=ai')
 })
 
 test('대상·방법·분야를 고르면 저장되고 분야로 걸러 본다', async () => {
@@ -81,4 +82,66 @@ test('대상·방법·분야를 고르면 저장되고 분야로 걸러 본다',
   expect((await listLogsByStudent(db, s.id))[0]).toMatchObject({ target: '보호자', method: '전화', topic: '진로' })
   await user.selectOptions(screen.getByLabelText('분야 보기'), '학업')
   expect(await screen.findByText('해당하는 기록이 없습니다.')).toBeInTheDocument()
+})
+
+test('정리 전 기록은 누가기록 칸 없이 짧게 보이고, "직접 쓰기"를 누르면 칸이 열린다', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()} ai={async () => '{}'}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  await user.click(await screen.findByRole('button', { name: /^1번 김지훈/ }))
+  await user.type(screen.getByLabelText('내용(개조식 메모나 녹음 글)'), '메모')
+  await user.click(screen.getByRole('button', { name: '기록 추가' }))
+  const card = await screen.findByRole('article')
+  expect(within(card).queryByLabelText('누가기록')).not.toBeInTheDocument()
+  expect(within(card).queryByRole('button', { name: '복사' })).not.toBeInTheDocument()
+  await user.click(within(card).getByRole('button', { name: '직접 쓰기' }))
+  expect(within(card).getByLabelText('누가기록')).toBeInTheDocument()
+})
+
+test('학생 목록에 마지막 상담일을 보이고, 한 달 넘게 기록이 없으면 표시하며, 오래된 순으로 정렬할 수 있다', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const a = await saveStudent(db, c.id, emptyStudent(1, '가나'))
+  const b = await saveStudent(db, c.id, emptyStudent(2, '다라'))
+  await saveLog(db, { student_id: a.id, date: '2026-11-02', place: '', content: '최근' })
+  await saveLog(db, { student_id: b.id, date: '2026-09-01', place: '', content: '오래전' })
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  const ga = await screen.findByRole('button', { name: /^1번 가나/ })
+  await waitFor(() => expect(ga).toHaveTextContent('11/2'))
+  expect(ga).not.toHaveTextContent('한 달 넘음')
+  expect(screen.getByRole('button', { name: /^2번 다라/ })).toHaveTextContent('한 달 넘음')
+  await user.selectOptions(screen.getByLabelText('정렬'), '오래된 순')
+  const names = within(screen.getByRole('list', { name: '학생 목록' })).getAllByRole('button').map((x) => x.textContent)
+  expect(names[0]).toMatch(/^2번 다라/)
+})
+
+test('새 기록을 저장하면 입력 칸이 닫히고 그 기록이 잠깐 강조된다', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const a = await saveStudent(db, c.id, emptyStudent(1, '가나'))
+  await saveLog(db, { student_id: a.id, date: '2026-11-01', place: '', content: '예전' })
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  await user.click(await screen.findByRole('button', { name: /^1번 가나/ }))
+  await user.click(await screen.findByRole('button', { name: '+ 새 기록' }))
+  await user.type(screen.getByLabelText('내용(개조식 메모나 녹음 글)'), '새 메모')
+  await user.click(screen.getByRole('button', { name: '기록 추가' }))
+  await waitFor(() => expect(screen.queryByRole('button', { name: '기록 추가' })).not.toBeInTheDocument())
+  const fresh = (await screen.findAllByRole('article')).find((x) => x.textContent?.includes('새 메모'))!
+  expect(fresh).toHaveClass('flash')
 })

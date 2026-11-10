@@ -423,3 +423,10 @@ details.panel[open] > summary { margin-bottom: 8px; }
 table.cleaning th { position: relative; vertical-align: middle; }
 table.cleaning th .col-tools { position: absolute; right: 6px; bottom: 2px; background: var(--bg); }
 table.cleaning th, table.cleaning td { padding: 6px 8px; }
+.log-actions .spacer { flex: 1; }
+article.log .pre { margin: 0; }
+.student-row .att { font-size: 12px; color: var(--faint); }
+.student-row .att.stale { color: var(--c-orange); }
+.counsel-layout { grid-template-columns: 240px minmax(0, 1fr); }
+@keyframes flash-bg { from { background: var(--accent-soft); } to { background: transparent; } }
+article.log.flash { animation: flash-bg 2.5s ease-out; border-radius: 8px; }
