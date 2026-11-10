@@ -747,3 +747,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .fields-list li { gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); align-items: center; }
 .fields-list .fields-name { min-width: 120px; }
 .fields-list input:not([type='checkbox']) { width: 160px; }
+/* 상담: 녹음 파일 끌어 놓기 */
+.audio-drop { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; background: var(--panel); }
+.audio-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.audio-drop progress { flex: 1; }

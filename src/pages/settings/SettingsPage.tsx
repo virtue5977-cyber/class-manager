@@ -1,3 +1,4 @@
+import SttSettings from './SttSettings'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useDb } from '../../app/context'
@@ -63,7 +64,12 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
         {tab === 'school' && <SchoolSettings />}
         {tab === 'timetable' && <MyTimetable />}
         {tab === 'reports' && <ReportSettings />}
-        {tab === 'ai' && <AiSettings />}
+        {tab === 'ai' && (
+          <>
+            <AiSettings />
+            <SttSettings />
+          </>
+        )}
         {tab === 'google' && <GoogleSettings />}
         {tab === 'screen' && <AppearanceSettings />}
         {tab === 'update' && <UpdateSettings />}

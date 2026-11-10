@@ -345,6 +345,111 @@ handle('folder:open', async (p) => {
 })
 handle('folder:list', async (p) => foldersLib.listDir(p))
 
+// ---- 음성 받아쓰기: 고른 사람만 받아 두고, 녹음은 이 컴퓨터 안에서만 글로 바꾼다 ----
+const sttLib = require('./stt.cjs')
+const STT_DIR = () => path.join(app.getPath('userData'), 'stt')
+const sttSupported = () => process.platform === 'win32' && process.arch === 'x64'
+let sttJob = null // { child?, abort? }
+const sttSend = (p) => win && win.webContents.send('stt:progress', p)
+function sttStatus() {
+  const dir = STT_DIR()
+  const has = (f) => fsSync.existsSync(path.join(dir, f))
+  return {
+    supported: sttSupported(),
+    bin: has('whisper-cli.exe'),
+    models: Object.entries(sttLib.STT_FILES.models).filter(([, m]) => has(m.file)).map(([k]) => k),
+  }
+}
+// 앱을 닫으면 받아쓰던 프로그램도 끝낸다(녹음 글을 든 채 남지 않게)
+app.on('before-quit', () => {
+  if (sttJob?.child) killTree(sttJob.child)
+  sttJob?.abort?.()
+})
+handle('stt:status', async () => sttStatus())
+handle('stt:install', async (model) => {
+  if (!sttSupported()) throw new Error('이 컴퓨터(Windows 64비트가 아님)에서는 쓸 수 없습니다.')
+  const m = sttLib.STT_FILES.models[model]
+  if (!m) throw new Error('모델을 고르세요.')
+  if (sttJob) throw new Error('이미 받거나 바꾸는 중입니다.')
+  const ctl = new AbortController()
+  sttJob = { abort: () => ctl.abort() }
+  try {
+    const dir = STT_DIR()
+    const f = (u, i) => net.fetch(u, i)
+    if (!fsSync.existsSync(path.join(dir, 'whisper-cli.exe'))) {
+      const zipPath = path.join(dir, 'whisper-bin.zip')
+      await sttLib.downloadVerified(f, sttLib.STT_FILES.bin.url, zipPath, sttLib.STT_FILES.bin.sha256, { maxBytes: sttLib.STT_FILES.bin.maxBytes, timeoutMs: 10 * 60000, signal: ctl.signal, onProgress: (r, t) => sttSend({ phase: 'bin', received: r, total: t }) })
+      await sttLib.extractBin(await fs.readFile(zipPath), dir)
+      await fs.rm(zipPath, { force: true })
+    }
+    await sttLib.downloadVerified(f, m.url, path.join(dir, m.file), m.sha256, { maxBytes: m.maxBytes, timeoutMs: 60 * 60000, signal: ctl.signal, onProgress: (r, t) => sttSend({ phase: 'model', received: r, total: t }) })
+    return sttStatus()
+  } finally {
+    sttJob = null
+  }
+})
+handle('stt:remove', async () => {
+  if (sttJob) throw new Error('받거나 바꾸는 중에는 지울 수 없습니다.')
+  await fs.rm(STT_DIR(), { recursive: true, force: true })
+  return sttStatus()
+})
+handle('stt:cancel', async () => {
+  if (!sttJob) return
+  if (sttJob.child) killTree(sttJob.child)
+  sttJob.abort?.()
+  sttJob.cancelled = true
+})
+handle('stt:run', async ({ path: input, wav, model }) => {
+  if (!sttSupported()) throw new Error('이 컴퓨터에서는 쓸 수 없습니다.')
+  if (sttJob) throw new Error('이미 받아쓰는 중입니다.')
+  const st = sttStatus()
+  const key = model && st.models.includes(model) ? model : st.models.includes('accurate') ? 'accurate' : st.models[0]
+  if (!st.bin || !key) throw new Error('먼저 설정에서 음성 받아쓰기를 받으세요.')
+  const work = path.join(AI_DIR(), 'stt-' + require('node:crypto').randomUUID())
+  await fs.mkdir(work, { recursive: true })
+  let file = input
+  try {
+    if (wav) {
+      file = path.join(work, 'in.wav')
+      await fs.writeFile(file, Buffer.from(wav))
+    } else if (typeof input !== 'string' || !/\.(mp3|wav|ogg|flac)$/i.test(input) || /^[\\/]{2}/.test(input) || !fsSync.existsSync(input)) {
+      throw new Error('녹음 파일을 읽을 수 없습니다.')
+    }
+    const outBase = path.join(work, 'out')
+    const cli = path.join(STT_DIR(), 'whisper-cli.exe')
+    const args = sttLib.whisperArgs({ model: path.join(STT_DIR(), sttLib.STT_FILES.models[key].file), input: file, outBase, threads: Math.max(1, Math.min(8, os.cpus().length - 1)) })
+    const text = await new Promise((resolve, reject) => {
+      const child = spawn(cli, args, { cwd: STT_DIR(), windowsHide: true })
+      sttJob = { child }
+      let err = ''
+      const onData = (d) => {
+        const t = String(d)
+        err = (err + t).slice(-4000)
+        for (const line of t.split(/\r?\n/)) {
+          const p = sttLib.parseProgress(line)
+          if (p !== null) sttSend({ phase: 'run', percent: p })
+        }
+      }
+      child.stderr.on('data', onData)
+      child.stdout.on('data', onData)
+      child.on('error', (e) => reject(new Error(`받아쓰기 프로그램을 열지 못했습니다: ${e.message}`)))
+      child.on('close', async (code) => {
+        if (sttJob?.cancelled) return reject(new Error('그만두었습니다.'))
+        if (code !== 0) return reject(new Error(`받아쓰기에 실패했습니다(${code}). ${/vcruntime|MSVCP/i.test(err) ? 'Microsoft Visual C++ 재배포 패키지가 필요할 수 있습니다.' : ''}`.trim()))
+        try {
+          resolve((await fs.readFile(outBase + '.txt', 'utf8')).trim())
+        } catch {
+          reject(new Error('받아쓴 글을 읽지 못했습니다.'))
+        }
+      })
+    })
+    return { text }
+  } finally {
+    sttJob = null
+    await fs.rm(work, { recursive: true, force: true })
+  }
+})
+
 handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION }))
 handle('update:check', async () => {
   try {
