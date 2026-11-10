@@ -673,9 +673,9 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .cal-tag-업무 { background: var(--c-green-bg); color: var(--c-green); }
 .cal-add { border-top: 1px solid var(--line); padding-top: 8px; gap: 6px; }
 .cal-add input[aria-label='일정 제목'] { width: 100%; }
-.paper-mode, .paper-tools .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.paper-mode button, .paper-tools .seg button { border: 0; border-radius: 0; background: transparent; padding: 6px 10px; color: var(--sub); }
-.paper-mode button.on, .paper-tools .seg button.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+.paper-mode, .paper-tools .seg, .seg[role='radiogroup'] { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.paper-mode button, .paper-tools .seg button, .seg[role='radiogroup'] button { border: 0; border-radius: 0; background: transparent; padding: 6px 10px; color: var(--sub); }
+.paper-mode button.on, .paper-tools .seg button.on, .seg[role='radiogroup'] button.on { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
 /* 인쇄·PDF: 고치는 단추·입력 틀은 빼고 내용만 */
 @media print {
   button, .menu, details.menu, .export-menu, input[type='search'], .command-bar, .home-tabs, .resize-h, .resize-v, .home-side, .chat-menu, .chat-clear, .note-tools, .nb-hint, .nb-handle, .log-toolbar, .todo-add, .cal-add, .notice-add, .seg { display: none !important; }
@@ -751,3 +751,5 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .audio-drop { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; background: var(--panel); }
 .audio-drop.over { border-color: var(--accent); background: var(--accent-soft); }
 .audio-drop progress { flex: 1; }
+details.menu .menu-list.col-pick { min-width: 250px; right: 0; left: auto; }
+.seg[role='radiogroup'] { align-self: flex-start; }

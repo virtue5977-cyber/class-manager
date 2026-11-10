@@ -74,14 +74,19 @@ export function createWebFsAdapter(db: AppDB): FsAdapter {
         const input = document.createElement('input')
         input.type = 'file'
         input.accept = accept
+        // 문서에 붙여 두고 누른다(떨어진 입력 칸은 일부 브라우저·자동 시험에서 change가 안 온다)
+        input.style.display = 'none'
+        document.body.appendChild(input)
+        const done = () => input.remove()
         input.onchange = async () => {
+          done()
           const file = input.files?.[0]
           if (!file) return resolve(null)
           // 너무 큰 파일은 읽지 않는다(메모리에 다 올리기 전에 알림).
           if (opts.maxBytes != null && file.size > opts.maxBytes) return resolve({ name: file.name, bytes: new Uint8Array(0), tooBig: true })
           resolve({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })
         }
-        input.oncancel = () => resolve(null)
+        input.oncancel = () => (done(), resolve(null))
         input.click()
       })
     },

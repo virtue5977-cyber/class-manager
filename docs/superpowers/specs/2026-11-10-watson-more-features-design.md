@@ -28,13 +28,13 @@
 
 ## 5. 음성 받아쓰기 — 선택해서 내려받기(승인 11/10, 이번 버전)
 - 기본 설치에는 넣지 않음. 설정 > AI에 '음성 받아쓰기 받기': whisper.cpp 실행 파일(수 MB) + 고른 모델(아래)을 내려받아 앱 자료 폴더에 둠. 받은 파일은 SHA-256으로 확인.
-- 모델: 빠름(small, 약 0.2GB) · 정확(medium, 약 0.5GB) · 최고(large-v3-turbo, 약 0.55GB) — 모두 줄인(양자화) 판. 지우기 단추로 공간 돌려받기.
+- 모델: 빠름(small-q5_1, 약 0.2GB) · 정확(medium-q5_0, 약 0.5GB). (large-v3-turbo는 해시를 확인하지 못해 뺌.) 지우기 단추로 공간 돌려받기.
 - 받아 두면 상담일지 기록 칸 위에 '녹음 파일을 끌어다 놓으세요' 칸이 생김(받기 전에는 없음, 누르면 파일 고르기). mp3·m4a·wav·ogg를 끌어 놓으면 이 컴퓨터 안에서만 글로 바꿔(밖으로 안 나감) 내용 칸에 자동으로 넣음(있던 글 뒤에 이어 붙임). 진행 막대·취소.
 - exe 전용(HTML판은 안내만).
 
 ## 6. 자료
 - `app_settings.roster_fields: {key, label, builtin, visible}[]`, `StudentRec.extra?: Record<string, string>`.
-- `hwpx_templates`에 `kind: 'absence'`, `slots: {field, cell}[]`, `source: 'builtin'|'upload'` 추가(기존 행은 builtin).
+- 다른 학교 양식은 찾은 빈 칸에 기존 `{{표시}}`를 써 넣은 hwpx로 저장(`installTemplate` 그대로, 표 바꿈 없음). 자리를 바꾸려면 다시 올린다. 새 표시 3개: `{{학년반번호}}`, `{{결석종류}}`, `{{작성날짜}}`.
 - 모두 기존 백업에 포함.
 
 ## 7. 시험
