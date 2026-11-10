@@ -14,6 +14,15 @@ export async function createNote(db: AppDB, title = '새 노트', blocks: NoteRe
 
 export const saveNote = (db: AppDB, rec: NoteRec) => save(db.notes, rec)
 
+/** 편집 저장: 최신 노트에 제목·블록만 바꾼다(그사이 바뀐 고정 표시는 지키고, 지운 노트는 되살리지 않음). */
+export async function saveNoteContent(db: AppDB, id: string, content: Pick<NoteRec, 'title' | 'blocks'>): Promise<void> {
+  await db.transaction('rw', db.notes, async () => {
+    const cur = await db.notes.get(id)
+    if (!cur || cur.deleted) return
+    await save(db.notes, { ...cur, title: content.title, blocks: content.blocks })
+  })
+}
+
 /** 고정 먼저, 그다음 최근에 고친 순 */
 export async function listNotes(db: AppDB): Promise<NoteRec[]> {
   return (await db.notes.toArray()).filter((n) => !n.deleted).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at))

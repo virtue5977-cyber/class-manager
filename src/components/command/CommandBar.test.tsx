@@ -91,3 +91,22 @@ test('대화 기록 끝으로 스크롤해도(Promise를 돌려주는 브라우�
     Element.prototype.scrollIntoView = orig
   }
 })
+
+test('W 막대의 확인 카드 "이렇게 실행"은 그 명령을 실행한다', async () => {
+  const { remember } = await import('./session')
+  const { appendChat } = await import('../../lib/command/chatLog')
+  const { ResultCardRunner } = await import('./WButton')
+  const { db } = await setup('/calendar')
+  const chat = await appendChat(db, { input: '내일 3번 지각', mode: 'ai', summary: '이렇게 실행할까요?', links: [], status: '확인 필요' })
+  remember(chat.id, { summary: '', links: [], card: { kind: 'confirm', data: { command: '/할일 동의서 걷기', preview: '할일' } } })
+  const user = userEvent.setup()
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <ResultCardRunner chat={chat} />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: '이렇게 실행' }))
+  await waitFor(async () => expect((await db.todos.toArray()).length).toBe(1))
+})

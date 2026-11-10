@@ -14,3 +14,15 @@ test('노트 만들기·고정 먼저·첨부 읽기·50MB 넘으면 거절·지
   await deleteNote(db, b.id)
   expect((await db.note_files.toArray()).filter((x) => !x.deleted)).toEqual([])
 })
+
+test('편집 저장은 최신 노트에 제목·블록만 바꾸고, 지운 노트는 되살리지 않는다', async () => {
+  const { saveNoteContent } = await import('./notes')
+  const db = createDb('test-' + crypto.randomUUID())
+  const n = await createNote(db, '가')
+  await saveNote(db, { ...n, pinned: true })
+  await saveNoteContent(db, n.id, { title: '나', blocks: [] })
+  expect(await db.notes.get(n.id)).toMatchObject({ title: '나', pinned: true })
+  await deleteNote(db, n.id)
+  await saveNoteContent(db, n.id, { title: '다', blocks: [] })
+  expect(await db.notes.get(n.id)).toMatchObject({ title: '나', deleted: true })
+})

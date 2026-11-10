@@ -188,3 +188,21 @@ test('그 학생 반성문이 있으면 상담일지에 "반성문 n건" 링크'
   await user.click(await screen.findByRole('button', { name: /^1번/ }))
   expect(await screen.findByRole('link', { name: '반성문 1건' })).toHaveAttribute('href', `/class/reflection?sid=${s.id}`)
 })
+
+test('주소의 ?sid= 학생이 처음부터 열린다(명령·할 일 링크)', async () => {
+  const { MemoryRouter } = await import('react-router-dom')
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  const s2 = await saveStudent(db, c.id, emptyStudent(2, '박민수'))
+  window.location.hash = `#/counseling?sid=${s2.id}`
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <CounselingPage />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('heading', { name: '2번 박민수' })).toBeInTheDocument()
+  window.location.hash = ''
+})

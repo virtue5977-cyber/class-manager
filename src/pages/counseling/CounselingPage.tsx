@@ -15,7 +15,7 @@ import { runNuga } from '../../lib/counseling/nuga'
 import { getSettings } from '../../lib/settings'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
-import { ymdParam } from '../../lib/ui/hashParam'
+import { hashParam, ymdParam } from '../../lib/ui/hashParam'
 import { addDays, toYmd } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
@@ -38,7 +38,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   const ai = useAi()
   const { classes, classId, choose } = useClasses()
   const [students, setStudents] = useState<StudentRec[]>([])
-  const [selected, setSelected] = useState<string>()
+  // 명령·할 일 링크(#/counseling?sid=…)로 오면 그 학생을 연다.
+  const [selected, setSelected] = useState<string | undefined>(() => hashParam('sid') ?? undefined)
   const [logs, setLogs] = useState<CounselingLogRec[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [lastDate, setLastDate] = useState<Record<string, string>>({})

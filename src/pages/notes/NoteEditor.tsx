@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
-import { attachFile, MAX_FILE, newBlockId, readFile, saveNote } from '../../lib/notes/notes'
+import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
 import { filterSlash, mergeUp, moveBlock, setType, splitBlock } from '../../lib/notes/blocks'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
@@ -38,14 +38,14 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   // 입력이 멈추면 저장(바뀐 것이 있을 때만). 화면을 떠날 때도 저장.
   useEffect(() => {
     const t = setTimeout(() => {
-      if (title !== note.title || JSON.stringify(blocks) !== JSON.stringify(note.blocks)) saveNote(db, { ...note, title, blocks })
+      if (title !== note.title || JSON.stringify(blocks) !== JSON.stringify(note.blocks)) saveNoteContent(db, note.id, { title, blocks })
     }, 500)
     return () => clearTimeout(t)
   }, [db, note, title, blocks])
   useEffect(
     () => () => {
       const l = latest.current
-      if (l.title !== note.title || JSON.stringify(l.blocks) !== JSON.stringify(note.blocks)) saveNote(db, { ...note, ...l })
+      if (l.title !== note.title || JSON.stringify(l.blocks) !== JSON.stringify(note.blocks)) saveNoteContent(db, note.id, l)
     },
     [db, note],
   )

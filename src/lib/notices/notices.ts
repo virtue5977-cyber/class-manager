@@ -64,7 +64,10 @@ export async function moveNotice(db: AppDB, date: string, id: string, dir: -1 | 
   })
 }
 
-/** 예전 조례·종례 항목을 그날 하루 전달사항으로 한 번만 옮긴다(조례 먼저). briefings는 그대로 둔다. */
+/**
+ * 예전 조례·종례 항목을 그날 하루 전달사항으로 옮긴다(조례 먼저). briefings는 그대로 둔다.
+ * id를 'brf-<브리핑id>-<순서>'로 정해 두어 다른 기기(백업 복원 뒤)에서 다시 돌아도 겹치지 않는다.
+ */
 export async function migrateBriefings(db: AppDB): Promise<number> {
   if ((await db.device_local.get('briefingsMigrated'))?.value) return 0
   const rows = (await db.briefings.toArray()).filter((b) => !b.deleted)
@@ -73,9 +76,11 @@ export async function migrateBriefings(db: AppDB): Promise<number> {
   let n = 0
   await db.transaction('rw', db.notice_items, db.device_local, async () => {
     for (const b of rows)
-      for (const it of [...b.items].sort((x, y) => x.order - y.order)) {
+      for (const [k, it] of [...b.items].sort((x, y) => x.order - y.order).entries()) {
         if (!it.text.trim()) continue
-        await db.notice_items.add(newRecord({ text: it.text.trim(), start_date: b.target_date, end_date: b.target_date, done: it.done, pinned: false, order: order++ }) as NoticeItemRec)
+        const id = `brf-${b.id}-${k}`
+        if (await db.notice_items.get(id)) continue
+        await db.notice_items.add({ ...newRecord({ text: it.text.trim(), start_date: b.target_date, end_date: b.target_date, done: it.done, pinned: false, order: order++ }), id } as NoticeItemRec)
         n++
       }
     await db.device_local.put({ id: 'briefingsMigrated', value: new Date().toISOString() })

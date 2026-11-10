@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useShortcut } from '../../lib/ui/shortcuts'
-import type { Executed } from '../../lib/command/run'
+import { executeInput, type Executed } from '../../lib/command/run'
+import { aiFallback } from '../../lib/command/ai'
+import type { ChatRec } from '../../lib/db/types'
+import { useCommandCtx } from './useCommandCtx'
+import { remember } from './session'
 import { toYmd } from '../../lib/schoolDays'
 import CommandBar from './CommandBar'
 import ResultCard from './ResultCard'
@@ -12,7 +16,6 @@ export default function WButton() {
   const [open, setOpen] = useState(false)
   const [last, setLast] = useState<Executed>()
   const box = useRef<HTMLDivElement>(null)
-  const today = toYmd(new Date())
   useShortcut('command', () => setOpen(true))
   useShortcut('close', () => setOpen(false))
   useEffect(() => {
@@ -27,7 +30,7 @@ export default function WButton() {
     <div className={`w-float${open ? ' open' : ''}`} ref={box}>
       {open ? (
         <div className="w-panel">
-          {last && <ResultCard key={last.chat.id} chat={last.chat} today={today} />}
+          {last && <ResultCardRunner key={last.chat.id} chat={last.chat} onRan={setLast} />}
           <CommandBar autoFocus onRan={setLast} onEscape={() => setOpen(false)} />
         </div>
       ) : (
@@ -36,5 +39,23 @@ export default function WButton() {
         </button>
       )}
     </div>
+  )
+}
+
+/** 결과 카드 + '이렇게 실행'·'다시 실행'을 실제로 실행하는 연결(W 막대용). */
+export function ResultCardRunner({ chat, onRan }: { chat: ChatRec; onRan?: (r: Executed) => void }) {
+  const today = toYmd(new Date())
+  const { ctx, env } = useCommandCtx(today)
+  return (
+    <ResultCard
+      chat={chat}
+      today={today}
+      onRun={async (input) => {
+        if (!env) return
+        const r = await executeInput(input, ctx, env, aiFallback)
+        remember(r.chat.id, r.result)
+        onRan?.(r)
+      }}
+    />
   )
 }

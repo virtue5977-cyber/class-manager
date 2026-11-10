@@ -43,3 +43,12 @@ test('조례·종례 항목을 전달사항으로 한 번만 옮긴다(조례 �
   expect(list.map((n) => n.text)).toEqual(['동의서', '체육복', '교육'])
   expect(await migrateBriefings(db)).toBe(0)
 })
+
+test('옮기기는 다른 기기(백업 복원 후)에서 다시 돌아도 겹치지 않는다', async () => {
+  const db = fresh()
+  await saveBriefingItems(db, '2026-11-09', '조례', [{ text: '교육', order: 0, done: false }])
+  expect(await migrateBriefings(db)).toBe(1)
+  await db.device_local.delete('briefingsMigrated') // 새 기기: 표시가 없다
+  expect(await migrateBriefings(db)).toBe(0)
+  expect((await noticesOn(db, '2026-11-09')).map((n) => n.text)).toEqual(['교육'])
+})
