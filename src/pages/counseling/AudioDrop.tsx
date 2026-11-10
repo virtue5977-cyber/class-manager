@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { AUDIO_EXT, DIRECT_EXT, getSttBridge, toWav16k, type SttModel } from '../../lib/stt/stt'
+import { AUDIO_EXT, DIRECT_EXT, getSttBridge, MODEL_ORDER, toWav16k, type SttModel } from '../../lib/stt/stt'
 
 /** 상담 기록 내용 칸 위: 녹음 파일을 끌어 놓으면 이 컴퓨터 안에서 글로 바꿔 onText로 넘긴다.
  * 음성 받아쓰기를 받아 둔 설치형에서만 보인다. */
@@ -22,7 +22,7 @@ export default function AudioDrop({ onText }: { onText: (text: string) => void }
   }, [bridge])
   useEffect(() => bridge?.onProgress((p) => p.phase === 'run' && p.percent != null && setPct(p.percent)), [bridge])
   if (!bridge || !models?.length) return null
-  const model: SttModel = models.includes('accurate') ? 'accurate' : models[0]
+  const model: SttModel = MODEL_ORDER.find((m) => models.includes(m)) ?? models[0]
 
   async function take(file: File | undefined) {
     if (!file || busy || !bridge) return

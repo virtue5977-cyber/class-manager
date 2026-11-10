@@ -1,6 +1,6 @@
 /** 음성 받아쓰기(설치형 SHELL 5 이상): 녹음 파일 → 이 컴퓨터 안에서 글. */
 
-export type SttModel = 'fast' | 'accurate'
+export type SttModel = 'fast' | 'accurate' | 'best'
 export interface SttStatus {
   supported: boolean
   bin: boolean
@@ -26,7 +26,10 @@ export function getSttBridge(): SttBridge | undefined {
   return (globalThis as { desktop?: { stt?: SttBridge } }).desktop?.stt
 }
 
-export const MODEL_LABEL: Record<SttModel, string> = { fast: '빠름(약 0.2GB)', accurate: '정확(약 0.5GB)' }
+export const MODEL_LABEL: Record<SttModel, string> = { fast: '빠름(약 0.2GB)', accurate: '정확(약 0.5GB)', best: '최고(약 0.55GB)' }
+/** 여러 개 받아 두면 좋은 것부터 쓴다 */
+export const MODEL_ORDER: SttModel[] = ['best', 'accurate', 'fast']
+export const MODEL_HINT: Record<SttModel, string> = { fast: '가장 빠름, 또렷한 녹음에 알맞음', accurate: '빠름보다 정확', best: '가장 정확(large-v3-turbo), 정확보다 빠름 · 권장' }
 export const AUDIO_EXT = /\.(mp3|wav|ogg|flac|m4a|aac|webm)$/i
 /** whisper가 바로 읽는 형식(파일 경로만 넘김, 메모리에 올리지 않음) */
 export const DIRECT_EXT = /\.(mp3|wav|ogg|flac)$/i

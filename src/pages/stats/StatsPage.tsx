@@ -9,7 +9,7 @@ import type { StudentRec } from '../../lib/db/types'
 import { listStudents, classLabel } from '../../lib/roster/roster'
 import { listAttendanceByStudent } from '../../lib/attendance/attendance'
 import { loadReportContext } from '../../lib/absenceReports/reconcile'
-import { firstAbsenceDate, KINDS, STAT_COLS, computeAttendanceStats, statsTable } from '../../lib/stats'
+import { CATEGORIES, firstAbsenceDate, KINDS, STAT_COLS, computeAttendanceStats, statsTable } from '../../lib/stats'
 import { listReportsByStudents } from '../../lib/absenceReports/reconcile'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
@@ -25,7 +25,7 @@ export default function StatsPage() {
   useShortcut('step', (a) => a.kind === 'step' && month && setMonth(shiftMonth(month, a.dir)))
   const [table, setTable] = useState<string[][]>([])
   /** 표 줄마다 학생 id와 결석 첫 날짜(숫자 링크용) */
-  const [rowsMeta, setRowsMeta] = useState<{ id: string; first?: string }[]>([])
+  const [rowsMeta, setRowsMeta] = useState<{ id: string; first: Partial<Record<string, string>> }[]>([])
   /** 보일 칸(이 기기에 기억). 기본은 모두. */
   const [cols, setCols] = useState<string[]>(() => {
     try {
@@ -67,7 +67,7 @@ export default function StatsPage() {
     const t = statsTable(students, computeAttendanceStats(atts, days, r), { cols, reports })
     if (n === seq.current) {
       setTable(t)
-      setRowsMeta(students.map((x) => ({ id: x.id, first: firstAbsenceDate(atts, x.id, '결석', r) })))
+      setRowsMeta(students.map((x) => ({ id: x.id, first: Object.fromEntries(CATEGORIES.map((c) => [c, firstAbsenceDate(atts, x.id, '결석', r, c)])) })))
     }
   }, [db, classId, range, cols])
   useEffect(() => {
@@ -152,7 +152,7 @@ export default function StatsPage() {
                     {row.map((v, j) => {
                       const col = cols[j - 2]
                       const last = j === row.length - 1
-                      const link = meta && v ? (last ? `#/attendance/reports?sid=${meta.id}` : col?.startsWith('결석:') && meta.first ? `#/attendance?date=${meta.first}&sid=${meta.id}` : undefined) : undefined
+                      const link = meta && v ? (last ? `#/attendance/reports?sid=${meta.id}` : col?.startsWith('결석:') && meta.first[col.split(':')[1]] ? `#/attendance?date=${meta.first[col.split(':')[1]]}&sid=${meta.id}` : undefined) : undefined
                       return <td key={j} className={j === 1 ? 'pii' : undefined}>{link ? <a href={link}>{v}</a> : v}</td>
                     })}
                   </tr>

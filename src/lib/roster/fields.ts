@@ -90,3 +90,17 @@ export async function loadFields(db: AppDB): Promise<RosterField[]> {
 export async function saveFields(db: AppDB, list: RosterField[]): Promise<void> {
   await updateSettings(db, { roster_fields: list.map((f) => ({ ...f, label: f.label.trim() || '새 칸' })) })
 }
+
+const normLabel = (s: string) => s.replace(/\s+/g, '').toLowerCase()
+
+/** 칸 이름 검사: 비었거나, 다른 칸(번호·이름 포함)과 같거나, 기본 칸의 엑셀 별칭이면 문제. key는 고치는 칸 자신. */
+export function fieldLabelProblem(list: RosterField[], label: string, key?: string): string | undefined {
+  const t = label.trim()
+  if (!t) return '칸 이름을 쓰세요.'
+  const n = normLabel(t)
+  const names = [{ key: 'number', label: '번호' }, { key: 'name', label: '이름' }, ...list, ...DEFAULT_FIELDS]
+  if (names.some((f) => f.key !== key && normLabel(f.label) === n)) return `'${t}'은(는) 이미 있는 칸 이름입니다.`
+  const alias = ROSTER_COLUMNS.find((c) => c.aliases.some((a) => normLabel(a) === n))
+  if (alias) return `'${t}'은(는) 기본 칸(${alias.label})을 엑셀에서 찾는 이름이라 쓸 수 없습니다.`
+  return undefined
+}

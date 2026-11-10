@@ -48,3 +48,15 @@ test('값 읽고 쓰기: 기본 칸은 학생 칸, 추가 칸은 extra', () => {
   expect(st.gender).toBe('여')
   expect(fieldValue(st as StudentRec, x)).toBe('땅콩')
 })
+
+test('추가 칸 이름이 기본 칸 이름·별칭이나 다른 칸과 겹치면 알린다(다시 올릴 때 값이 섞이지 않게)', async () => {
+  const { fieldLabelProblem } = await import('./fields')
+  const f = addField(DEFAULT_FIELDS, '방과후')
+  expect(fieldLabelProblem(f, '취미')).toBe("'취미'은(는) 이미 있는 칸 이름입니다.")
+  expect(fieldLabelProblem(f, '연락처')).toBe("'연락처'은(는) 기본 칸(전화번호)을 엑셀에서 찾는 이름이라 쓸 수 없습니다.")
+  expect(fieldLabelProblem(f, ' 방과 후 ')).toBe("'방과 후'은(는) 이미 있는 칸 이름입니다.")
+  expect(fieldLabelProblem(f, '방과후', f[f.length - 1].key)).toBeUndefined() // 자기 이름은 괜찮다
+  expect(fieldLabelProblem(f, '번호')).toBe("'번호'은(는) 이미 있는 칸 이름입니다.")
+  expect(fieldLabelProblem(f, '')).toBe('칸 이름을 쓰세요.')
+  expect(fieldLabelProblem(f, '알레르기')).toBeUndefined()
+})

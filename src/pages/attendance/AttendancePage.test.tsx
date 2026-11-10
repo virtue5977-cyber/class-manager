@@ -160,3 +160,17 @@ test('?sid= 로 열면 그 학생 입력 칸이 열려 있다', async () => {
   expect(screen.queryByRole('region', { name: '이달 달력' })).toBeNull()
   window.location.hash = ''
 })
+
+test('이달 달력에서 다른 달로 넘겨도 아래 일정 목록은 고른 날 그대로', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  const { newRecord } = await import('../../lib/db/records')
+  await db.school_calendar.add(newRecord({ date: '2026-11-10', title: '체육대회', type: '행사', is_class_day: true, source: 'manual' }) as never)
+  renderAt(db, '2026-11-10')
+  const cal = await screen.findByRole('region', { name: '이달 달력' })
+  expect(await within(cal).findByText('체육대회')).toBeInTheDocument()
+  await user.click(within(cal).getByRole('button', { name: '다음 달' }))
+  await within(cal).findByText('2026년 12월')
+  await new Promise((r) => setTimeout(r, 300)) // 12월 자료를 다 읽은 뒤
+  expect(within(cal).getByText('체육대회')).toBeInTheDocument()
+})

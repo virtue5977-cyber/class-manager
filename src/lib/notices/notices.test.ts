@@ -59,3 +59,10 @@ test('복원한 새 기기(표시 없음, 빈 전달사항)에서도 옮긴다',
   await saveBriefingItems(db, '2026-11-09', '종례', [{ text: '체육복', order: 0, done: false }]) // 그 뒤 백업 복원
   expect(await migrateBriefings(db)).toBe(1)
 })
+
+test('시작 날짜가 비었거나 날짜가 아니면 거절', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  await expect(addNotice(db, { text: '가', start_date: '' })).rejects.toThrow('날짜를 고르세요.')
+  await expect(addNotice(db, { text: '가', start_date: '2026-11-10', end_date: '11/12' })).rejects.toThrow('날짜를 고르세요.')
+  expect(await db.notice_items.count()).toBe(0)
+})

@@ -137,3 +137,10 @@ test('Claude Code는 대화 기록을 남기지 않고 도구·MCP 없이 부른
     expect(a[a.indexOf('--tools') + 1]).toBe(pf === 'win32' ? '""' : '')
   }
 })
+
+test('Claude Code 오류 글: 모르는 옵션이면 업데이트 안내, 로그인 문제면 로그인 안내', () => {
+  const { claudeErrorText } = require('../../../electron/agy.cjs') as { claudeErrorText: (s: string) => string }
+  expect(claudeErrorText("error: unknown option '--no-session-persistence'")).toBe('Claude Code가 오래된 판입니다. 명령 창에서 claude update 를 실행해 새 판으로 올리세요.')
+  expect(claudeErrorText('Please log in')).toContain('로그인')
+  expect(claudeErrorText('rate limit')).toBe('Claude Code 실행 중 오류가 났습니다. Pro 사용 한도를 확인하세요.')
+})
