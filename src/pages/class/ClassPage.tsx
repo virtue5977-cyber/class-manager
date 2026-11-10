@@ -6,6 +6,7 @@ import { CLASS_EVENT, GlobalClassContext, notifyClassChange } from '../common/us
 import { classLabel, createClass, getCurrentClassId, listClasses, setCurrentClassId } from '../../lib/roster/roster'
 import { currentSchoolYear } from '../../lib/roster/schoolYear'
 import RosterTab from './RosterTab'
+import ReflectionTab from './ReflectionTab'
 import RosterDocTab from './RosterDocTab'
 import SeatingTab from './SeatingTab'
 import CleaningTab from './CleaningTab'
@@ -110,7 +111,7 @@ export default function ClassPage({ sub = 'roster' }: { sub?: ClassSub }) {
           {sub === 'sheet' && <RosterDocTab classRec={current} />}
           {sub === 'seating' && <SeatingTab key={current.id} classRec={current} />}
           {sub === 'cleaning' && <CleaningTab key={current.id} classRec={current} />}
-          {sub === 'reflection' && <p className="card muted">반성문은 다음 업데이트에서 들어옵니다. 주제를 적으면 양식대로 채워 주는 기능을 준비하고 있습니다.</p>}
+          {sub === 'reflection' && <ReflectionTab key={current.id} classRec={current} />}
         </>
       )}
     </section>

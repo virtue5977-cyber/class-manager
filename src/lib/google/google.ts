@@ -68,6 +68,9 @@ export interface PushItem {
 export async function buildPushItems(db: AppDB, from: string, to: string, classId?: string): Promise<PushItem[]> {
   const cal = (await db.school_calendar.where('date').between(from, to, true, true).toArray()).filter((r: SchoolCalendarRec) => !r.deleted && r.title && r.title !== '토요휴업일')
   const items: PushItem[] = cal.map((r) => ({ key: `cal-${r.id}`, date: r.date, end_date: r.date, title: r.title, description: r.is_class_day ? '' : '수업 없는 날' }))
+  // 내 일정(개인·업무)도 앱 캘린더로
+  for (const e of (await db.local_events.where('date').belowOrEqual(to).toArray()).filter((x) => !x.deleted && (x.end_date ?? x.date) >= from))
+    items.push({ key: `local-${e.id}`, date: e.date, end_date: e.end_date ?? e.date, title: `[${e.tag}] ${e.time ? e.time + ' ' : ''}${e.title}` })
   if (classId) {
     for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = addDays(`${m}-28`, 7).slice(0, 7)) {
       const open = (await listReportsForMonth(db, classId, m)).filter((r) => !r.report.submitted)

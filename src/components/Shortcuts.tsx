@@ -12,11 +12,8 @@ export default function Shortcuts() {
       const a = matchShortcut(e, isField(e.target))
       if (!a) return
       if (a.kind === 'nav') navigate(a.to)
-      else if (a.kind === 'command') {
-        // 명령 입력(설계서 2) 전까지는 홈으로 간다.
-        navigate('/')
-        dispatchShortcut(a)
-      } else dispatchShortcut(a)
+      // 명령(Ctrl+K): 홈이면 입력 막대에, 다른 화면이면 W 막대를 연다(각 부품이 듣는다).
+      else dispatchShortcut(a)
       if (a.kind !== 'close') e.preventDefault()
     }
     window.addEventListener('keydown', on)

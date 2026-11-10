@@ -1,8 +1,11 @@
+import NotesPage from './pages/notes/NotesPage'
 import { useMemo } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
 import Sidebar from './components/Sidebar'
 import Shortcuts from './components/Shortcuts'
+import WButton from './components/command/WButton'
+import StartupTasks from './components/StartupTasks'
 import HideNamesBar from './components/HideNames'
 import BackupBanner from './components/BackupBanner'
 import PinGate from './components/PinGate'
@@ -37,6 +40,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
         <GlobalClassContext.Provider value={true}>
         <div className="layout">
           <Shortcuts />
+          <StartupTasks />
           <Sidebar />
           <main className="content">
             <HideNamesBar />
@@ -45,6 +49,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
             <BackupBanner />
             <AppRoutes backupIterations={props.backupIterations} />
           </main>
+          <WButton />
         </div>
         </GlobalClassContext.Provider>
       </HashRouter>
@@ -73,6 +78,7 @@ export function AppRoutes(props: { backupIterations?: number }) {
       <Route path="/attendance/reports" element={<ReportsPage />} />
       <Route path="/attendance/stats" element={<StatsPage />} />
       <Route path="/counseling" element={<CounselingPage />} />
+      <Route path="/notes" element={<NotesPage />} />
       <Route path="/class" element={<Moved to="/class/roster" />} />
       <Route path="/class/:sub" element={<ClassRoute />} />
       <Route path="/settings" element={<SettingsPage backupIterations={props.backupIterations} />} />

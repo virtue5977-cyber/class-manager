@@ -15,7 +15,7 @@ app.setPath('userData', pickUserDataDir(app.getPath('appData'), fsSync.existsSyn
 const BUILT_DIST = path.join(__dirname, '..', 'dist')
 // ---- 자동 업데이트 ----
 // 화면(dist)만 GitHub에서 받아 바꾼다. exe(이 파일·preload)가 바뀌는 업데이트는 SHELL 번호를 올리고 새 exe를 받아야 한다.
-const SHELL = 3
+const SHELL = 4
 const UPDATE_URL = (!app.isPackaged && process.env.DAMIM_UPDATE_URL) || 'https://raw.githubusercontent.com/virtue5977-cyber/class-manager/updates/update.json'
 const UPDATE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAjiLbLA7jnUY/fIBXaBuyVwSPkFupzLAVU4WXXGemyQs=
@@ -324,14 +324,27 @@ handle('ai:agy:ask', async (prompt) => {
 })
 
 // ---- PDF: 지금 화면을 A4 PDF로 저장(인쇄용 CSS 적용) ----
-handle('pdf:save', async (name) => {
+const foldersLib = require('./folders.cjs')
+handle('pdf:save', async (name, opts) => {
   const base = String(name || 'Watson.pdf').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120)
   const r = await dialog.showSaveDialog(win, { title: 'PDF로 저장', defaultPath: path.join(app.getPath('documents'), base.endsWith('.pdf') ? base : base + '.pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] })
   if (r.canceled || !r.filePath) return false
-  const data = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } })
+  const data = await win.webContents.printToPDF({ pageSize: foldersLib.pdfPageSize(opts), printBackground: true, margins: { marginType: 'default' } })
   await fs.writeFile(r.filePath, data)
   return true
 })
+
+// ---- 노트 폴더 연결: 고른 폴더 경로만 기억(복사 안 함), 열기는 디렉터리만 ----
+handle('folder:pick', async () => {
+  const r = await dialog.showOpenDialog(win, { title: '노트에 연결할 폴더', properties: ['openDirectory'] })
+  return r.canceled || !r.filePaths[0] ? null : { path: r.filePaths[0] }
+})
+handle('folder:open', async (p) => {
+  const dir = await foldersLib.assertDir(p)
+  const err = await shell.openPath(dir)
+  if (err) throw new Error('폴더를 열지 못했습니다.')
+})
+handle('folder:list', async (p) => foldersLib.listDir(p))
 
 handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION }))
 handle('update:check', async () => {

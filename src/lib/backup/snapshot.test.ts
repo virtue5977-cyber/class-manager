@@ -100,3 +100,7 @@ test('Uint8Array 값은 serialize/parse 왕복 후 같은 바이트다', async (
 test('JSON이 아닌 바이트를 parse하면 BackupFormatError', () => {
   expect(() => parseSnapshot(new TextEncoder().encode('not json'))).toThrow(BackupFormatError)
 })
+
+test('새 표(전달사항·노트·첨부·할 일·내 일정·대화·반성문)도 백업에 들어간다', () => {
+  for (const t of ['notice_items', 'notes', 'note_files', 'todos', 'local_events', 'chat_log', 'reflections', 'reflection_phrases']) expect(SYNCED_TABLES).toContain(t)
+})

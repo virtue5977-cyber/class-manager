@@ -23,3 +23,28 @@ test('저장 창에서 취소하면 canceled', async () => {
   ;(globalThis as { desktop?: unknown }).desktop = { pdf: { save: async () => false } }
   expect(await exportPdf('a.pdf')).toBe('canceled')
 })
+
+test('용지 크기를 다리에 넘긴다(반성문 B4)', async () => {
+  const calls: unknown[][] = []
+  ;(globalThis as { desktop?: unknown }).desktop = { pdf: { sizes: ['A4', 'B4'], save: async (...a: unknown[]) => (calls.push(a), true) } }
+  try {
+    const { exportPdf } = await import('./pdf')
+    expect(await exportPdf('반성문.pdf', { pageSize: 'B4' })).toBe('saved')
+    expect(calls[0]).toEqual(['반성문.pdf', { pageSize: 'B4' }])
+  } finally {
+    delete (globalThis as { desktop?: unknown }).desktop
+  }
+})
+
+test('옛 exe(용지 크기 모름)에서 B4를 고르면 인쇄 창으로(@page B4)', async () => {
+  const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+  ;(globalThis as { desktop?: unknown }).desktop = { pdf: { save: async () => true } }
+  try {
+    const { exportPdf } = await import('./pdf')
+    expect(await exportPdf('반성문.pdf', { pageSize: 'B4' })).toBe('printed')
+    expect(print).toHaveBeenCalled()
+  } finally {
+    delete (globalThis as { desktop?: unknown }).desktop
+    print.mockRestore()
+  }
+})

@@ -9,7 +9,9 @@ import { isHideNames } from '../../components/HideNames'
 import { exportPdf } from '../../lib/export/pdf'
 import { calendarXlsx } from '../../lib/export/sheets'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
-import type { AttendanceRec, CounselingLogRec, GoogleEventRec, SchoolCalendarRec, StudentRec } from '../../lib/db/types'
+import type { AttendanceRec, CounselingLogRec, GoogleEventRec, LocalEventRec, SchoolCalendarRec, StudentRec } from '../../lib/db/types'
+import { addLocalEvent, listLocalEvents } from '../../lib/events/localEvents'
+import { softDelete } from '../../lib/db/records'
 import { listGoogleEvents } from '../../lib/google/google'
 import { listStudents } from '../../lib/roster/roster'
 import { listCalendar } from '../../lib/neis/schedule'
@@ -24,6 +26,7 @@ const shortKind = (a: AttendanceRec) => `${a.kind}${a.period ? `(${a.period}교�
 interface DayData {
   events: SchoolCalendarRec[]
   google: GoogleEventRec[]
+  local: LocalEventRec[]
   atts: { a: AttendanceRec; s: StudentRec }[]
   logs: { l: CounselingLogRec; s: StudentRec }[]
 }
@@ -52,9 +55,10 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
     const from = cells[0]
     const to = cells[41]
     const map: Record<string, DayData> = {}
-    const day = (d: string) => (map[d] ??= { events: [], google: [], atts: [], logs: [] })
+    const day = (d: string) => (map[d] ??= { events: [], google: [], local: [], atts: [], logs: [] })
     for (const e of await listCalendar(db, from, to)) if (e.title && e.title !== '토요휴업일') day(e.date).events.push(e)
     for (const ge of await listGoogleEvents(db, from, to)) for (let d = ge.date; d <= ge.end_date && d <= to; d = addDays(d, 1)) day(d).google.push(ge)
+    for (const le of await listLocalEvents(db, from, to)) for (let d = le.date < from ? from : le.date; d <= (le.end_date ?? le.date) && d <= to; d = addDays(d, 1)) day(d).local.push(le)
     if (classId) {
       const studs = await listStudents(db, classId, { includeInactive: true })
       const byId = new Map(studs.map((s) => [s.id, s]))
@@ -71,7 +75,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
 
   if (classes && classes.length === 0) return <NoClass title="달력" />
 
-  const sel = data[picked] ?? { events: [], google: [], atts: [], logs: [] }
+  const sel = data[picked] ?? { events: [], google: [], local: [], atts: [], logs: [] }
 
   /** 이 달의 일정·출결·상담을 날짜순 한 줄씩(이름 가림 중이면 번호만). */
   const monthItems = () => {
@@ -134,6 +138,11 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
                     {e.title}
                   </span>
                 ))}
+                {dd?.local.map((e) => (
+                  <span key={e.id} className={`cal-ev cal-tag-${e.tag}`}>
+                    {`${e.time ? e.time + ' ' : ''}${e.title}`}
+                  </span>
+                ))}
                 {dd?.google.map((e) => (
                   <span key={e.id} className="cal-g">
                     {`${e.time ? e.time + ' ' : ''}${e.title}`}
@@ -147,7 +156,19 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
         </div>
         <aside className="card stack cal-side" aria-label="고른 날">
           <h3>{`${Number(picked.slice(5, 7))}월 ${Number(picked.slice(8))}일(${DAYS[weekday(picked) - 1]})`}</h3>
-          {sel.events.length + sel.google.length + sel.atts.length + sel.logs.length === 0 && <p className="muted">기록이 없습니다.</p>}
+          {sel.events.length + sel.google.length + sel.local.length + sel.atts.length + sel.logs.length === 0 && <p className="muted">기록이 없습니다.</p>}
+          {sel.local.length > 0 && (
+            <ul className="plain">
+              {sel.local.map((e) => (
+                <li key={e.id} className="row">
+                  <span className={`up-tag tag-${e.tag === '개인' ? 'personal' : 'work'}`}>{e.tag}</span>
+                  <span>{`${e.time ? e.time + ' ' : ''}${e.title}`}</span>
+                  <button type="button" className="icon-btn" aria-label={`${e.title} 지우기`} onClick={async () => { await softDelete(db.local_events, e.id); load() }}>×</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <AddEvent date={picked} onAdded={load} />
           {sel.events.length > 0 && (
             <ul className="plain">
               {sel.events.map((e) => (
@@ -197,5 +218,42 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
       </div>
       <p className="muted">학사일정(설정에서 나이스 연결), 출결, 상담 기록이 함께 보입니다. 날짜를 누르면 오른쪽에 자세히 나옵니다.</p>
     </section>
+  )
+}
+
+function AddEvent({ date, onAdded }: { date: string; onAdded: () => void }) {
+  const db = useDb()
+  const [title, setTitle] = useState('')
+  const [time, setTime] = useState('')
+  const [tag, setTag] = useState<'개인' | '업무'>('업무')
+  const [err, setErr] = useState<string>()
+  return (
+    <form
+      className="stack cal-add"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        try {
+          await addLocalEvent(db, { date, time: time || null, title, tag })
+          setTitle('')
+          setTime('')
+          setErr(undefined)
+          onAdded()
+        } catch (x) {
+          setErr(x instanceof Error ? x.message : String(x))
+        }
+      }}
+    >
+      <strong>일정 추가</strong>
+      <input aria-label="일정 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
+      <div className="row">
+        <input type="time" aria-label="시각" value={time} onChange={(e) => setTime(e.target.value)} />
+        <select aria-label="태그" value={tag} onChange={(e) => setTag(e.target.value as '개인' | '업무')}>
+          <option value="업무">업무</option>
+          <option value="개인">개인</option>
+        </select>
+        <button type="submit">일정 추가</button>
+      </div>
+      {err && <p className="error">{err}</p>}
+    </form>
   )
 }

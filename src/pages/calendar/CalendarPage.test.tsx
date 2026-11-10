@@ -103,3 +103,31 @@ test('달력 내보내기: 이 달 일정·출결·상담을 엑셀·한글로',
   await pickExport(user, '한글(hwpx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['달력_2026-11.xlsx', '달력_2026-11.hwpx']))
 })
+
+test('달력에 내 일정(태그) 추가·지우기, 구글로 보낼 목록에도 들어감', async () => {
+  const { addLocalEvent } = await import('../../lib/events/localEvents')
+  const { buildPushItems } = await import('../../lib/google/google')
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await addLocalEvent(db, { date: '2026-11-13', title: '병원', tag: '개인' })
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <CalendarPage today="2026-11-06" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  expect(await within(await screen.findByRole('gridcell', { name: '11월 13일' })).findByText('병원')).toHaveClass('cal-tag-개인')
+  await user.click(screen.getByRole('gridcell', { name: '11월 12일' }))
+  const side = screen.getByRole('complementary', { name: '고른 날' })
+  await user.type(within(side).getByLabelText('일정 제목'), '학년 협의회')
+  await user.type(within(side).getByLabelText('시각'), '15:30')
+  await user.selectOptions(within(side).getByLabelText('태그'), '업무')
+  await user.click(within(side).getByRole('button', { name: '일정 추가' }))
+  const cell = screen.getByRole('gridcell', { name: '11월 12일' })
+  expect(await within(cell).findByText('15:30 학년 협의회')).toHaveClass('cal-tag-업무')
+  expect((await buildPushItems(db, '2026-11-01', '2026-11-30')).map((i) => i.title)).toContain('[업무] 15:30 학년 협의회')
+  await user.click(within(side).getByRole('button', { name: '학년 협의회 지우기' }))
+  await waitFor(() => expect(within(cell).queryByText('15:30 학년 협의회')).not.toBeInTheDocument())
+})

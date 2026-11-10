@@ -2,8 +2,8 @@
 import { createDb, SYNCED_TABLES, SCHEMA_VERSION } from './schema'
 import { newRecord } from './records'
 
-test('SYNCED_TABLES는 16개이고 device_local을 포함하지 않는다', () => {
-  expect(SYNCED_TABLES).toHaveLength(16)
+test('SYNCED_TABLES는 24개이고 device_local을 포함하지 않는다', () => {
+  expect(SYNCED_TABLES).toHaveLength(24)
   expect(SYNCED_TABLES).not.toContain('device_local')
   expect(SCHEMA_VERSION).toBe(1)
 })

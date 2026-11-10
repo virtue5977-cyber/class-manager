@@ -167,7 +167,7 @@ export interface TeacherTimetableRec extends BaseRecord {
 }
 
 export interface AiPromptRec extends BaseRecord {
-  kind: 'nuga' | 'briefing'
+  kind: 'nuga' | 'briefing' | 'command' | 'message' | 'reflection'
   instruction: string
   version: number
   active: boolean
@@ -243,4 +243,83 @@ export interface GoogleEventRec {
   title: string
   calendar: string
   updated: string
+}
+
+// ---- v3: 명령 홈 · 노트함 · 전달사항 · 반성문 ----
+/** 전달사항(기간 안 날짜의 홈에 보임) */
+export interface NoticeItemRec extends BaseRecord {
+  text: string
+  start_date: string
+  end_date: string
+  done: boolean
+  pinned: boolean
+  order: number
+}
+
+export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder'
+export interface NoteBlock {
+  id: string
+  type: NoteBlockType
+  text?: string
+  checked?: boolean
+  file_id?: string
+  path?: string
+  /** 개요 깊이 0~4 */
+  indent?: number
+}
+export interface NoteRec extends BaseRecord {
+  title: string
+  blocks: NoteBlock[]
+  pinned: boolean
+}
+/** 노트 첨부(내용은 base64, 50MB까지) */
+export interface NoteFileRec extends BaseRecord {
+  note_id: string
+  name: string
+  mime: string
+  size: number
+  data: string
+}
+
+export type TodoPart = string | { note: string } | { student: string }
+export interface TodoRec extends BaseRecord {
+  parts: TodoPart[]
+  due: string | null
+  done: boolean
+  done_at: string | null
+  order: number
+}
+
+export interface LocalEventRec extends BaseRecord {
+  date: string
+  end_date: string | null
+  time: string | null
+  title: string
+  tag: '개인' | '업무'
+  google_id: string | null
+}
+
+export interface ChatRec extends BaseRecord {
+  at: string
+  school_year: number
+  input: string
+  mode: 'rule' | 'hybrid' | 'ai'
+  summary: string
+  links: { label: string; to: string }[]
+  status: '성공' | '실패' | '확인 필요'
+  detail?: string
+}
+
+export interface ReflectionRec extends BaseRecord {
+  student_id: string
+  date: string
+  reason: string
+  lines: string[]
+  t1: string
+  t2: string
+  mode: 'B4' | 'A4'
+}
+export interface ReflectionPhraseRec extends BaseRecord {
+  text: string
+  starred_at: string
 }

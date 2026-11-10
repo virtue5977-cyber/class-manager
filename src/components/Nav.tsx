@@ -16,6 +16,7 @@ export const MENU: MenuItem[] = [
   { to: '/calendar', base: '/calendar', label: '달력', icon: 'calendar' },
   { to: '/attendance', base: '/attendance', label: '출결', icon: 'check', children: [{ to: '/attendance/reports', label: '결석신고서' }, { to: '/attendance/stats', label: '통계' }] },
   { to: '/counseling', base: '/counseling', label: '상담일지', icon: 'note' },
+  { to: '/notes', base: '/notes', label: '노트함', icon: 'book' },
   {
     to: '/class/roster', base: '/class', label: '학급', icon: 'users',
     children: [

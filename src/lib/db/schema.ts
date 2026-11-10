@@ -3,6 +3,7 @@ import type {
   AbsenceReportRec, AiPromptRec, AppSettingsRec, AttendanceRec, BriefingRec, ClassRec,
   CleaningChartRec, CounselingLogRec, DeviceLocalRec, HwpxTemplateRec, NeisCacheRec, NoticeRec,
   ReportAttendanceRec, SchoolCalendarRec, SeatingChartRec, StudentRec, TeacherTimetableRec, GoogleEventRec,
+  NoticeItemRec, NoteRec, NoteFileRec, TodoRec, LocalEventRec, ChatRec, ReflectionRec, ReflectionPhraseRec,
 } from './types'
 
 /** 백업 파일 형식 번호(표 구성이 바뀔 때만 올린다) */
@@ -12,6 +13,7 @@ export const SYNCED_TABLES = [
   'classes', 'students', 'attendance', 'absence_reports', 'report_attendance', 'counseling_logs',
   'seating_charts', 'cleaning_charts', 'school_calendar', 'neis_cache', 'teacher_timetable',
   'ai_prompts', 'notices', 'briefings', 'hwpx_templates', 'app_settings',
+  'notice_items', 'notes', 'note_files', 'todos', 'local_events', 'chat_log', 'reflections', 'reflection_phrases',
 ] as const
 
 export type SyncedTable = (typeof SYNCED_TABLES)[number]
@@ -36,6 +38,14 @@ export class AppDB extends Dexie {
   device_local!: Table<DeviceLocalRec, string>
   /** 구글 캘린더에서 가져온 일정(다시 받을 수 있어 백업하지 않음) */
   google_events!: Table<GoogleEventRec, string>
+  notice_items!: Table<NoticeItemRec, string>
+  notes!: Table<NoteRec, string>
+  note_files!: Table<NoteFileRec, string>
+  todos!: Table<TodoRec, string>
+  local_events!: Table<LocalEventRec, string>
+  chat_log!: Table<ChatRec, string>
+  reflections!: Table<ReflectionRec, string>
+  reflection_phrases!: Table<ReflectionPhraseRec, string>
 
   constructor(name: string) {
     super(name)
@@ -60,6 +70,17 @@ export class AppDB extends Dexie {
     })
     // 2: 구글 캘린더에서 가져온 일정
     this.version(2).stores({ google_events: 'id, date' })
+    // 3: 명령 홈·노트함·전달사항·반성문
+    this.version(3).stores({
+      notice_items: 'id, start_date, end_date',
+      notes: 'id, updated_at',
+      note_files: 'id, note_id',
+      todos: 'id, order',
+      local_events: 'id, date',
+      chat_log: 'id, at, school_year',
+      reflections: 'id, student_id, date',
+      reflection_phrases: 'id',
+    })
   }
 
   /** 동기화·백업 대상 표를 이름으로 꺼낸다. */

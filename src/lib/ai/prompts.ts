@@ -1,10 +1,16 @@
 import type { AppDB } from '../db/schema'
 import { newRecord, save } from '../db/records'
 import type { AiPromptRec } from '../db/types'
-import { DEFAULT_BRIEFING_INSTRUCTION, DEFAULT_NUGA_INSTRUCTION } from './defaults'
+import { DEFAULT_BRIEFING_INSTRUCTION, DEFAULT_COMMAND_INSTRUCTION, DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_NUGA_INSTRUCTION, DEFAULT_REFLECTION_INSTRUCTION } from './defaults'
 
 export type PromptKind = AiPromptRec['kind']
-export const DEFAULT_PROMPTS: Record<PromptKind, string> = { nuga: DEFAULT_NUGA_INSTRUCTION, briefing: DEFAULT_BRIEFING_INSTRUCTION }
+export const DEFAULT_PROMPTS: Record<PromptKind, string> = {
+  nuga: DEFAULT_NUGA_INSTRUCTION,
+  briefing: DEFAULT_BRIEFING_INSTRUCTION,
+  command: DEFAULT_COMMAND_INSTRUCTION,
+  message: DEFAULT_MESSAGE_INSTRUCTION,
+  reflection: DEFAULT_REFLECTION_INSTRUCTION,
+}
 /** 현재 것 외에 남기는 이전 버전 수 */
 export const KEEP_OLD_VERSIONS = 5
 

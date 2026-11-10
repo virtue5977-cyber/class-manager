@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHead from '../../components/PageHead'
 import ExportMenu from '../../components/ExportMenu'
 import { exportPdf } from '../../lib/export/pdf'
+import { Link } from 'react-router-dom'
+import { listReflections } from '../../lib/reflection/store'
+import { useLive } from '../../lib/ui/useLive'
+import type { ReflectionRec } from '../../lib/db/types'
 import { isHideNames } from '../../components/HideNames'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
@@ -11,7 +15,7 @@ import { runNuga } from '../../lib/counseling/nuga'
 import { getSettings } from '../../lib/settings'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
-import { ymdParam } from '../../lib/ui/hashParam'
+import { hashParam, ymdParam } from '../../lib/ui/hashParam'
 import { addDays, toYmd } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
@@ -34,7 +38,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   const ai = useAi()
   const { classes, classId, choose } = useClasses()
   const [students, setStudents] = useState<StudentRec[]>([])
-  const [selected, setSelected] = useState<string>()
+  // 명령·할 일 링크(#/counseling?sid=…)로 오면 그 학생을 연다.
+  const [selected, setSelected] = useState<string | undefined>(() => hashParam('sid') ?? undefined)
   const [logs, setLogs] = useState<CounselingLogRec[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [lastDate, setLastDate] = useState<Record<string, string>>({})
@@ -53,6 +58,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   const seq = useRef(0)
 
   const student = students.find((s) => s.id === selected)
+  const reflections = useLive<ReflectionRec[]>(() => (selected ? listReflections(db, selected) : Promise.resolve([])), [db, selected], [])
 
   const reload = useCallback(async () => {
     if (!classId) return
@@ -199,6 +205,9 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
                   <span className="muted">
                     {[student.guardian_name && `보호자 ${student.guardian_name}`, student.guardian_phone, student.phone && `학생 ${student.phone}`, student.memo].filter(Boolean).join(' · ') || '인적사항은 학급 > 명단에서 입력합니다.'}
                   </span>
+                  {reflections.length > 0 && (
+                    <Link className="small" to={`/class/reflection?sid=${student.id}`}>{`반성문 ${reflections.length}건`}</Link>
+                  )}
                 </div>
                 {!(adding || logs.length === 0) && (
                   <button type="button" className="primary" onClick={() => setAdding(true)}>
@@ -275,8 +284,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   )
 }
 
-type LogFields = { date: string; place: string; content: string; target: string; method: string; topic: string; time: string }
-const blankFields = (date: string): LogFields => ({ date, place: '', content: '', target: '학생', method: '대면', topic: '', time: '' })
+export type LogFields = { date: string; place: string; content: string; target: string; method: string; topic: string; time: string }
+export const blankFields = (date: string): LogFields => ({ date, place: '', content: '', target: '학생', method: '대면', topic: '', time: '' })
 
 function Choice({ label, options, value, onChange, allowEmpty }: { label: string; options: readonly string[]; value: string; onChange: (v: string) => void; allowEmpty?: boolean }) {
   return (
@@ -291,7 +300,7 @@ function Choice({ label, options, value, onChange, allowEmpty }: { label: string
   )
 }
 
-function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCancelNew }: { initial: LogFields; submitLabel: string; onSubmit: (f: LogFields) => unknown; onCancel?: () => void; onCancelNew?: () => void }) {
+export function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCancelNew }: { initial: LogFields; submitLabel: string; onSubmit: (f: LogFields) => unknown; onCancel?: () => void; onCancelNew?: () => void }) {
   const [f, setF] = useState(initial)
   return (
     <form
