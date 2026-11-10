@@ -37,10 +37,14 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
     const n = (await db.notes.get(current.id)) ?? current
     const name = `${(n.title || '노트').replace(/[\\/:*?"<>|\s]+/g, '_')}.${kind}`
     if (kind === 'xlsx') {
-      const rows = n.blocks.filter((b) => ['check', 'bullet', 'number', 'p'].includes(b.type) && (b.text ?? '').trim()).map((b) => [b.type === 'check' ? (b.checked ? '☑' : '☐') : '', b.text ?? ''])
+      const rows = n.blocks.flatMap((b) =>
+        b.type === 'roster' ? [['', b.text || '학생 체크 표'], ...(b.rows ?? []).map((r) => [r.checked ? '☑' : '☐', r.label])] : ['check', 'bullet', 'number', 'p'].includes(b.type) && (b.text ?? '').trim() ? [[b.type === 'check' ? (b.checked ? '☑' : '☐') : '', b.text ?? '']] : [],
+      )
       fs.downloadFile(name, await writeSimpleXlsx('노트', [['체크', '내용'], ...rows]))
     } else {
-      const rows = n.blocks.filter((b) => (b.text ?? '').trim()).map((b) => [b.type === 'check' ? (b.checked ? '☑' : '☐') : b.type === 'bullet' ? '•' : b.type.startsWith('h') ? '■' : '', b.text ?? ''])
+      const rows = n.blocks.flatMap((b) =>
+        b.type === 'roster' ? [['■', b.text || '학생 체크 표'], ...(b.rows ?? []).map((r) => [r.checked ? '☑' : '☐', r.label])] : (b.text ?? '').trim() ? [[b.type === 'check' ? (b.checked ? '☑' : '☐') : b.type === 'bullet' ? '•' : b.type.startsWith('h') ? '■' : '', b.text ?? '']] : [],
+      )
       fs.downloadFile(name, await buildTableHwpx({ title: n.title || '노트', header: ['', '내용'], rows, colRatios: [1, 12] }))
     }
   }

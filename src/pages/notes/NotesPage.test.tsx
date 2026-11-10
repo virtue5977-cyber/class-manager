@@ -149,3 +149,38 @@ test('블록 메뉴는 Esc나 바깥을 누르면 닫히고, Esc면 손잡이로
   await user.click(screen.getByRole('list', { name: '노트 목록' }))
   expect(screen.queryByRole('menu')).toBeNull()
 })
+
+test('@명렬표 + Enter → 학생 체크 표(제목·체크 저장), 노트 안 단축키 Ctrl+Alt+1 제목', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const { createClass, emptyStudent, saveStudent, setCurrentClassId } = await import('../../lib/roster/roster')
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await setCurrentClassId(db, c.id)
+  await saveStudent(db, c.id, emptyStudent(1, '가나'))
+  await saveStudent(db, c.id, emptyStudent(2, '다라'))
+  const n = await createNote(db, '동의서')
+  render(
+    <MemoryRouter initialEntries={[`/notes?id=${n.id}`]}>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <NotesPage today="2026-11-10" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  const first = (await screen.findAllByRole('textbox', { name: /블록/ }))[0]
+  await user.click(first)
+  await user.type(first, '@명렬표{Enter}')
+  const table = await screen.findByRole('table', { name: '학생 체크 표' })
+  await user.type(within(table).getByLabelText('표 제목'), '동의서 제출')
+  await user.click(within(table).getByRole('checkbox', { name: '1번 가나 체크' }))
+  expect(within(table).getByText('1 / 2')).toBeInTheDocument()
+  await waitFor(async () => {
+    const b = (await db.notes.get(n.id))!.blocks.find((x) => x.type === 'roster')!
+    expect(b.text).toBe('동의서 제출')
+    expect(b.rows!.map((r) => [r.label, r.checked])).toEqual([['1번 가나', true], ['2번 다라', false]])
+  }, { timeout: 3000 })
+  const after = screen.getAllByRole('textbox', { name: /블록/ }).at(-1)!
+  await user.click(after)
+  await user.type(after, '안내')
+  await user.keyboard('{Control>}{Alt>}1{/Alt}{/Control}')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.some((x) => x.type === 'h1' && x.text === '안내')).toBe(true), { timeout: 3000 })
+})

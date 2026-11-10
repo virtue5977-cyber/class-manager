@@ -30,9 +30,9 @@ test('옮기기·종류 바꾸기', () => {
 })
 
 test('/ 메뉴 거르기(한글 이름·초성)', () => {
-  expect(filterSlash('체').map((i) => i.label)).toEqual(['체크 목록'])
+  expect(filterSlash('체').map((i) => i.label)).toEqual(['체크 목록', '명렬표 체크'])
   expect(filterSlash('ㅈㅁ').map((i) => i.label)).toContain('제목 1')
-  expect(filterSlash('').length).toBe(9)
+  expect(filterSlash('').length).toBe(10)
 })
 
 test('개요: Tab 들여쓰기(최대 4)·Shift+Tab 내어쓰기, 나누면 같은 깊이', async () => {

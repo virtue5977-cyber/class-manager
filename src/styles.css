@@ -791,3 +791,12 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .mini-grid { width: 100%; }
 .mini-day { min-height: 44px; width: 100%; }
 .mini-cal .stepper { justify-content: space-between; width: 100%; }
+/* 노트: 학생 체크 표 */
+.nb-roster { width: 100%; }
+.nb-roster-table { width: auto; min-width: 280px; }
+.nb-roster-table caption { text-align: left; padding-bottom: 6px; caption-side: top; }
+.nb-roster-head { gap: 8px; align-items: center; }
+.nb-roster-head input:not([type='checkbox']) { min-width: 200px; font-weight: 600; }
+.nb-roster-table td { padding: 4px 10px; }
+.nb-roster-table td:last-child { text-align: center; width: 48px; }
+.nb-roster-table tr.on td:first-child { color: var(--sub); }
