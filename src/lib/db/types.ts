@@ -328,6 +328,9 @@ export interface ReflectionRec extends BaseRecord {
 export interface ReflectionPhraseRec extends BaseRecord {
   text: string
   starred_at: string
+  /** 좋은 글(16줄 전체)이면 이름과 줄. 없으면 예전 '좋은 문장' 한 줄 */
+  title?: string
+  lines?: string[]
 }
 
 /** 명단 양식 한 칸. builtin이면 key는 학생 글 칸 이름, 아니면 x_… (값은 StudentRec.extra) */

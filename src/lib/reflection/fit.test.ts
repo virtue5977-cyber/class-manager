@@ -13,12 +13,12 @@ test('글자 폭 표: 한글 1, 공백·숫자·영문은 좁게', () => {
   expect(charEm('漢')).toBe(1)
 })
 
-test('B4 폭과 맞춤: 기본 1번 문장은 줄여서 들어가고(넘침 아님), 너무 긴 줄은 넘침', () => {
+test('B4 폭과 맞춤: 기본 1번 문장은 한 줄에 들어가고(넘침 아님), 너무 긴 줄은 넘침', () => {
   expect(widthPt('B4')).toBeCloseTo(((65174 - 282) / 100) * 0.985, 3)
   expect(widthPt('A4')).toBeLessThan(widthPt('B4'))
   const r = fitLine('1. ' + DEFAULT_LINES[0], bodyOpts('B4'))
   expect(r.over).toBe(false)
-  expect(['sp', 'pt']).toContain(r.state)
+  expect(['ok', 'sp']).toContain(r.state) // 1번 기본 문장을 줄여 글자 크기를 줄이지 않는다(11/11)
   const long = fitLine('1. ' + '가'.repeat(120), bodyOpts('B4'))
   expect(long.over).toBe(true)
   expect(long.overChars).toBeGreaterThan(0)
@@ -77,4 +77,15 @@ test('붙여 넣은 글의 제어 문자는 한글 파일에서 빠진다(파일
   expect(sec).toContain('앞뒤')
   expect(sec).toContain('이름')
   expect(sec).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/)
+})
+
+test('첫 줄이 다음 줄로 넘어가지 않게: 기본 1번 줄은 글자를 줄이지 않고도 한 줄, 한글 파일의 줄 칸은 넘치면 눌러 담기(SQUEEZE)', async () => {
+  expect(fitLine(`1. ${DEFAULT_LINES[0]}`, bodyOpts('B4')).over).toBe(false)
+  expect(fitLine(`1. ${DEFAULT_LINES[0]}`, bodyOpts('B4')).state).not.toBe('pt')
+  const lines = [...DEFAULT_LINES]
+  lines[0] = '아주 긴 줄 '.repeat(20)
+  const z = await JSZip.loadAsync(await buildReflectionHwpx({ date: '', no: '', name: '', t1: DEFAULT_T1, t2: DEFAULT_T2, lines, mode: 'B4' }))
+  const sec = await z.file('Contents/section0.xml')!.async('string')
+  const rows = sec.match(/<hp:tr>[\s\S]*?<\/hp:tr>/g)!
+  for (let i = 0; i < 16; i++) expect(rows[2 + i * 2]).not.toMatch(/lineWrap="BREAK"/)
 })

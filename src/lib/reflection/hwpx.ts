@@ -70,7 +70,8 @@ export async function buildReflectionHwpx(d: ReflectionDoc): Promise<Uint8Array>
     const text = v ? (i === 0 ? v : `${i + 1}. ${v}`) : ''
     const r = run(getCp(14, f.pt, f.sp), text)
     // 바꿀 글에 $&·$' 같은 것이 있어도 그대로 들어가게 함수로 넘긴다.
-    out[idx] = rows[idx].replace(/<hp:run charPrIDRef="\d+">(?:<hp:t>[\s\S]*?<\/hp:t>)?<\/hp:run>|<hp:run charPrIDRef="\d+"\/>/, () => r)
+    // 줄 칸은 넘쳐도 다음 줄로 넘기지 않고 눌러 담는다(한글 SQUEEZE)
+    out[idx] = rows[idx].replace(/<hp:run charPrIDRef="\d+">(?:<hp:t>[\s\S]*?<\/hp:t>)?<\/hp:run>|<hp:run charPrIDRef="\d+"\/>/, () => r).replace(/lineWrap="BREAK"/g, 'lineWrap="SQUEEZE"')
   }
   rows.forEach((r, i) => (sec = sec.replace(r, `\u0000${i}\u0000`)))
   sec = sec.replace(/\u0000(\d+)\u0000/g, (_m, i) => out[+i])

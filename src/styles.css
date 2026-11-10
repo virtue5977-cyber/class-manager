@@ -800,3 +800,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .nb-roster-table td { padding: 4px 10px; }
 .nb-roster-table td:last-child { text-align: center; width: 48px; }
 .nb-roster-table tr.on td:first-child { color: var(--sub); }
+.good-list li { border-bottom: 1px solid var(--line); padding: 6px 0; gap: 4px; }
+.good-list input { font-weight: 600; }
+.good-first { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media print { .reflection-side, .paper-tools, .roster-list { display: none !important; } }

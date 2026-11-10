@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { ClassRec, ReflectionPhraseRec, ReflectionRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
-import { DEFAULT_LINES, DEFAULT_T1, DEFAULT_T2, listPhrases, listReflections, readPhrases, saveReflection, starPhrase, unstarPhrase } from '../../lib/reflection/store'
+import { DEFAULT_LINES, DEFAULT_T1, DEFAULT_T2, deleteGoodText, listGoodTexts, listReflections, nextGoodTitle, readGoodTexts, renameGoodText, saveGoodText, saveReflection } from '../../lib/reflection/store'
 import { bodyOpts, fitLine, MODES, titleOpts, type PaperMode } from '../../lib/reflection/fit'
 import { distribute } from '../../lib/reflection/split'
 import { buildReflectionHwpx } from '../../lib/reflection/hwpx'
@@ -23,6 +23,19 @@ const md = (ymd: string) => `${+ymd.slice(5, 7)}/${+ymd.slice(8, 10)}`
 const studentNo = (c: ClassRec, s: StudentRec) => `${c.grade}${String(c.class_no).padStart(2, '0')}${String(s.number).padStart(2, '0')}`
 
 /** 학급 > 반성문: 왼쪽 학생, 가운데 양식(바로 고침), 오른쪽 사유·AI·나누기·모음·맞춤. */
+/** 지금 화면(반성문 종이)을 바로 인쇄: 용지 크기를 잠깐 정해 두고 인쇄 창을 연다. */
+function printNow(mode: PaperMode) {
+  const st = document.createElement('style')
+  st.id = 'print-page-size'
+  st.textContent = `@page { size: ${mode === 'B4' ? '257mm 364mm' : 'A4 portrait'}; margin: 0; }`
+  document.head.appendChild(st)
+  try {
+    window.print()
+  } finally {
+    st.remove()
+  }
+}
+
 export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: { classRec: ClassRec; today?: string }) {
   const db = useDb()
   const fs = useFs()
@@ -84,9 +97,11 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
   const all = useLive<ReflectionRec[]>(() => listReflections(db), [db], [])
   // liveQuery 안에서는 쓸 수 없어 처음 넣기(기본 16문장)는 따로 한다.
   useEffect(() => {
-    if (panel === 'phrases') listPhrases(db).catch(() => {})
+    if (panel === 'phrases') listGoodTexts(db).catch(() => {})
   }, [db, panel])
-  const phrases = useLive<ReflectionPhraseRec[]>(() => readPhrases(db), [db], [])
+  const goods = useLive<ReflectionPhraseRec[]>(() => readGoodTexts(db), [db], [])
+  const [goodName, setGoodName] = useState('')
+  useEffect(() => setGoodName(nextGoodTitle(goods, reason)), [goods, reason])
   const fo = { auto, minSp, minPt }
   const fits = useMemo(() => lines.map((l, i) => fitLine(l ? `${i + 1}. ${l}` : '', bodyOpts(mode, fo))), [lines, mode, auto, minSp, minPt]) // eslint-disable-line react-hooks/exhaustive-deps
   const tfits = [fitLine(t1, titleOpts(mode, fo)), fitLine(t2, titleOpts(mode, fo))]
@@ -157,6 +172,9 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
             setMsg(`노트 '${n.title}'로 보냈습니다.`)
           })}>
             노트로 보내기
+          </button>
+          <button type="button" onClick={() => printNow(mode)}>
+            바로 인쇄
           </button>
           <ExportMenu
             items={[
@@ -257,7 +275,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
         <aside className="reflection-side stack">
           <div className="seg" role="tablist" aria-label="도구">
             <button type="button" role="tab" aria-selected={panel === 'main'} onClick={() => setPanel('main')}>쓰기</button>
-            <button type="button" role="tab" aria-selected={panel === 'phrases'} onClick={() => setPanel('phrases')}>좋은 문장 모음</button>
+            <button type="button" role="tab" aria-selected={panel === 'phrases'} onClick={() => setPanel('phrases')}>좋은 글 모음</button>
             <button type="button" role="tab" aria-selected={panel === 'fit'} onClick={() => setPanel('fit')}>맞춤</button>
           </div>
           {panel === 'main' && (
@@ -270,6 +288,13 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
                 사유
                 <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 수업 중 휴대폰 사용" />
               </label>
+              <div className="seg" role="radiogroup" aria-label="AI로 채울 용지">
+                {(['B4', 'A4'] as PaperMode[]).map((m) => (
+                  <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : undefined} onClick={() => setMode(m)}>
+                    {m}
+                  </button>
+                ))}
+              </div>
               <button type="button" disabled={busy} onClick={() => act(async () => {
                 setBusy(true)
                 try {
@@ -300,19 +325,32 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
             </>
           )}
           {panel === 'phrases' && (
-            <>
-              <p className="muted small">{`고른 줄: ${sel + 1}번. '넣기'를 누르면 그 줄에 들어갑니다.`}</p>
-              <button type="button" className="link" disabled={!lines[sel]} onClick={() => act(() => starPhrase(db, lines[sel]))}>★ 고른 줄을 모음에 넣기</button>
-              <ul className="plain phrase-list" aria-label="좋은 문장">
-                {phrases.map((p) => (
-                  <li key={p.id}>
-                    <span>{p.text}</span>
-                    <button type="button" className="link" onClick={() => setLine(sel, p.text)}>넣기</button>
-                    <button type="button" className="icon-btn" aria-label="모음에서 빼기" onClick={() => unstarPhrase(db, p.id)}>×</button>
+            <section className="stack" aria-label="좋은 글 모음">
+              <p className="muted small">16줄 전체를 이름 붙여 모아 두고, 다음에 불러와 고쳐 씁니다.</p>
+              <label className="wide">
+                저장할 이름
+                <input value={goodName} onChange={(e) => setGoodName(e.target.value)} placeholder="예: 학교폭력 관련(1)" />
+              </label>
+              <button type="button" disabled={!lines.some((l) => l.trim())} onClick={() => act(async () => { await saveGoodText(db, goodName, lines); setMsg(`'${goodName}'(으)로 저장했습니다.`) })}>
+                지금 16줄을 좋은 글로 저장
+              </button>
+              <ul className="plain good-list" aria-label="좋은 글">
+                {goods.map((g) => (
+                  <li key={g.id} className="stack">
+                    <input aria-label="좋은 글 이름" defaultValue={g.title} key={g.title} onBlur={(e) => e.target.value.trim() && e.target.value !== g.title && act(() => renameGoodText(db, g.id, e.target.value))} />
+                    <span className="muted small good-first">{(g.lines ?? []).find((l) => l.trim()) ?? ''}</span>
+                    <div className="row">
+                      <button type="button" className="link" aria-label={`${g.title} 불러오기`} onClick={() => { setLines(Array.from({ length: 16 }, (_, k) => g.lines?.[k] ?? '')); setMsg(`'${g.title}'을(를) 불러왔습니다.`) }}>
+                        불러오기
+                      </button>
+                      <button type="button" className="danger-text" aria-label={`${g.title} 지우기`} onClick={() => act(() => deleteGoodText(db, g.id))}>
+                        지우기
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
-            </>
+            </section>
           )}
           {panel === 'fit' && (
             <>
