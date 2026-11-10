@@ -7,10 +7,10 @@ import { createClass, setCurrentClassId, emptyStudent, saveStudent } from '../..
 import ClassPage from './ClassPage'
 
 const fresh = () => createDb('test-' + crypto.randomUUID())
-const renderPage = (db: AppDB) =>
+const renderPage = (db: AppDB, sub: 'roster' | 'sheet' | 'seating' | 'cleaning' = 'roster') =>
   render(
     <AppProviders db={db} fs={createMemoryFsAdapter()}>
-      <ClassPage />
+      <ClassPage sub={sub} />
     </AppProviders>,
   )
 
@@ -120,13 +120,12 @@ test('선택한 학급이 다시 열어도 유지된다', async () => {
   await waitFor(() => expect((screen.getByLabelText('학급 선택') as HTMLSelectElement).value).toBe(c2.id))
 })
 
-test('자리배치·청소배치 탭이 열린다', async () => {
-  const user = userEvent.setup()
+test('자리배치·청소배치 하위 화면이 열린다', async () => {
   const { db } = await withClass()
-  renderPage(db)
-  await user.click(await screen.findByRole('tab', { name: '자리배치' }))
+  const a = renderPage(db, 'seating')
   expect(await screen.findByRole('grid', { name: '자리배치' })).toBeInTheDocument()
-  await user.click(screen.getByRole('tab', { name: '청소배치' }))
+  a.unmount()
+  renderPage(db, 'cleaning')
   expect(await screen.findByRole('button', { name: '구역(줄) 추가' })).toBeInTheDocument()
 })
 

@@ -9,19 +9,20 @@ import RosterDocTab from './RosterDocTab'
 import SeatingTab from './SeatingTab'
 import CleaningTab from './CleaningTab'
 
-type Tab = 'roster' | 'doc' | 'seating' | 'cleaning'
-const TABS: [Tab, string][] = [
-  ['roster', '명단'],
-  ['doc', '명렬표'],
-  ['seating', '자리배치'],
-  ['cleaning', '청소배치'],
+export type ClassSub = 'roster' | 'sheet' | 'seating' | 'cleaning' | 'reflection'
+export const CLASS_SUBS: { sub: ClassSub; label: string }[] = [
+  { sub: 'roster', label: '명단' },
+  { sub: 'sheet', label: '명렬표' },
+  { sub: 'seating', label: '자리배치' },
+  { sub: 'cleaning', label: '청소배치' },
+  { sub: 'reflection', label: '반성문' },
 ]
 
-export default function ClassPage() {
+/** 학급 화면. 어떤 하위 화면을 보일지는 주소(/class/:sub)가 정한다. */
+export default function ClassPage({ sub = 'roster' }: { sub?: ClassSub }) {
   const db = useDb()
   const [classes, setClasses] = useState<ClassRec[] | null>(null)
   const [currentId, setCurrentId] = useState<string>()
-  const [tab, setTab] = useState<Tab>('roster')
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ school_year: String(currentSchoolYear()), grade: '1', class_no: '1' })
   const [error, setError] = useState<string>()
@@ -66,7 +67,7 @@ export default function ClassPage() {
   return (
     <section className="stack">
       <div className="page-head">
-      <h2>학급</h2>
+      <h2>{CLASS_SUBS.find((x) => x.sub === sub)?.label ?? '학급'}</h2>
       <div className="tools">
         {classes && classes.length > 0 && !globalClass && (
           <label className="inline">
@@ -107,17 +108,11 @@ export default function ClassPage() {
 
       {current && (
         <>
-          <div className="tabs" role="tablist">
-            {TABS.map(([key, label]) => (
-              <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? 'active' : undefined} onClick={() => setTab(key)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {tab === "roster" && <RosterTab classId={current.id} classLabel={classLabel(current)} />}
-          {tab === 'doc' && <RosterDocTab classRec={current} />}
-          {tab === 'seating' && <SeatingTab key={current.id} classRec={current} />}
-          {tab === 'cleaning' && <CleaningTab key={current.id} classRec={current} />}
+          {sub === 'roster' && <RosterTab classId={current.id} classLabel={classLabel(current)} />}
+          {sub === 'sheet' && <RosterDocTab classRec={current} />}
+          {sub === 'seating' && <SeatingTab key={current.id} classRec={current} />}
+          {sub === 'cleaning' && <CleaningTab key={current.id} classRec={current} />}
+          {sub === 'reflection' && <p className="card muted">반성문은 다음 업데이트에서 들어옵니다. 주제를 적으면 양식대로 채워 주는 기능을 준비하고 있습니다.</p>}
         </>
       )}
     </section>

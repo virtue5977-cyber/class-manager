@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { HashRouter, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
 import Nav from './components/Nav'
 import BackupBanner from './components/BackupBanner'
@@ -8,7 +8,7 @@ import HideNames from './components/HideNames'
 import UpdateBanner from './components/UpdateBanner'
 import GoogleAutoSync from './components/GoogleAutoSync'
 import SettingsPage from './pages/settings/SettingsPage'
-import ClassPage from './pages/class/ClassPage'
+import ClassPage, { CLASS_SUBS, type ClassSub } from './pages/class/ClassPage'
 import AttendancePage from './pages/attendance/AttendancePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import StatsPage from './pages/stats/StatsPage'
@@ -47,21 +47,42 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
             <UpdateBanner />
             <GoogleAutoSync />
             <BackupBanner />
-            <Routes>
-              <Route path="/class" element={<ClassPage />} />
-              <Route path="/attendance" element={<AttendancePage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/stats" element={<StatsPage />} />
-              <Route path="/counseling" element={<CounselingPage />} />
-              <Route path="/" element={<HomePage />} />
-              <Route path="/calendar" element={<CalendarPage />} />
-              <Route path="/settings" element={<SettingsPage backupIterations={props.backupIterations} />} />
-            </Routes>
+            <AppRoutes backupIterations={props.backupIterations} />
           </main>
         </div>
         </GlobalClassContext.Provider>
       </HashRouter>
       </PinGate>
     </AppProviders>
+  )
+}
+
+/** 옛 주소를 새 주소로 넘긴다(쿼리 유지). */
+function Moved({ to }: { to: string }) {
+  const { search } = useLocation()
+  return <Navigate to={to + search} replace />
+}
+
+function ClassRoute() {
+  const { sub } = useParams()
+  return CLASS_SUBS.some((x) => x.sub === sub) ? <ClassPage sub={sub as ClassSub} /> : <Navigate to="/class/roster" replace />
+}
+
+export function AppRoutes(props: { backupIterations?: number }) {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/calendar" element={<CalendarPage />} />
+      <Route path="/attendance" element={<AttendancePage />} />
+      <Route path="/attendance/reports" element={<ReportsPage />} />
+      <Route path="/attendance/stats" element={<StatsPage />} />
+      <Route path="/counseling" element={<CounselingPage />} />
+      <Route path="/class" element={<Moved to="/class/roster" />} />
+      <Route path="/class/:sub" element={<ClassRoute />} />
+      <Route path="/settings" element={<SettingsPage backupIterations={props.backupIterations} />} />
+      <Route path="/reports" element={<Moved to="/attendance/reports" />} />
+      <Route path="/stats" element={<Moved to="/attendance/stats" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
