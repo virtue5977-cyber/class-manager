@@ -275,8 +275,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   )
 }
 
-type LogFields = { date: string; place: string; content: string; target: string; method: string; topic: string; time: string }
-const blankFields = (date: string): LogFields => ({ date, place: '', content: '', target: '학생', method: '대면', topic: '', time: '' })
+export type LogFields = { date: string; place: string; content: string; target: string; method: string; topic: string; time: string }
+export const blankFields = (date: string): LogFields => ({ date, place: '', content: '', target: '학생', method: '대면', topic: '', time: '' })
 
 function Choice({ label, options, value, onChange, allowEmpty }: { label: string; options: readonly string[]; value: string; onChange: (v: string) => void; allowEmpty?: boolean }) {
   return (
@@ -291,7 +291,7 @@ function Choice({ label, options, value, onChange, allowEmpty }: { label: string
   )
 }
 
-function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCancelNew }: { initial: LogFields; submitLabel: string; onSubmit: (f: LogFields) => unknown; onCancel?: () => void; onCancelNew?: () => void }) {
+export function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCancelNew }: { initial: LogFields; submitLabel: string; onSubmit: (f: LogFields) => unknown; onCancel?: () => void; onCancelNew?: () => void }) {
   const [f, setF] = useState(initial)
   return (
     <form

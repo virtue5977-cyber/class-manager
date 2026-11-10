@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'rea
 import { AppProviders } from './app/context'
 import Sidebar from './components/Sidebar'
 import Shortcuts from './components/Shortcuts'
+import WButton from './components/command/WButton'
 import HideNamesBar from './components/HideNames'
 import BackupBanner from './components/BackupBanner'
 import PinGate from './components/PinGate'
@@ -45,6 +46,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
             <BackupBanner />
             <AppRoutes backupIterations={props.backupIterations} />
           </main>
+          <WButton />
         </div>
         </GlobalClassContext.Provider>
       </HashRouter>

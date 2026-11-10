@@ -507,3 +507,40 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .export-menu .export-error { position: absolute; right: 0; top: calc(100% + 4px); z-index: 21; white-space: nowrap; font-size: 12px; background: var(--panel); padding: 4px 8px; border-radius: 6px; }
 /* PDF에 화면 제목을 남긴다(자리배치처럼 따로 인쇄 제목이 있는 화면은 그것만). */
 @media print { body:not(:has(.print-title)) .page-head h2 { display: block !important; } }
+
+/* ---- 명령 입력·대화 기록·W ---- */
+.command-bar { position: relative; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.command-input { display: flex; gap: 8px; }
+.command-input input { flex: 1; min-width: 0; min-height: 40px; font-size: 15px; border-radius: 8px; }
+.command-preview { margin: 0; font-size: 12px; color: var(--sub); }
+.command-problem { margin: 0; font-size: 12px; color: var(--c-red); }
+.suggest { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; z-index: 30; list-style: none; margin: 0; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .14); max-height: 300px; overflow-y: auto; }
+.suggest li { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.suggest li.on, .suggest li:hover { background: var(--accent-soft); }
+.suggest .sg-kind { width: 16px; text-align: center; color: var(--sub); }
+.suggest .muted { margin-left: auto; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+.chat-log { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 4px 2px; }
+.chat-empty { margin: auto 0; }
+.chat-day { align-self: center; font-size: 12px; color: var(--sub); margin: 6px 0; }
+.chat-item { display: flex; flex-direction: column; gap: 6px; }
+.chat-me { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+.chat-me .bubble { background: var(--accent-soft); color: var(--accent-soft-ink); border-radius: 12px 12px 2px 12px; padding: 6px 12px; font-size: 14px; max-width: 80%; white-space: pre-wrap; }
+.chat-menu { position: relative; }
+.chat-menu summary { list-style: none; cursor: pointer; color: var(--sub); padding: 0 4px; }
+.chat-menu .menu-list { position: absolute; right: 0; top: 100%; z-index: 10; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; min-width: 120px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.chat-menu .menu-list button { border: 0; background: transparent; text-align: left; }
+.chat-clear { align-self: center; font-size: 12px; }
+.result-card { align-self: flex-start; max-width: 90%; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.result-card.status-bad { border-left-color: var(--c-red); }
+.result-card.status-ask { border-left-color: var(--c-yellow-ink); }
+.result-head { display: flex; gap: 8px; align-items: baseline; }
+.result-head .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--hover); color: var(--sub); }
+.result-head .mode-ai, .result-head .mode-hybrid { background: var(--accent-soft); color: var(--accent-soft-ink); }
+.result-actions { gap: 12px; font-size: 13px; }
+.result-list { display: flex; flex-direction: column; gap: 4px; }
+.floating-form { position: fixed; right: 24px; bottom: 90px; z-index: 40; width: min(420px, calc(100vw - 48px)); max-height: 70vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, .2); }
+.w-float { position: fixed; right: 24px; bottom: 24px; z-index: 35; }
+.w-button { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 20px; font-weight: 700; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); cursor: pointer; }
+.w-panel { width: min(640px, calc(100vw - 260px)); display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); animation: w-open .15s ease-out; transform-origin: right bottom; }
+@keyframes w-open { from { transform: scaleX(.2); opacity: .4; } to { transform: none; opacity: 1; } }
+@media print { .w-float, .floating-form { display: none !important; } }
