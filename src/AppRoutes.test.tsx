@@ -47,7 +47,7 @@ test('/class/seating 은 자리배치 화면', async () => {
   expect(await screen.findByRole('button', { name: '무작위 배치' })).toBeInTheDocument()
 })
 
-test('/class/reflection 은 준비 중 안내', async () => {
+test('/class/reflection 은 반성문 화면(학급이 있을 때 양식)', async () => {
   await renderAt('/class/reflection')
-  expect(await screen.findByText(/반성문은 다음 업데이트에서/)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: '반성문' })).toBeInTheDocument()
 })
