@@ -64,7 +64,9 @@ test('여러 날짜 꼴: 11월11일·11월 11일·1111·0305·연도 붙은 꼴,
   expect(d('2025년 12월 1일')).toEqual({ date: '2025-12-01', used: 3 })
   expect(d('2025년12월1일').date).toBe('2025-12-01')
   expect(d('1503').date).toBeUndefined() // 15월은 날짜가 아님(학번 등)
-  expect(d('1131')).toEqual({ invalid: '1131', used: 1 })
+  expect(d('1131').date).toBeUndefined() // 없는 날짜인 네 자리 숫자는 글로 둔다(할 일 '1234 처리' 등)
+  expect(d('1131').invalid).toBeUndefined()
+  expect(d('1234').date).toBeUndefined()
   expect(d('2026').date).toBeUndefined()
   expect(parseDateWords(['31일'], 0, '2026-01-05', 'past').date).toBe('2026-01-31') // 해를 넘기지 않음
 })

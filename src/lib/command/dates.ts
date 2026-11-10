@@ -44,11 +44,14 @@ function oneDate(words: string[], i: number, today: string, prefer: Prefer): { d
   const mdw = yw && /^(\d{1,2})월(\d{1,2})일$/.exec(words[i + 1] ?? '')
   if (mdw) return ymd(+yw![1], +mdw[1], +mdw[2], 2)
   // 11/12 · 11.12 · 1112 · 0305 (13 이상의 '월'·37.5 같은 체온은 날짜가 아님)
-  m = /^(\d{1,2})[/.](\d{1,2})\.?$/.exec(w) ?? /^(\d{2})(\d{2})$/.exec(w)
+  m = /^(\d{1,2})[/.](\d{1,2})\.?$/.exec(w)
   if (m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) {
     void prefer
     return ymd(y, +m[1], +m[2], 1)
   }
+  // 1111 · 0305: 있는 날짜일 때만 날짜(1234·1131 같은 숫자는 글로 둔다)
+  m = /^(\d{2})(\d{2})$/.exec(w)
+  if (m && realDate(y, +m[1], +m[2])) return { date: realDate(y, +m[1], +m[2])!, used: 1 }
   m = /^(\d{1,2})일$/.exec(w)
   if (m && +m[1] >= 1 && +m[1] <= 31) {
     let mm = +today.slice(5, 7)
