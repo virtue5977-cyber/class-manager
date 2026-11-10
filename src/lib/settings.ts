@@ -52,11 +52,28 @@ export async function setNeisKey(db: AppDB, key: string): Promise<void> {
   await db.device_local.put({ id: 'neisApiKey', value: key.trim() })
 }
 
+/** exe(Electron)인지. HTML판은 file:// 주소라 같은 노트북의 다른 HTML 파일이 저장 자료를 읽을 수 있다. */
+export function isDesktopApp(): boolean {
+  return typeof window !== 'undefined' && !!(window as { desktop?: unknown }).desktop
+}
+
+/** HTML판 AI 키: 저장하지 않고 창을 닫을 때까지만(자료 묶음마다). */
+const memoryKeys = new Map<string, string>()
+
 export async function getAiKey(db: AppDB): Promise<string> {
+  if (!isDesktopApp()) {
+    if (await db.device_local.get('aiApiKey')) await db.device_local.delete('aiApiKey') // 예전 HTML판이 저장해 둔 키
+    return memoryKeys.get(db.name) ?? ''
+  }
   return ((await db.device_local.get('aiApiKey'))?.value as string | undefined) ?? ''
 }
 
 export async function setAiKey(db: AppDB, key: string): Promise<void> {
+  if (!isDesktopApp()) {
+    memoryKeys.set(db.name, key.trim())
+    await db.device_local.delete('aiApiKey') // 예전 버전이 저장해 둔 키도 지운다
+    return
+  }
   await db.device_local.put({ id: 'aiApiKey', value: key.trim() })
 }
 
