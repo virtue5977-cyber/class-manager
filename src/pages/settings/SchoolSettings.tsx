@@ -7,6 +7,7 @@ import { importSchoolSchedule, listCalendar } from '../../lib/neis/schedule'
 import { fetchMeals } from '../../lib/neis/meal'
 import { fetchWeekTimetable } from '../../lib/neis/timetable'
 import { currentSchoolYear } from '../../lib/roster/schoolYear'
+import { NEIS_EVERY, readNeisSyncTimes, type NeisSyncTimes } from '../../lib/neis/autoSync'
 import { addDays, toYmd } from '../../lib/schoolDays'
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -26,6 +27,12 @@ export default function SchoolSettings({ today = toYmd(new Date()) }: { today?: 
   const [notice, setNotice] = useState<string>()
   const [busy, setBusy] = useState(false)
   const schoolYear = currentSchoolYear(new Date(today + 'T12:00:00'))
+  const [syncT, setSyncT] = useState<NeisSyncTimes>({})
+  useEffect(() => {
+    readNeisSyncTimes(db).then(setSyncT)
+  }, [db])
+  const when = (iso?: string, every?: number) =>
+    iso ? `${new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 받음 · 다음 ${new Date(new Date(iso).getTime() + (every ?? 0)).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} 이후 앱을 켤 때` : '아직 자동으로 받지 않음'
 
   const refresh = useCallback(async () => {
     setHasKey(!!(await getNeisKey(db)))
@@ -92,6 +99,9 @@ export default function SchoolSettings({ today = toYmd(new Date()) }: { today?: 
   return (
     <div className="card stack">
       <h3>학교·NEIS</h3>
+      <p className="muted" aria-label="자동 받기">
+        {`자동 받기(앱을 켤 때): 학사일정은 7일마다 — ${when(syncT.schedule, NEIS_EVERY.schedule)} · 급식·시간표는 하루마다 — ${when(syncT.week, NEIS_EVERY.week)}. 구글 캘린더는 앱을 켤 때마다 맞춥니다.`}
+      </p>
       <form className="stack" onSubmit={saveKey}>
         <label>
           NEIS 인증키

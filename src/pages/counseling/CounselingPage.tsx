@@ -189,7 +189,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
                 <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setMessages([]); setEditing(undefined); setAdding(false) }}>
                   <span className="num pii">{`${s.number}번 ${s.name}`}</span>
                   <span className={`att${stale ? ' stale' : ''}`}>
-                    {last ? `${counts[s.id]}건 · ${Number(last.slice(5, 7))}/${Number(last.slice(8))}${stale ? ' · 한 달 넘음' : ''}` : '기록 없음'}
+                    {last ? `${counts[s.id]}건 · ${Number(last.slice(5, 7))}/${Number(last.slice(8))}${stale ? ' · 한 달 넘음' : ''}` : ''}
                   </span>
                 </button>
               </li>

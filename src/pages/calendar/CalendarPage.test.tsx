@@ -131,3 +131,27 @@ test('달력에 내 일정(태그) 추가·지우기, 구글로 보낼 목록에
   await user.click(within(side).getByRole('button', { name: '학년 협의회 지우기' }))
   await waitFor(() => expect(within(cell).queryByText('15:30 학년 협의회')).not.toBeInTheDocument())
 })
+
+test('일정 추가에서 날짜(와 끝 날짜)를 직접 고를 수 있다(고른 날이 기본)', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <CalendarPage today="2026-11-06" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('gridcell', { name: '11월 12일' }))
+  const side = screen.getByRole('complementary', { name: '고른 날' })
+  const day = within(side).getByLabelText('날짜')
+  expect(day).toHaveValue('2026-11-12')
+  await user.clear(day)
+  await user.type(day, '2026-11-18')
+  await user.type(within(side).getByLabelText('끝 날짜'), '2026-11-19')
+  await user.type(within(side).getByLabelText('일정 제목'), '수련회')
+  await user.click(within(side).getByRole('button', { name: '일정 추가' }))
+  await waitFor(async () => expect((await db.local_events.toArray()).map((e) => [e.date, e.end_date, e.title])).toEqual([['2026-11-18', '2026-11-19', '수련회']]))
+  expect(await within(screen.getByRole('gridcell', { name: '11월 19일' })).findByText('수련회')).toBeInTheDocument()
+})

@@ -174,3 +174,14 @@ test('이달 달력에서 다른 달로 넘겨도 아래 일정 목록은 고른
   await new Promise((r) => setTimeout(r, 300)) // 12월 자료를 다 읽은 뒤
   expect(within(cal).getByText('체육대회')).toBeInTheDocument()
 })
+
+test('같은 학생을 다시 누르면 입력 칸을 닫고 달력으로', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  renderAt(db, '2026-11-10')
+  await screen.findByRole('region', { name: '이달 달력' })
+  await user.click(await screen.findByRole('button', { name: /^\d+번 가나/ }))
+  expect(screen.queryByRole('region', { name: '이달 달력' })).toBeNull()
+  await user.click(row('가나'))
+  expect(await screen.findByRole('region', { name: '이달 달력' })).toBeInTheDocument()
+})

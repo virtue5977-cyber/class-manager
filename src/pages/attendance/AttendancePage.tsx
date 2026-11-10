@@ -127,7 +127,7 @@ export default function AttendancePage({ today = toYmd(new Date()) }: { today?: 
             const reps = reportsOn(s.id)
             return (
               <li key={s.id}>
-                <button type="button" data-sid={s.id} className={`student-cell${selected === s.id ? ' active' : ''}`} aria-pressed={selected === s.id} onClick={() => { setSelected(s.id); setNotice(undefined) }}>
+                <button type="button" data-sid={s.id} className={`student-cell${selected === s.id ? ' active' : ''}`} aria-pressed={selected === s.id} onClick={() => { setSelected((cur) => (cur === s.id ? null : s.id)); setNotice(undefined) }}>
                   <span className="num pii">{`${s.number}번 ${s.name}`}</span>
                   {(mine.length > 0 || reps.length > 0) && (
                     <span className="marks">

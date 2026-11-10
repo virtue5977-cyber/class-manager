@@ -785,3 +785,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .layout-prefs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .meal-panel ul { margin: 4px 0; }
 .meal-panel h3 { margin: 0; }
+/* 출결 오른쪽 달력: 칸 너비에 꼭 맞게 */
+.mini-cal { align-items: stretch; }
+.mini-cal > * { align-self: stretch; }
+.mini-grid { width: 100%; }
+.mini-day { min-height: 44px; width: 100%; }
+.mini-cal .stepper { justify-content: space-between; width: 100%; }

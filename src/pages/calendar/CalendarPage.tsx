@@ -193,6 +193,9 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
 function AddEvent({ date, onAdded }: { date: string; onAdded: () => void }) {
   const db = useDb()
   const [title, setTitle] = useState('')
+  const [day, setDay] = useState(date)
+  const [end, setEnd] = useState('')
+  useEffect(() => setDay(date), [date])
   const [time, setTime] = useState('')
   const [tag, setTag] = useState<'개인' | '업무'>('업무')
   const [err, setErr] = useState<string>()
@@ -202,9 +205,11 @@ function AddEvent({ date, onAdded }: { date: string; onAdded: () => void }) {
       onSubmit={async (e) => {
         e.preventDefault()
         try {
-          await addLocalEvent(db, { date, time: time || null, title, tag })
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('날짜를 고르세요.')
+          await addLocalEvent(db, { date: day, end_date: end && end !== day ? end : null, time: time || null, title, tag })
           setTitle('')
           setTime('')
+          setEnd('')
           setErr(undefined)
           onAdded()
         } catch (x) {
@@ -214,6 +219,11 @@ function AddEvent({ date, onAdded }: { date: string; onAdded: () => void }) {
     >
       <strong>일정 추가</strong>
       <input aria-label="일정 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
+      <div className="row">
+        <input type="date" aria-label="날짜" value={day} onChange={(e) => setDay(e.target.value)} />
+        <span className="muted">~</span>
+        <input type="date" aria-label="끝 날짜" value={end} min={day} onChange={(e) => setEnd(e.target.value)} />
+      </div>
       <div className="row">
         <input type="time" aria-label="시각" value={time} onChange={(e) => setTime(e.target.value)} />
         <select aria-label="태그" value={tag} onChange={(e) => setTag(e.target.value as '개인' | '업무')}>
