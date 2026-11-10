@@ -1,9 +1,9 @@
 {
-  "version": "0.4.1",
+  "version": "0.5.0",
   "shell": 1,
-  "bundle": "bundle-0.4.1.zip",
-  "sha256": "9715e2836a20cd97aaa3e093fda87aec94eb45b335dba68fa36fd2b77c08ae30",
-  "sig": "JL10lWXaCvW4MVezH/FyRmPJPlmlHzbPOkkQmZZ1sB5u6TOOet+aYMt5vQSC6g+oYUIDFwWvPbDCZIijrjGkDA==",
-  "note": "출결 키보드 입력·상담 목록 정리·신고서 제출 표시·설정 정리",
+  "bundle": "bundle-0.5.0.zip",
+  "sha256": "e78213a54119507bff6924fdcf83cb606febe93d4ad70a3804525905c41ecab2",
+  "sig": "1q21DjO+OVSHD9OtoSxRrDaBPlxcAniXJzgv5/XzJvQCQ58O5PANkNzsa9RVi5fnUqsxXLk0GOotCebMhZqnCQ==",
+  "note": "Watson 0.5.0: 새 메뉴·단축키·내보내기(한글·엑셀·PDF)·명단 좌우 배치",
   "date": "2026-11-10"
 }
