@@ -534,6 +534,18 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .result-card { align-self: flex-start; max-width: 90%; background: var(--panel); border: 1px solid var(--line); border-radius: 12px 12px 12px 2px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 /* 왼쪽 색 띠 없음(사용자 요청 11/11). 실패만 글씨 색으로 */
 .result-card.status-bad .result-summary { color: var(--c-red); }
+.result-wrap { align-self: flex-start; max-width: 88%; display: flex; flex-direction: column; gap: 2px; }
+.result-wrap > .result-card { max-width: 100%; }
+.result-icons { display: flex; gap: 2px; padding-left: 4px; }
+.result-icons .icon-btn { width: 26px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--sub); opacity: .55; transition: opacity .12s, background .12s; }
+.result-icons .icon-btn:hover, .result-icons .icon-btn:focus-visible { opacity: 1; background: var(--hover); }
+/* 좁은 대화 칸: 말풍선이 비율로 줄어든다 */
+.chat-log { container-type: inline-size; }
+@container (max-width: 520px) {
+  .chat-me .bubble { max-width: 75%; font-size: 13px; padding: 5px 10px; }
+  .result-wrap { max-width: 92%; }
+  .result-card { font-size: 13px; padding: 6px 10px; }
+}
 .result-head { display: flex; gap: 8px; align-items: baseline; }
 .result-head .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--hover); color: var(--sub); }
 .result-head .mode-ai, .result-head .mode-hybrid { background: var(--accent-soft); color: var(--accent-soft-ink); }
