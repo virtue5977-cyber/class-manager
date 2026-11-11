@@ -61,3 +61,21 @@ test('나무: 폴더(이름순) 안에 하위 폴더와 노트, 없는 폴더를
   expect(tree.folders[0].count).toBe(1)
   void n1
 })
+
+test('노트 순서: 끌어 바꾼 순서대로(그 폴더로 옮기며), 고정이 먼저, 순서 없는 새 노트는 맨 위', async () => {
+  const { reorderNotes } = await import('./noteFolders')
+  const { listNotes, setPinned } = await import('./notes')
+  const db = mk()
+  const f = await addFolder(db, '학급')
+  const a = await createNote(db, 'A')
+  const b = await createNote(db, 'B')
+  const c = await createNote(db, 'C')
+  await reorderNotes(db, f.id, [c.id, a.id, b.id])
+  const inF = (await listNotes(db)).filter((n) => n.folder_id === f.id).map((n) => n.title)
+  expect(inF).toEqual(['C', 'A', 'B'])
+  await setPinned(db, b.id, true)
+  expect((await listNotes(db)).map((n) => n.title).slice(0, 1)).toEqual(['B'])
+  const d = await createNote(db, 'D', undefined, f.id)
+  expect((await listNotes(db)).filter((n) => n.folder_id === f.id && !n.pinned).map((n) => n.title)).toEqual(['D', 'C', 'A'])
+  void d
+})

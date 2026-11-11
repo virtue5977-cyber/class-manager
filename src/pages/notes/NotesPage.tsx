@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { startPointerDrag } from '../../lib/ui/pointerDrag'
 import Icon from '../../components/Icon'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDb, useFs } from '../../app/context'
 import type { NoteRec, TodoRec } from '../../lib/db/types'
 import { createNote, deleteNote, listNotes, noteText, setPinned } from '../../lib/notes/notes'
-import { addFolder, deleteFolder, folderTree, listFolders, moveFolder, moveNote, renameFolder, MAX_FOLDER_DEPTH, type FolderNode } from '../../lib/notes/noteFolders'
+import { addFolder, deleteFolder, folderTree, listFolders, moveFolder, moveNote, renameFolder, reorderNotes, type FolderNode } from '../../lib/notes/noteFolders'
 import type { NoteFolder } from '../../lib/db/types'
 import { setTodoDone, todosLinkingNote } from '../../lib/todos/todos'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
@@ -52,9 +53,10 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
   const [edit, setEdit] = useState<{ id: string; name: string }>()
   const [confirmF, setConfirmF] = useState<string>()
   const [fmsg, setFmsg] = useState<string>()
-  const [dragNote, setDragNote] = useState<string>()
-  const [dragFolder, setDragFolder] = useState<string>()
-  const [dropOn, setDropOn] = useState<string>()
+  /** 끄는 것과 놓일 자리: 폴더 안(into) · 노트 앞뒤 줄(line) · 맨 아래(end) */
+  const [drag, setDrag] = useState<{ kind: 'note' | 'folder'; id: string }>()
+  const [drop, setDrop] = useState<{ kind: 'into' | 'line' | 'end'; id?: string; after?: boolean }>()
+  const listRef = useRef<HTMLUListElement>(null)
   const tree = useMemo(() => folderTree(folders, notes), [folders, notes])
   const fAct = async (fn: () => Promise<unknown>) => {
     try {
@@ -64,26 +66,54 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       setFmsg(e instanceof Error ? e.message : String(e))
     }
   }
-  /** 폴더 줄·맨 위에 놓기: 노트면 그 폴더로, 폴더면 그 아래로 */
-  const dropTo = (target: string | null) => ({
-    onDragOver: (e: DragEvent) => {
-      if (!dragNote && !dragFolder) return
-      e.preventDefault()
-      setDropOn(target ?? '__top')
-    },
-    onDragLeave: () => setDropOn(undefined),
-    onDrop: (e: DragEvent) => {
-      e.preventDefault()
-      setDropOn(undefined)
-      const n = dragNote
-      const f = dragFolder
-      setDragNote(undefined)
-      setDragFolder(undefined)
-      if (n) fAct(() => moveNote(db, n, target))
-      else if (f && f !== target) fAct(() => moveFolder(db, f, target))
-      if (target) toggleF(target, true)
-    },
-  })
+  /** 폴더(null = 맨 위) 안 노트 id들(보이는 순서) */
+  const notesIn = (fid: string | null): string[] => {
+    if (!fid) return tree.notes.map((n) => n.id)
+    const find = (nodes: FolderNode[]): FolderNode | undefined => nodes.reduce<FolderNode | undefined>((hit, x) => hit ?? (x.folder.id === fid ? x : find(x.folders)), undefined)
+    return find(tree.folders)?.notes.map((n) => n.id) ?? []
+  }
+  /** 포인터 아래 줄로 놓일 자리 정하기 */
+  const dropAt = (x: number, y: number, kind: 'note' | 'folder', id: string) => {
+    const li = document.elementFromPoint(x, y)?.closest<HTMLElement>('li[data-kind]')
+    if (!li || !listRef.current?.contains(li)) return listRef.current?.contains(document.elementFromPoint(x, y)) ? { kind: 'end' as const } : undefined
+    if (li.dataset.id === id) return undefined
+    if (li.dataset.kind === 'folder') return { kind: 'into' as const, id: li.dataset.id }
+    if (kind === 'folder') return { kind: 'into' as const, id: li.dataset.parent || undefined }
+    const r = li.getBoundingClientRect()
+    return { kind: 'line' as const, id: li.dataset.id, after: y > r.top + r.height / 2 }
+  }
+  function beginDrag(e: React.PointerEvent, kind: 'note' | 'folder', id: string) {
+    if ((e.target as Element).closest('button, input, select')) return
+    let last: typeof drop
+    startPointerDrag(e, {
+      onStart: () => setDrag({ kind, id }),
+      onMove: (x, y) => setDrop((last = dropAt(x, y, kind, id))),
+      onCancel: () => (setDrag(undefined), setDrop(undefined)),
+      onDrop: () => {
+        setDrag(undefined)
+        setDrop(undefined)
+        const d = last
+        if (!d) return
+        if (kind === 'folder') {
+          const to = d.kind === 'into' ? d.id ?? null : null
+          if (to !== id) fAct(() => moveFolder(db, id, to))
+          if (to) toggleF(to, true)
+          return
+        }
+        if (d.kind === 'into' && d.id) {
+          toggleF(d.id, true)
+          return void fAct(() => reorderNotes(db, d.id!, [...notesIn(d.id!).filter((x) => x !== id), id]))
+        }
+        if (d.kind === 'end') return void fAct(() => reorderNotes(db, null, [...notesIn(null).filter((x) => x !== id), id]))
+        const target = notes.find((n) => n.id === d.id)
+        if (!target) return
+        const fid = target.folder_id && folders.some((f) => f.id === target.folder_id) ? target.folder_id : null
+        const ids = notesIn(fid).filter((x) => x !== id)
+        const at = ids.indexOf(target.id) + (d.after ? 1 : 0)
+        fAct(() => reorderNotes(db, fid, [...ids.slice(0, at), id, ...ids.slice(at)]))
+      },
+    })
+  }
   const folderOptions = useMemo(() => {
     const out: { id: string; label: string }[] = []
     const walk = (nodes: FolderNode[], depth: number) => nodes.forEach((x) => (out.push({ id: x.folder.id, label: `${'　'.repeat(depth)}${x.folder.name}` }), walk(x.folders, depth + 1)))
@@ -114,14 +144,17 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
     }
   }
 
-  const noteRow = (n: NoteRec, depth = 0) => (
-    <li key={n.id} className={`note-item${n.id === id ? ' on' : ''}`} style={depth ? { paddingLeft: 8 + depth * 16 } : undefined} draggable={!q.trim()} onDragStart={() => setDragNote(n.id)} onDragEnd={() => setDragNote(undefined)}>
-      <Link to={`/notes?id=${n.id}`}>{n.title || '제목 없음'}</Link>
+  const lineCls = (id: string) => (drop?.kind === 'line' && drop.id === id ? (drop.after ? ' drop-after' : ' drop-before') : '')
+  const noteRow = (n: NoteRec, depth = 0, parent: string | null = null) => (
+    <li key={n.id} data-kind="note" data-id={n.id} data-parent={parent ?? ''} className={`note-item tree-row${n.id === id ? ' on' : ''}${drag?.id === n.id ? ' dragging' : ''}${lineCls(n.id)}`} style={{ paddingLeft: 4 + depth * 16 }} onPointerDown={(e) => !q.trim() && beginDrag(e, 'note', n.id)}>
+      <span className="tree-twisty" aria-hidden="true" />
+      <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>
+      <Link to={`/notes?id=${n.id}`} draggable={false}>{n.title || '제목 없음'}</Link>
       {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
       <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => setPinned(db, n.id, !n.pinned)}>
         <Icon name="pin" size={14} />
       </button>
-      <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={() => setConfirmDel(n.id)}>×</button>
+      <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={() => setConfirmDel(n.id)}><Icon name="trash" size={14} /></button>
       {confirmDel === n.id && (
         <span className="row confirm-inline" role="group" aria-label="노트 지우기 확인">
           <button type="button" className="danger" onClick={async () => { setConfirmDel(undefined); await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>정말 지우기</button>
@@ -135,8 +168,9 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       const f = x.folder
       const open = openF.has(f.id)
       return [
-        <li key={`f-${f.id}`} className={`folder-item${folder === f.id ? ' on' : ''}${dropOn === f.id ? ' drop' : ''}`} style={{ paddingLeft: 4 + depth * 16 }} draggable={edit?.id !== f.id} onDragStart={(e) => (e.stopPropagation(), setDragFolder(f.id))} onDragEnd={() => setDragFolder(undefined)} {...dropTo(f.id)}>
-          <button type="button" className="icon-btn folder-twisty" aria-label={`${f.name} ${open ? '접기' : '펴기'}`} aria-expanded={open} onClick={() => toggleF(f.id)}>{open ? '▾' : '▸'}</button>
+        <li key={`f-${f.id}`} data-kind="folder" data-id={f.id} data-parent={f.parent ?? ''} className={`folder-item tree-row${folder === f.id ? ' on' : ''}${drop?.kind === 'into' && drop.id === f.id ? ' drop' : ''}${drag?.id === f.id ? ' dragging' : ''}`} style={{ paddingLeft: 4 + depth * 16 }} onPointerDown={(e) => edit?.id !== f.id && beginDrag(e, 'folder', f.id)}>
+          <button type="button" className="icon-btn folder-twisty tree-twisty" aria-label={`${f.name} ${open ? '접기' : '펴기'}`} aria-expanded={open} onClick={() => toggleF(f.id)}>{open ? '▾' : '▸'}</button>
+          <span className="tree-ico" aria-hidden="true"><Icon name="folder" size={15} /></span>
           {edit?.id === f.id ? (
             <input
               autoFocus
@@ -152,13 +186,13 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
             />
           ) : (
             <button type="button" className="folder-name" aria-label={`${f.name} 폴더(노트 ${x.count}개)`} aria-pressed={folder === f.id} onClick={() => { setFolder(folder === f.id ? null : f.id); toggleF(f.id, true) }} onDoubleClick={() => setEdit({ id: f.id, name: f.name })}>
-              <span aria-hidden="true">📁</span> {f.name} <span className="muted">{x.count}</span>
+              {f.name} <span className="muted">{x.count}</span>
             </button>
           )}
           <span className="folder-tools">
-            {depth + 1 < MAX_FOLDER_DEPTH && <button type="button" className="icon-btn" aria-label={`${f.name} 안에 폴더`} title="하위 폴더" onClick={() => fAct(async () => { const nf = await addFolder(db, '새 폴더', f.id); toggleF(f.id, true); setEdit({ id: nf.id, name: nf.name }) })}>+</button>}
-            <button type="button" className="icon-btn" aria-label={`${f.name} 이름 바꾸기`} title="이름 바꾸기" onClick={() => setEdit({ id: f.id, name: f.name })}>✎</button>
-            <button type="button" className="icon-btn" aria-label={`${f.name} 폴더 지우기`} title="폴더 지우기" onClick={() => setConfirmF(f.id)}>×</button>
+            <button type="button" className="icon-btn" aria-label={`${f.name}에 새 노트`} title="이 폴더에 새 노트" onClick={() => fAct(async () => { const nn = await createNote(db, undefined, undefined, f.id); toggleF(f.id, true); navigate(`/notes?id=${nn.id}`) })}><Icon name="plus" size={14} /></button>
+            <button type="button" className="icon-btn" aria-label={`${f.name} 이름 바꾸기`} title="이름 바꾸기" onClick={() => setEdit({ id: f.id, name: f.name })}><Icon name="pencil" size={14} /></button>
+            <button type="button" className="icon-btn" aria-label={`${f.name} 폴더 지우기`} title="폴더 지우기" onClick={() => setConfirmF(f.id)}><Icon name="trash" size={14} /></button>
           </span>
           {confirmF === f.id && (
             <span className="row confirm-inline" role="group" aria-label="폴더 지우기 확인">
@@ -168,7 +202,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
             </span>
           )}
         </li>,
-        ...(open ? [...folderRows(x.folders, depth + 1), ...x.notes.map((n) => noteRow(n, depth + 1))] : []),
+        ...(open ? [...folderRows(x.folders, depth + 1), ...x.notes.map((n) => noteRow(n, depth + 1, f.id))] : []),
       ]
     })
 
@@ -190,17 +224,12 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
             {folder && <span className="muted">{`새 노트·폴더는 '${folders.find((f) => f.id === folder)?.name ?? ''}' 안에`}</span>}
           </div>
           {fmsg && <p className="error" role="alert">{fmsg}</p>}
-          <ul className="plain" aria-label="노트 목록">
+          <ul className={`plain notes-tree${drop?.kind === 'end' ? ' drop-end' : ''}`} aria-label="노트 목록" ref={listRef}>
             {q.trim() ? (
               shown.map((n) => noteRow(n))
             ) : (
               <>
                 {folderRows(tree.folders, 0)}
-                {(dragNote || dragFolder) && (
-                  <li className={`folder-drop-top${dropOn === '__top' ? ' drop' : ''}`} {...dropTo(null)}>
-                    맨 위로 옮기기
-                  </li>
-                )}
                 {tree.notes.map((n) => noteRow(n))}
               </>
             )}

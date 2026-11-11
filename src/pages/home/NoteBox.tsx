@@ -4,7 +4,7 @@ import { useDb } from '../../app/context'
 import type { NoteRec } from '../../lib/db/types'
 import { createNote } from '../../lib/notes/notes'
 
-/** 노트함: 최근 노트 5개 + 새 노트 */
+/** 노트함: 최근 노트 10개(아이콘·줄 맞춤, 넓은 칸이면 미리보기·날짜) + 새 노트 */
 export default function NoteBox({ notes }: { notes: NoteRec[] }) {
   const db = useDb()
   const navigate = useNavigate()
@@ -17,12 +17,15 @@ export default function NoteBox({ notes }: { notes: NoteRec[] }) {
         </button>
       </div>
       {notes.length === 0 && <p className="muted">노트가 없습니다.</p>}
-      <ul className="plain">
-        {notes.slice(0, 5).map((n) => (
+      <ul className="plain notebox-list">
+        {notes.slice(0, 10).map((n) => (
           <li key={n.id}>
-            <Link to={`/notes?id=${n.id}`} className="note-link">
+            <Link to={`/notes?id=${n.id}`} className="note-link notebox-row">
+              <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>
+              <span className="notebox-title">{n.title || '제목 없음'}</span>
               {n.pinned && <Icon name="pin" size={12} />}
-              {n.title || '제목 없음'}
+              <span className="notebox-peek muted pii">{n.blocks.map((b) => b.text ?? "").join(" ").trim().slice(0, 60)}</span>
+              <span className="notebox-date muted">{`${+n.updated_at.slice(5, 7)}/${+n.updated_at.slice(8, 10)}`}</span>
             </Link>
           </li>
         ))}

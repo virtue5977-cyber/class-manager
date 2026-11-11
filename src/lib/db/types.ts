@@ -287,6 +287,8 @@ export interface NoteRec extends BaseRecord {
   pinned: boolean
   /** 들어 있는 폴더(없거나 지운 폴더면 맨 위) */
   folder_id?: string | null
+  /** 끌어서 정한 순서(없으면 맨 위, 최근 고친 순) */
+  order?: number
 }
 /** 노트 첨부(내용은 base64, 50MB까지) */
 export interface NoteFileRec extends BaseRecord {
