@@ -892,3 +892,11 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 /* 달력 일정 추가: 날짜 두 칸 한 줄 */
 .cal-add .row { flex-wrap: wrap; gap: 6px; align-items: center; }
 .cal-add input[type='date'] { width: 140px; min-width: 0; }
+
+/* 학급 명단 기본 화면: 전체 학생 표(가로로 넘치면 칸 안에서 밀기) */
+.roster-overview { overflow-x: auto; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; }
+.roster-all { min-width: 100%; white-space: nowrap; font-size: 13px; border: 0; }
+.roster-all th { position: sticky; top: 0; background: var(--panel); }
+.roster-all td, .roster-all th { padding: 6px 10px; }
+.roster-all tr.inactive td { color: var(--sub); }
+.roster-all td .link { font-weight: 600; }
