@@ -44,7 +44,7 @@ test('지출 한도 안내는 API 키를 고를 때만, 순서는 연결 방식 
   await user.click(radio)
   await waitFor(() => expect(screen.queryByText(/지출 한도/)).not.toBeInTheDocument())
   expect(radio.compareDocumentPosition(screen.getByLabelText('AI 정리 사용')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  await user.click(screen.getByRole('radio', { name: 'API 키' }))
+  await user.click(screen.getByRole('radio', { name: 'Claude API 키' }))
   expect(await screen.findByText(/지출 한도/)).toBeInTheDocument()
 })
 
@@ -56,7 +56,7 @@ test('Antigravity(구글 로그인)를 고르면 학습 끄기 안내가 보이�
       <AiSettings />
     </AppProviders>,
   )
-  await user.click(await screen.findByRole('radio', { name: 'Antigravity(구글 로그인)' }))
+  await user.click(await screen.findByRole('radio', { name: '구글 Antigravity(로그인)' }))
   expect(await screen.findByText(/Enable Telemetry/)).toBeInTheDocument()
   const mask = screen.getByLabelText(/학생 이름 가리기/)
   expect(mask).toBeChecked()
@@ -74,7 +74,7 @@ test('Antigravity 연결 확인: 설치는 됐지만 로그인이 안 됐으면 
         <AiSettings />
       </AppProviders>,
     )
-    await user.click(await screen.findByRole('radio', { name: 'Antigravity(구글 로그인)' }))
+    await user.click(await screen.findByRole('radio', { name: '구글 Antigravity(로그인)' }))
     await user.click(await screen.findByRole('button', { name: 'Antigravity 연결 확인' }))
     const st = await screen.findByRole('status')
     await waitFor(() => expect(st).toHaveTextContent('로그인이 필요합니다'))
@@ -82,4 +82,26 @@ test('Antigravity 연결 확인: 설치는 됐지만 로그인이 안 됐으면 
   } finally {
     delete g.desktop
   }
+})
+
+test('구글 Gemini API 키: 연결 방식으로 고르면 키·모델 칸이 나오고, 이름 가리기는 끌 수 없다', async () => {
+  const { render, screen } = await import('@testing-library/react')
+  const { default: userEvent } = await import('@testing-library/user-event')
+  const { MemoryRouter } = await import('react-router-dom')
+  const { AppProviders } = await import('../../app/context')
+  const { createDb } = await import('../../lib/db/schema')
+  const { createMemoryFsAdapter } = await import('../../lib/fs/memory')
+  const { default: AiSettings } = await import('./AiSettings')
+  const { getSettings, getGeminiKey } = await import('../../lib/settings')
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  render(<MemoryRouter><AppProviders db={db} fs={createMemoryFsAdapter()}><AiSettings /></AppProviders></MemoryRouter>)
+  await user.click(await screen.findByRole('radio', { name: '구글 Gemini API 키' }))
+  expect((await getSettings(db)).ai_provider).toBe('gemini')
+  await user.type(await screen.findByPlaceholderText('AIza...'), 'AIza-test')
+  await user.click(screen.getAllByRole('button', { name: '키 저장' })[0])
+  expect(await getGeminiKey(db)).toBe('AIza-test')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Gemini 모델' }), 'gemini-3.5-flash-lite')
+  expect((await getSettings(db)).gemini_model).toBe('gemini-3.5-flash-lite')
+  expect(screen.getByRole('checkbox', { name: /학생 이름 가리기/ })).toBeDisabled()
 })

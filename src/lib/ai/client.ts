@@ -90,17 +90,22 @@ export function getAntigravity(): AntigravityApi | undefined {
 /** IPC 오류 앞에 붙는 "Error invoking remote method ..." 를 떼어 낸다. */
 const cleanIpcError = (e: unknown) => new AiError(String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').replace('사용량 한도(Pro 프로그램용 크레딧)', 'Pro 사용 한도'), 'CLAUDE-CODE')
 
-/** 설정에 따라 Claude Code(Pro 구독) 또는 API 키로 부른다. 기본값: exe면 Claude Code, 아니면 키. */
+/** 설정에 따라 Claude Code(Pro 구독)·Claude API 키·Antigravity·구글 Gemini API 키로 부른다. 기본값: exe면 Claude Code, 아니면 키. */
 export function createRoutedAiCaller(
-  getProvider: () => Promise<'claude-code' | 'api-key' | 'antigravity' | undefined>,
+  getProvider: () => Promise<'claude-code' | 'api-key' | 'antigravity' | 'gemini' | undefined>,
   keyCaller: AiCaller,
   cc: () => ClaudeCodeApi | undefined = getClaudeCode,
   agy: () => AntigravityApi | undefined = getAntigravity,
+  geminiCaller?: AiCaller,
 ): AiCaller {
   return async (req) => {
     const bridge = cc()
     const provider = (await getProvider()) ?? (bridge ? 'claude-code' : 'api-key')
     if (provider === 'api-key') return keyCaller(req)
+    if (provider === 'gemini') {
+      if (!geminiCaller) throw new AiError('구글 연결을 쓸 수 없습니다. 설정 > AI를 확인하세요.', 'NO-BRIDGE')
+      return geminiCaller(req)
+    }
     if (provider === 'antigravity') {
       const g = agy()
       if (!g) throw new AiError('Antigravity 연결은 새 설치형(Windows 앱)에서만 됩니다. 설정 > AI에서 다른 연결을 고르세요.', 'NO-BRIDGE')

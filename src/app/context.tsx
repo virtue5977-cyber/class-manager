@@ -3,7 +3,8 @@ import type { AppDB } from '../lib/db/schema'
 import type { FsAdapter } from '../lib/fs/adapter'
 import type { FetchLike } from '../lib/neis/client'
 import { createAiCaller, createRoutedAiCaller, type AiCaller } from '../lib/ai/client'
-import { getAiKey, getSettings } from '../lib/settings'
+import { getAiKey, getGeminiKey, getSettings } from '../lib/settings'
+import { createGeminiCaller } from '../lib/ai/gemini'
 
 const DbContext = createContext<AppDB | null>(null)
 const FsContext = createContext<FsAdapter | null>(null)
@@ -19,7 +20,7 @@ const NeisEventsContext = createContext<{ version: number; notifyChanged: () => 
 const BackupEventsContext = createContext<{ version: number; notifyChanged: () => void }>({ version: 0, notifyChanged: () => {} })
 
 export function AppProviders({ db, fs, fetch, ai, children }: { db: AppDB; fs: FsAdapter; fetch?: FetchLike; ai?: AiCaller; children: ReactNode }) {
-  const aiCaller = useMemo(() => ai ?? createRoutedAiCaller(async () => (await getSettings(db)).ai_provider, createAiCaller(() => getAiKey(db))), [ai, db])
+  const aiCaller = useMemo(() => ai ?? createRoutedAiCaller(async () => (await getSettings(db)).ai_provider, createAiCaller(() => getAiKey(db)), undefined, undefined, createGeminiCaller(() => getGeminiKey(db), async () => (await getSettings(db)).gemini_model)), [ai, db])
   const [version, setVersion] = useState(0)
   const notifyChanged = useCallback(() => setVersion((v) => v + 1), [])
   const events = useMemo(() => ({ version, notifyChanged }), [version, notifyChanged])

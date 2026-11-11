@@ -15,7 +15,7 @@ app.setPath('userData', pickUserDataDir(app.getPath('appData'), fsSync.existsSyn
 const BUILT_DIST = path.join(__dirname, '..', 'dist')
 // ---- 자동 업데이트 ----
 // 화면(dist)만 GitHub에서 받아 바꾼다. exe(이 파일·preload)가 바뀌는 업데이트는 SHELL 번호를 올리고 새 exe를 받아야 한다.
-const SHELL = 5
+const SHELL = 6
 const UPDATE_URL = (!app.isPackaged && process.env.DAMIM_UPDATE_URL) || 'https://raw.githubusercontent.com/virtue5977-cyber/class-manager/updates/update.json'
 const UPDATE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAjiLbLA7jnUY/fIBXaBuyVwSPkFupzLAVU4WXXGemyQs=
@@ -46,7 +46,7 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 let win
 // 화면이 부를 수 있는 바깥 주소는 AI와 NEIS뿐이다.
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://open.neis.go.kr https://raw.githubusercontent.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://open.neis.go.kr https://raw.githubusercontent.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,

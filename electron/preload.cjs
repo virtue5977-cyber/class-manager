@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('desktop', {
+  /** exe 판(SHELL). 6부터 구글 Gemini 주소 접속 가능 */
+  shell: 6,
   isDesktop: true,
   onLock(cb) {
     const h = () => cb()
