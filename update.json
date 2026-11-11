@@ -1,9 +1,9 @@
 {
-  "version": "0.9.0",
+  "version": "0.10.0",
   "shell": 1,
-  "bundle": "bundle-0.9.0.zip",
-  "sha256": "b2ffc6255bcb162c51acc2043fb2fe1cc361dc4b49713f2ba0c5017bfc7c7508",
-  "sig": "8812P1PNBTHgJnOO1AKr/kBKwSOcL7juhTCog84MAY5Pe+aebqxoUrH2iPbcbGstiA2OHO9aewfXnVR1wckFAQ==",
-  "note": "0.9.0: 홈 칸 자리(오른쪽/왼쪽 탭)·칸마다 높이, 메뉴 바깥 누르면 닫힘, AI 대답 복사, 되돌리기 5초, 노트 폴더·단축키(Ctrl+Shift+숫자)·방향키, 전달사항 줄 편집(+ 추가·Enter), 구글 달력 자동 맞춤",
+  "bundle": "bundle-0.10.0.zip",
+  "sha256": "f4f7d6e579bd90b95d4a69d6e1233de3e8373aab3c20c72ac608a19911da91c0",
+  "sig": "uK28q/8VhJFNBtX+xfVzfcy3y99Sq9ABWZ8EKztj9UX5+4Tfkui/JsQ/56VCM6zfPR/x9Aiia0aY/+ze0Us7AA==",
+  "note": "0.10.0: 대답 아래 작은 아이콘, 할 일·노트 끌어 순서 바꾸기·폴더로 옮기기, 전달사항 칸 자리·아이콘 도구·전체 지우기, 홈 오른쪽 칸 위로·요약 줄(방학 D-day), 달력 일요일부터, 노트 아이콘 줄 맞춤, 모든 내보내기에 바로 인쇄",
   "date": "2026-11-11"
 }
