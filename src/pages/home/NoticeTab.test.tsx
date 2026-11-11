@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { createDb } from '../../lib/db/schema'
@@ -41,18 +41,37 @@ test('기간 안 항목이 보이고, 고정하면 맨 위, 체크·지우기·�
   await waitFor(() => expect(rows()).toHaveLength(2))
 })
 
-test('직접 추가는 기간을 고를 수 있고, 끝이 시작보다 앞이면 오류', async () => {
+test('+ 추가 → 빈 줄에 쓰고 Enter면 저장되고 다음 빈 줄로, 빈 줄은 떠나면 사라진다', async () => {
   const user = userEvent.setup()
   const { db } = await setup()
-  await user.type(screen.getByLabelText('새 전달사항'), '우산')
-  await user.clear(screen.getByLabelText('끝 날짜'))
-  await user.type(screen.getByLabelText('끝 날짜'), '2026-11-09')
-  await user.click(screen.getByRole('button', { name: '추가' }))
-  expect(await screen.findByText('끝 날짜가 시작 날짜보다 앞입니다.')).toBeInTheDocument()
-  await user.clear(screen.getByLabelText('끝 날짜'))
-  await user.type(screen.getByLabelText('끝 날짜'), '2026-11-13')
-  await user.click(screen.getByRole('button', { name: '추가' }))
-  await waitFor(async () => expect((await noticesOn(db, '2026-11-13')).map((n) => n.text)).toEqual(['우산']))
+  await waitFor(() => expect(rows()).toHaveLength(2))
+  expect(screen.queryByLabelText('새 전달사항')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '+ 추가' }))
+  const draft = screen.getByRole('textbox', { name: '새 전달사항 줄' })
+  expect(draft).toHaveFocus()
+  await user.keyboard('우산{Enter}')
+  await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toContain('우산'))
+  const next = screen.getByRole('textbox', { name: '새 전달사항 줄' })
+  expect(next).toHaveFocus()
+  expect(next).toHaveValue('')
+  await user.click(document.body)
+  await waitFor(() => expect(screen.queryByRole('textbox', { name: '새 전달사항 줄' })).not.toBeInTheDocument())
+  expect((await noticesOn(db, '2026-11-11')).length).toBe(3)
+})
+
+test('줄에서 Enter는 저장하고 다음 줄로, 마지막 줄이면 새 빈 줄. ↑↓로 줄 사이를 오간다', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  await waitFor(() => expect(rows()).toHaveLength(2))
+  const first = screen.getByRole('textbox', { name: '1번 내용' })
+  await user.click(first)
+  await user.keyboard('{End} 꼭{Enter}')
+  await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toContain('동의서 걷기 꼭'))
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '2번 내용' })).toHaveFocus())
+  await user.keyboard('{ArrowUp}')
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '1번 내용' })).toHaveFocus())
+  await user.keyboard('{ArrowDown}{Enter}')
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '새 전달사항 줄' })).toHaveFocus())
 })
 
 test('노트로 보내기 → 체크 블록 노트, 내보내기 엑셀', async () => {
@@ -80,4 +99,18 @@ test('붙여넣어 AI로 나누기 → 항목 추가', async () => {
   await user.type(screen.getByLabelText('붙여 넣을 글'), '공지 글')
   await user.click(screen.getByRole('button', { name: 'AI로 나누기' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toEqual(['강당 집합', '체육복']))
+})
+
+test('저장된 줄을 다 지우고 떠나면 그 줄을 없애고(되돌리기 있음), 한글 조합 중(229) 방향키·Enter는 줄을 옮기지 않는다', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  await waitFor(() => expect(rows()).toHaveLength(2))
+  const second = screen.getByRole('textbox', { name: '2번 내용' })
+  fireEvent.keyDown(second, { key: 'ArrowUp', keyCode: 229 })
+  fireEvent.keyDown(second, { key: 'Enter', keyCode: 229 })
+  expect(screen.queryByRole('textbox', { name: '새 전달사항 줄' })).not.toBeInTheDocument()
+  await user.clear(second)
+  await user.click(document.body)
+  await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toEqual(['동의서 걷기']))
+  expect(screen.getByRole('button', { name: /되돌리기/ })).toBeInTheDocument()
 })

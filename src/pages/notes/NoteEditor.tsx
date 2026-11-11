@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
 import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
-import { filterSlash, indentBlock, mergeUp, moveBlock, NOTE_SHORTCUTS, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
+import { filterSlash, indentBlock, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
+import { atVisualEdge, caretNav, placeCaret } from '../../lib/ui/caretNav'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
@@ -206,10 +207,25 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       }
     }
     const el = e.currentTarget
-    // 노트 안 단축키(이 칸에 초점이 있을 때만): Ctrl+Alt+1/2 제목, 7 번호, 8 글머리, 9 체크, 0 문단, T 학생 체크 표
-    if (e.ctrlKey && e.altKey && !e.shiftKey) {
-      const k = e.key.length === 1 ? e.key.toLowerCase() : /^Digit(\d)$/.exec(e.code)?.[1] ?? (e.code === 'KeyT' ? 't' : '')
-      const type = NOTE_SHORTCUTS[k]
+    // 방향키: 첫·마지막 줄(맨 앞·끝)에서 옆 글 블록으로(구분선·파일·표는 건너뜀)
+    // / 메뉴가 열려 있으면 메뉴가 먼저(←→로도 블록을 떠나지 않는다)
+    const mv = items.length ? null : caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, el)
+    if (mv && ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || atVisualEdge(el, mv.dir))) {
+      const i = blocks.findIndex((x) => x.id === b.id)
+      const dir = mv.dir
+      for (let j = i + dir; j >= 0 && j < blocks.length; j += dir) {
+        const to = refs.current.get(blocks[j].id)
+        if (!to) continue
+        e.preventDefault()
+        to.focus()
+        const c = placeCaret(to.value, mv)
+        to.setSelectionRange(c, c)
+        return
+      }
+    }
+    // 노트 안 단축키(이 칸에 초점이 있을 때만): Ctrl+Shift 또는 Ctrl+Alt + 1/2 제목, 7 번호, 8 글머리, 9 체크, 0 문단, Ctrl+Alt+T 학생 체크 표
+    {
+      const type = noteShortcut(e)
       if (type) {
         e.preventDefault()
         if (type === 'roster') return void insertRoster(b)
@@ -347,8 +363,11 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                 </div>
               ) : (
                 <>
-                  {b.type === 'check' && <input type="checkbox" aria-label="체크" checked={!!b.checked} onChange={(e) => update(b.id, { checked: e.target.checked })} />}
-                  {(b.type === 'bullet' || b.type === 'number') && <span className={`nb-mark nb-mark-${b.type}`}>{marks[i]}</span>}
+                  {(b.type === 'check' || b.type === 'bullet' || b.type === 'number') && (
+                    <span className={`nb-lead nb-lead-${b.type}`}>
+                      {b.type === 'check' ? <input type="checkbox" aria-label="체크" checked={!!b.checked} onChange={(e) => update(b.id, { checked: e.target.checked })} /> : <span className={`nb-mark nb-mark-${b.type}`}>{marks[i]}</span>}
+                    </span>
+                  )}
                   <textarea
                     ref={(el) => (el ? refs.current.set(b.id, el) : refs.current.delete(b.id))}
                     aria-label={`블록 ${i + 1}`}
@@ -356,6 +375,17 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                     value={b.text ?? ''}
                     placeholder={i === blocks.length - 1 ? "글을 쓰거나 '/'로 블록 고르기" : ''}
                     onChange={(e) => {
+                      // 문단 맨 앞에 '# ', '- ', '1. ', '[] ' 등을 치면 그 블록으로
+                      // 방금 친 글자가 띄어쓰기이고, 커서 앞이 바꾸기 글자(예: '- ')뿐일 때만
+                      const v = e.target.value
+                      const at = e.target.selectionStart ?? v.length
+                      const head = markdownPrefix(v.slice(0, at))
+                      const md = b.type === 'p' && v.length === (b.text ?? '').length + 1 && v[at - 1] === ' ' && head && head.rest === '' ? { type: head.type, rest: v.slice(at) } : null
+                      if (md) {
+                        setBlocks((bs) => setType(bs, b.id, md.type).map((x) => (x.id === b.id ? { ...x, text: md.rest } : x)))
+                        focusNext.current = { id: b.id, caret: 0 }
+                        return
+                      }
                       update(b.id, { text: e.target.value })
                       setSlashSel(0)
                       if (slashOff === b.id && !e.target.value.startsWith('/')) setSlashOff(undefined)

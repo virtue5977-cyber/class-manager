@@ -1,5 +1,5 @@
 import type { NoteBlock } from '../db/types'
-import { filterSlash, mergeUp, moveBlock, setType, splitBlock } from './blocks'
+import { filterSlash, markdownPrefix, noteShortcut, mergeUp, moveBlock, setType, splitBlock } from './blocks'
 
 const B = (id: string, text: string, type: NoteBlock['type'] = 'p'): NoteBlock => ({ id, type, text })
 
@@ -60,4 +60,28 @@ test('개요 번호: 1. → 가. → 1) → 가) 깊이별, 얕은 블록이 오
 test('들여쓴 블록 맨 앞 Backspace는 먼저 내어쓰기', () => {
   const r = mergeUp([B('a', 'x'), { ...B('b', 'y', 'bullet'), indent: 2 }], 'b')
   expect(r.blocks.map((b) => [b.id, b.indent ?? 0])).toEqual([['a', 0], ['b', 1]])
+})
+
+test('노트 단축키: Ctrl+Shift+숫자와 Ctrl+Alt+숫자 모두(1·2 제목, 0 문단, 7 번호, 8 글머리, 9 체크), T는 Ctrl+Alt만', () => {
+  const ev = (o: Partial<{ key: string; code: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean }>) => ({ key: '', code: '', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false, ...o })
+  expect(noteShortcut(ev({ shiftKey: true, key: '!', code: 'Digit1' }))).toBe('h1')
+  expect(noteShortcut(ev({ shiftKey: true, key: '*', code: 'Digit8' }))).toBe('bullet')
+  expect(noteShortcut(ev({ shiftKey: true, key: '&', code: 'Digit7' }))).toBe('number')
+  expect(noteShortcut(ev({ shiftKey: true, key: ')', code: 'Digit0' }))).toBe('p')
+  expect(noteShortcut(ev({ altKey: true, key: '9', code: 'Digit9' }))).toBe('check')
+  expect(noteShortcut(ev({ altKey: true, key: 't', code: 'KeyT' }))).toBe('roster')
+  expect(noteShortcut(ev({ shiftKey: true, key: 'T', code: 'KeyT' }))).toBeNull()
+  expect(noteShortcut(ev({ key: '1', code: 'Digit1' }))).toBeNull() // Ctrl+1은 메뉴 이동
+  expect(noteShortcut(ev({ ctrlKey: false, shiftKey: true, key: '!', code: 'Digit1' }))).toBeNull()
+})
+
+test('글자로 바꾸기: 줄 맨 앞 "# ", "## ", "- ", "* ", "1. ", "[] "', () => {
+  expect(markdownPrefix('# 제목')).toEqual({ type: 'h1', rest: '제목' })
+  expect(markdownPrefix('## ')).toEqual({ type: 'h2', rest: '' })
+  expect(markdownPrefix('- 사과')).toEqual({ type: 'bullet', rest: '사과' })
+  expect(markdownPrefix('* ')).toEqual({ type: 'bullet', rest: '' })
+  expect(markdownPrefix('1. ')).toEqual({ type: 'number', rest: '' })
+  expect(markdownPrefix('[] 숙제')).toEqual({ type: 'check', rest: '숙제' })
+  expect(markdownPrefix('3.5 점')).toBeNull()
+  expect(markdownPrefix('#해시')).toBeNull()
 })

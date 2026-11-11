@@ -8,8 +8,8 @@ export const MAX_TOTAL = 500 * 1024 * 1024
 
 export const newBlockId = () => crypto.randomUUID().slice(0, 8)
 
-export async function createNote(db: AppDB, title = '새 노트', blocks: NoteRec['blocks'] = [{ id: newBlockId(), type: 'p', text: '' }]): Promise<NoteRec> {
-  const rec = newRecord({ title, blocks, pinned: false }) as NoteRec
+export async function createNote(db: AppDB, title = '새 노트', blocks: NoteRec['blocks'] = [{ id: newBlockId(), type: 'p', text: '' }], folderId: string | null = null): Promise<NoteRec> {
+  const rec = newRecord({ title, blocks, pinned: false, ...(folderId ? { folder_id: folderId } : {}) }) as NoteRec
   await db.notes.add(rec)
   return rec
 }

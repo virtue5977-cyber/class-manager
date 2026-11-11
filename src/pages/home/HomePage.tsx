@@ -1,4 +1,4 @@
-import { useLayoutPrefs } from '../../lib/ui/layoutPrefs'
+import { PANEL_LABEL, panelPlace, savePrefs, setPlace, useLayoutPrefs, type PanelKey } from '../../lib/ui/layoutPrefs'
 import { TodayMeal } from './TodaySummary'
 import { useLayoutEffect, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -66,7 +66,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   const [classDay, setClassDay] = useState<boolean>()
   const prefs = useLayoutPrefs()
   const [params, setParams] = useSearchParams()
-  const [tab, setTab] = useState<'chat' | 'notice'>(params.get('tab') === 'notice' ? 'notice' : 'chat')
+  const [tab, setTab] = useState<'chat' | 'notice' | PanelKey>(params.get('tab') === 'notice' ? 'notice' : 'chat')
   // 결과 카드의 '전달사항 보기'(/?tab=notice)
   useEffect(() => {
     if (params.get('tab') === 'notice') {
@@ -86,12 +86,24 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   useEffect(() => {
     loadReportContext(db).then(({ days }) => setClassDay(days.isClassDay(today)))
   }, [db, today])
-  // 전달사항을 다 지웠을 때만 대화로(방금 넣어 아직 목록이 안 읽힌 때는 그대로)
-  const prevNotices = useRef(notices.length)
+  const tabPanels = prefs.panels.filter((x) => panelPlace(x) === 'tab').map((x) => x.key)
+  const sidePanels = prefs.panels.filter((x) => panelPlace(x) === 'side').map((x) => x.key)
+  // 탭에 있던 칸을 오른쪽으로 보내면 대화로
   useEffect(() => {
-    if (prevNotices.current > 0 && !notices.length && tab === 'notice') setTab('chat')
-    prevNotices.current = notices.length
-  }, [notices.length, tab])
+    if (tab !== 'chat' && tab !== 'notice' && !tabPanels.includes(tab)) setTab('chat')
+  }, [tab, tabPanels])
+  const bodyRef = useRef<HTMLDivElement>(null)
+  /** 칸 자리 바꾸기(머리 단추) */
+  const movePanel = (key: PanelKey, place: 'side' | 'tab') => savePrefs({ ...prefs, panels: setPlace(prefs.panels, key, place) })
+  /** 오른쪽 칸 높이 끌기(0 = 내용에 맞춤) */
+  const setPanelH = (key: PanelKey, h: number) => {
+    const panelH = { ...prefs.panelH }
+    if (h) panelH[key] = h
+    else delete panelH[key]
+    savePrefs({ ...prefs, panelH })
+  }
+  const renderPanel = (key: PanelKey) =>
+    key === 'todo' ? <TodoList ctx={ctx} /> : key === 'upcoming' ? <Upcoming today={today} /> : key === 'notes' ? <NoteBox notes={ctx.notes} /> : <TodayMeal today={today} panel />
   useEffect(() => {
     try {
       localStorage.setItem(LAYOUT_KEY2, JSON.stringify(layout))
@@ -104,10 +116,13 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   const drag = (axis: 'chatH' | 'sideW') => (e: RPointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     const start = axis === 'chatH' ? e.clientY : e.clientX
-    const from = axis === 'chatH' ? chatHeight : layout[axis]
+    // 오른쪽 폭은 화면에 보이는 실제 폭에서 시작(60% 한도에 걸려 있으면 저장값과 다르다)
+    const from = axis === 'chatH' ? chatHeight : bodyRef.current?.querySelector('.home-side')?.getBoundingClientRect().width || layout[axis]
     const move = (ev: PointerEvent) => {
       const d = (axis === 'chatH' ? ev.clientY : ev.clientX) - start
-      const v = axis === 'chatH' ? Math.min(900, Math.max(220, from + d)) : Math.min(520, Math.max(240, from - d))
+      // 오른쪽 칸: 240px ~ 홈 본문의 60%(대화 칸은 320px 아래로 줄지 않게)
+      const bodyW = bodyRef.current?.getBoundingClientRect().width || 1200
+      const v = axis === 'chatH' ? Math.min(900, Math.max(220, from + d)) : Math.min(Math.max(240, Math.min(bodyW * 0.6, bodyW - 330)), Math.max(240, from - d))
       setLayout((l) => ({ ...l, [axis]: v }))
     }
     const up = () => {
@@ -131,33 +146,87 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
         <TodaySummary today={today} />
       </div>
       <GettingStarted />
-      <div className="home-body" style={{ gridTemplateColumns: `minmax(0, 1fr) 6px ${layout.sideW}px` }}>
+      <div className="home-body" ref={bodyRef} style={{ gridTemplateColumns: sidePanels.length ? `minmax(min(320px, 38%), 1fr) 6px min(${layout.sideW}px, 60%)` : 'minmax(0, 1fr)' }}>
         <div className="home-main">
-          {notices.length > 0 && (
-            <div className="home-tabs" role="tablist" aria-label="홈 보기">
-              <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
-                대화
+          <div className="home-tabs" role="tablist" aria-label="홈 보기">
+            <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
+              대화
+            </button>
+            <button type="button" role="tab" aria-selected={tab === 'notice'} onClick={() => setTab('notice')}>
+              {notices.length ? `전달사항 ${notices.length}` : '전달사항'}
+            </button>
+            {tabPanels.map((k) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+                {PANEL_LABEL[k]}
               </button>
-              <button type="button" role="tab" aria-selected={tab === 'notice'} onClick={() => setTab('notice')}>
-                {`전달사항 ${notices.length}`}
-              </button>
-            </div>
-          )}
+            ))}
+          </div>
           <div className="home-chat" ref={chatRef} style={{ height: chatHeight }}>
-            {tab === 'notice' && notices.length ? <NoticeTab date={today} /> : <ChatLog today={today} onRun={rerun} />}
+            {tab === 'notice' ? (
+              <NoticeTab date={today} />
+            ) : tab === 'chat' ? (
+              <ChatLog today={today} onRun={rerun} />
+            ) : (
+              <div className="home-tabpanel" role="tabpanel" aria-label={PANEL_LABEL[tab]}>
+                <button type="button" className="link panel-move" aria-label={`${PANEL_LABEL[tab]} 오른쪽으로`} title="오른쪽 칸으로 보내기" onClick={() => movePanel(tab, 'side')}>
+                  오른쪽으로 ⇥
+                </button>
+                {renderPanel(tab)}
+              </div>
+            )}
           </div>
           <div className="resize-h" role="separator" aria-orientation="horizontal" aria-label="대화 높이 조절" title="끌어서 높이 조절 · 두 번 누르면 화면에 맞춤" onPointerDown={drag('chatH')} onDoubleClick={() => setLayout((l) => ({ ...l, chatH: 0 }))} />
           <div ref={barRef}>
             <CommandBar inputRef={input} autoFocus today={today} onRan={(r) => setTab(r.result?.links?.some((l) => l.to === '/?tab=notice') ? 'notice' : 'chat')} />
           </div>
         </div>
-        <div className="resize-v" role="separator" aria-orientation="vertical" aria-label="오른쪽 폭 조절" onPointerDown={drag('sideW')} />
-        <aside className="home-side">
-          {prefs.panels.filter((x) => !x.hidden).map((x) =>
-            x.key === 'todo' ? <TodoList key="todo" ctx={ctx} /> : x.key === 'upcoming' ? <Upcoming key="up" today={today} /> : x.key === 'notes' ? <NoteBox key="notes" notes={ctx.notes} /> : <TodayMeal key="meal" today={today} panel />,
-          )}
-        </aside>
+        {sidePanels.length > 0 && <div className="resize-v" role="separator" aria-orientation="vertical" aria-label="오른쪽 폭 조절" title="끌어서 오른쪽 칸 폭 조절" onPointerDown={drag('sideW')} />}
+        {sidePanels.length > 0 && (
+          <aside className="home-side" aria-label="홈 오른쪽 칸">
+            {sidePanels.map((k) => (
+              <PanelFrame key={k} label={PANEL_LABEL[k]} height={prefs.panelH[k]} onHeight={(h) => setPanelH(k, h)} onMove={() => movePanel(k, 'tab')}>
+                {renderPanel(k)}
+              </PanelFrame>
+            ))}
+          </aside>
+        )}
       </div>
     </section>
+  )
+}
+
+/** 오른쪽 칸 틀: 머리의 '왼쪽 탭으로' 단추(마우스를 올리면 보임), 아래 경계선 끌어 높이(두 번 누르면 내용에 맞춤). */
+function PanelFrame({ label, height, onHeight, onMove, children }: { label: string; height?: number; onHeight: (h: number) => void; onMove: () => void; children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null)
+  const [live, setLive] = useState<number>()
+  const h = live ?? height
+  const down = (e: RPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const start = e.clientY
+    const from = box.current?.getBoundingClientRect().height ?? 200
+    let last = from
+    const move = (ev: PointerEvent) => {
+      last = Math.min(900, Math.max(120, from + ev.clientY - start))
+      setLive(last)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      setLive(undefined)
+      onHeight(Math.round(last))
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  return (
+    <div className="panel-frame">
+      <button type="button" className="icon-btn panel-move" aria-label={`${label} 왼쪽 탭으로`} title="왼쪽 탭으로 옮기기" onClick={onMove}>
+        ⇤ 탭으로
+      </button>
+      <div className={`panel-body${h ? ' sized' : ''}`} ref={box} style={h ? { height: h } : undefined}>
+        {children}
+      </div>
+      <div className="resize-h panel-resize" role="separator" aria-orientation="horizontal" aria-label={`${label} 높이 조절`} title="끌어서 높이 조절 · 두 번 누르면 내용에 맞춤" onPointerDown={down} onDoubleClick={() => onHeight(0)} />
+    </div>
   )
 }

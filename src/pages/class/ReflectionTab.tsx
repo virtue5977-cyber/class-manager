@@ -101,7 +101,11 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
   }, [db, panel])
   const goods = useLive<ReflectionPhraseRec[]>(() => readGoodTexts(db), [db], [])
   const [goodName, setGoodName] = useState('')
-  useEffect(() => setGoodName(nextGoodTitle(goods, reason)), [goods, reason])
+  /** 사용자가 이름을 고쳤으면 목록이 늦게 읽혀도 덮어쓰지 않는다(저장하면 다시 자동 이름) */
+  const [nameTouched, setNameTouched] = useState(false)
+  useEffect(() => {
+    if (!nameTouched) setGoodName(nextGoodTitle(goods, reason))
+  }, [goods, reason, nameTouched])
   const fo = { auto, minSp, minPt }
   const fits = useMemo(() => lines.map((l, i) => fitLine(l ? `${i + 1}. ${l}` : '', bodyOpts(mode, fo))), [lines, mode, auto, minSp, minPt]) // eslint-disable-line react-hooks/exhaustive-deps
   const tfits = [fitLine(t1, titleOpts(mode, fo)), fitLine(t2, titleOpts(mode, fo))]
@@ -329,9 +333,9 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               <p className="muted small">16줄 전체를 이름 붙여 모아 두고, 다음에 불러와 고쳐 씁니다.</p>
               <label className="wide">
                 저장할 이름
-                <input value={goodName} onChange={(e) => setGoodName(e.target.value)} placeholder="예: 학교폭력 관련(1)" />
+                <input value={goodName} onChange={(e) => (setGoodName(e.target.value), setNameTouched(true))} placeholder="예: 학교폭력 관련(1)" />
               </label>
-              <button type="button" disabled={!lines.some((l) => l.trim())} onClick={() => act(async () => { await saveGoodText(db, goodName, lines); setMsg(`'${goodName}'(으)로 저장했습니다.`) })}>
+              <button type="button" disabled={!lines.some((l) => l.trim())} onClick={() => act(async () => { await saveGoodText(db, goodName, lines); setMsg(`'${goodName}'(으)로 저장했습니다.`); setNameTouched(false) })}>
                 지금 16줄을 좋은 글로 저장
               </button>
               <ul className="plain good-list" aria-label="좋은 글">

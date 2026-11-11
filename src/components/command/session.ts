@@ -19,7 +19,7 @@ export function remember(chatId: string, result: RunResult | undefined): void {
   for (const l of listeners) l()
 }
 
-/** 마지막 명령 되돌리기(10초 안, 한 번). 되돌린 결과의 요약, 못 했으면 null. */
+/** 마지막 명령 되돌리기(5초 안, 한 번). 되돌린 결과의 요약, 못 했으면 null. */
 export async function undoLast(): Promise<string | null> {
   const id = lastUndoable
   const l = id ? live.get(id) : undefined

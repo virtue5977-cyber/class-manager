@@ -12,8 +12,8 @@ export interface Executed {
   parsed: Parsed
 }
 
-/** 10초(기본) 안에 한 번만 되돌릴 수 있는 함수 */
-export function makeUndo(fn: () => Promise<void>, ms = 10_000, now: () => number = Date.now): { undo(): Promise<boolean>; expiresAt: number } {
+/** 5초(기본) 안에 한 번만 되돌릴 수 있는 함수 */
+export function makeUndo(fn: () => Promise<void>, ms = 5_000, now: () => number = Date.now): { undo(): Promise<boolean>; expiresAt: number } {
   const expiresAt = now() + ms
   let used = false
   return {

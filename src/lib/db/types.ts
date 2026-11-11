@@ -224,6 +224,14 @@ export interface AppSettingsRec extends BaseRecord {
   student_code_format: string
   /** 명단 양식(칸 순서·보이기·추가 칸). 없으면 기본 */
   roster_fields?: RosterField[]
+  /** 노트함 폴더(상하위). 없으면 폴더 없음 */
+  note_folders?: NoteFolder[]
+}
+export interface NoteFolder {
+  id: string
+  name: string
+  /** 위 폴더 id(맨 위면 null) */
+  parent: string | null
 }
 
 export type SchoolKind = '초등학교' | '중학교' | '고등학교' | ''
@@ -277,6 +285,8 @@ export interface NoteRec extends BaseRecord {
   title: string
   blocks: NoteBlock[]
   pinned: boolean
+  /** 들어 있는 폴더(없거나 지운 폴더면 맨 위) */
+  folder_id?: string | null
 }
 /** 노트 첨부(내용은 base64, 50MB까지) */
 export interface NoteFileRec extends BaseRecord {

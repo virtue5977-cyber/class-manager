@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
 import { ensureGoogleClient, getGoogle, lastGoogleSync, syncGoogle, APP_CALENDAR_NAME } from '../../lib/google/google'
+import { withGoogleLock } from '../../lib/google/runner'
 import { BUILTIN_GOOGLE_CLIENT } from '../../lib/google/client-config'
 import { getCurrentClassId } from '../../lib/roster/roster'
 import { toYmd } from '../../lib/schoolDays'
@@ -55,7 +56,7 @@ export default function GoogleSettings() {
               disabled={busy || !st?.loggedIn}
               onClick={() =>
                 run('동기화 중', async () => {
-                  const r = await syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db))
+                  const r = await withGoogleLock(async () => syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db)))
                   return `보냄: 새 ${r.created} · 고침 ${r.updated} · 지움 ${r.removed} / 가져옴: ${r.pulled}개`
                 })
               }
