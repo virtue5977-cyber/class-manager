@@ -77,7 +77,20 @@ export async function setAiKey(db: AppDB, key: string): Promise<void> {
   await db.device_local.put({ id: 'aiApiKey', value: key.trim() })
 }
 
-/** 실제로 이름을 가릴지. Antigravity(개인 구글 계정)는 약관상 학습에 쓰일 수 있어 늘 가린다. */
+/** 실제로 이름을 가릴지. 구글 쪽(Antigravity 개인 계정·Gemini 무료 키)은 입력이 학습에 쓰일 수 있어 늘 가린다. */
 export function effectiveMask(s: Pick<AppSettingsRec, 'mask_names' | 'ai_provider'>): boolean {
-  return s.mask_names || s.ai_provider === 'antigravity'
+  return s.mask_names || s.ai_provider === 'antigravity' || s.ai_provider === 'gemini'
+}
+
+/** 구글 Gemini API 키: Claude 키와 같은 규칙(설치형은 기기에 저장, HTML판은 메모리에만). */
+export async function getGeminiKey(db: AppDB): Promise<string> {
+  if (!isDesktopApp()) return memoryKeys.get(`${db.name}:gemini`) ?? ''
+  return ((await db.device_local.get('geminiApiKey'))?.value as string | undefined) ?? ''
+}
+export async function setGeminiKey(db: AppDB, key: string): Promise<void> {
+  if (!isDesktopApp()) {
+    memoryKeys.set(`${db.name}:gemini`, key.trim())
+    return
+  }
+  await db.device_local.put({ id: 'geminiApiKey', value: key.trim() })
 }

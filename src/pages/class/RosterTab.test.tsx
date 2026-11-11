@@ -18,14 +18,28 @@ async function setup() {
 const list = () => screen.getByRole('list', { name: '학생 명단' })
 const items = () => within(list()).getAllByRole('button')
 
-test('왼쪽 목록은 "1번 가나"만, 처음엔 첫 학생 상세가 오른쪽에 열린다', async () => {
+test('기본 화면은 전체 학생 표(양식 칸 순서), 학생을 누르면 상세, 다시 누르면 표로', async () => {
+  const user = userEvent.setup()
   await setup()
   await waitFor(() => expect(items()).toHaveLength(3))
   expect(items()[0]).toHaveTextContent(/^1번 가나$/)
   expect(within(list()).queryByText('010-1111')).not.toBeInTheDocument()
+  const table = await screen.findByRole('table', { name: '학생 전체' })
+  const head = within(table).getAllByRole('columnheader').map((h) => h.textContent)
+  expect(head.slice(0, 5)).toEqual(['번호', '이름', '학번', '성별', '생년월일'])
+  expect(within(table).getByText('010-1111')).toBeInTheDocument()
+  await waitFor(() => expect(within(table).getByText('1501')).toBeInTheDocument())
+  expect(screen.queryByRole('form', { name: '학생 정보' })).not.toBeInTheDocument()
+  await user.click(items()[0])
   const form = screen.getByRole('form', { name: '학생 정보' })
   expect(within(form).getByRole('heading')).toHaveTextContent('1번 가나')
   expect(items()[0]).toHaveAttribute('aria-current', 'true')
+  await user.click(items()[0])
+  expect(screen.getByRole('table', { name: '학생 전체' })).toBeInTheDocument()
+  expect(screen.queryByRole('form', { name: '학생 정보' })).not.toBeInTheDocument()
+  // 표의 줄을 눌러도 그 학생 상세로
+  await user.click(within(screen.getByRole('table', { name: '학생 전체' })).getByRole('button', { name: '3번 마바 자세히' }))
+  expect(within(screen.getByRole('form', { name: '학생 정보' })).getByRole('heading')).toHaveTextContent('3번 마바')
 })
 
 test('전출 학생은 맨 아래에 inactive로', async () => {
@@ -48,6 +62,8 @@ test('찾기 칸에 "다라" → 목록 1명, 누르면 그 학생 상세', asyn
 test('양식 고치기: 칸 추가·숨기기·순서, 상세가 따라가고 숨겨도 값은 남는다', async () => {
   const user = userEvent.setup()
   const { db } = await setup()
+  await waitFor(() => expect(items()).toHaveLength(3))
+  await user.click(items()[0])
   await screen.findByRole('form', { name: '학생 정보' })
   await user.click(screen.getByText('가져오기·양식 ▾'))
   await user.click(screen.getByRole('button', { name: '양식 고치기' }))
@@ -74,7 +90,7 @@ test('양식 고치기: 칸 추가·숨기기·순서, 상세가 따라가고 �
 test('양식 고치기: 기본 칸과 겹치는 이름은 더할 수 없다', async () => {
   const user = userEvent.setup()
   await setup()
-  await screen.findByRole('form', { name: '학생 정보' })
+  await screen.findByRole('table', { name: '학생 전체' })
   await user.click(screen.getByText('가져오기·양식 ▾'))
   await user.click(screen.getByRole('button', { name: '양식 고치기' }))
   const ed = screen.getByRole('region', { name: '명단 양식 고치기' })

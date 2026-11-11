@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAi, useDb } from '../../app/context'
 import type { AiPromptRec, AppSettingsRec } from '../../lib/db/types'
-import { effectiveMask, getAiKey, getSettings, isDesktopApp, setAiKey, updateSettings } from '../../lib/settings'
+import { effectiveMask, getAiKey, getGeminiKey, getSettings, isDesktopApp, setAiKey, setGeminiKey, updateSettings } from '../../lib/settings'
+import { GEMINI_MODELS } from '../../lib/ai/gemini'
 import { DEFAULT_PROMPTS, getPrompt, listPromptVersions, resetPrompt, savePrompt, type PromptKind } from '../../lib/ai/prompts'
 import { buildNugaPrompt } from '../../lib/counseling/nuga'
 import { buildBriefingPrompt } from '../../lib/briefing/briefing'
@@ -53,14 +54,19 @@ export default function AiSettings() {
         <button type="button" role="radio" aria-checked={provider === 'claude-code'} className={provider === 'claude-code' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'claude-code' })}>
           Claude Code(Pro 구독)
         </button>
-        <button type="button" role="radio" aria-checked={provider === 'antigravity'} className={provider === 'antigravity' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'antigravity' })}>
-          Antigravity(구글 로그인)
-        </button>
         <button type="button" role="radio" aria-checked={provider === 'api-key'} className={provider === 'api-key' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'api-key' })}>
-          API 키
+          Claude API 키
+        </button>
+        <button type="button" role="radio" aria-checked={provider === 'gemini'} className={provider === 'gemini' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'gemini' })}>
+          구글 Gemini API 키
+        </button>
+        <button type="button" role="radio" aria-checked={provider === 'antigravity'} className={provider === 'antigravity' ? 'on' : undefined} onClick={() => patch({ ai_provider: 'antigravity' })}>
+          구글 Antigravity(로그인)
         </button>
       </div>
-      {provider === 'antigravity' ? (
+      {provider === 'gemini' ? (
+        <GeminiPanel model={s.gemini_model} onModel={(m) => patch({ gemini_model: m })} />
+      ) : provider === 'antigravity' ? (
         <div className="stack">
           <p className="muted">
             노트북에 설치한 구글 Antigravity CLI(agy)로 정리합니다. 키 없이 구글 계정 로그인만 하면 됩니다. 설치 후 명령 창에서 <code>agy</code>를 한 번 실행해 로그인하세요. 새 설치형(Windows 앱)에서만 됩니다.
@@ -139,8 +145,8 @@ export default function AiSettings() {
         AI 정리 사용
       </label>
       <label className="inline">
-        <input type="checkbox" checked={effectiveMask(s)} disabled={provider === 'antigravity'} onChange={(e) => patch({ mask_names: e.target.checked })} />
-        {provider === 'antigravity' ? '학생 이름 가리기(Antigravity는 항상 가림)' : '학생 이름 가리기(권장)'}
+        <input type="checkbox" checked={effectiveMask(s)} disabled={provider === 'antigravity' || provider === 'gemini'} onChange={(e) => patch({ mask_names: e.target.checked })} />
+        {provider === 'antigravity' || provider === 'gemini' ? '학생 이름 가리기(구글 연결은 항상 가림)' : '학생 이름 가리기(권장)'}
       </label>
       <label className="inline">
         누가기록 최대 글자 수(비우면 제한 없음)
@@ -280,5 +286,67 @@ function PromptEditor({ kind }: { kind: PromptKind }) {
       </button>
       {result && <pre className="pre card wide">{result}</pre>}
     </details>
+  )
+}
+
+/** 구글 Gemini API 키: 키(이 노트북에만)·모델·연결 확인. 이름은 늘 가린다. */
+function GeminiPanel({ model, onModel }: { model?: string; onModel: (m: string) => void }) {
+  const db = useDb()
+  const ai = useAi()
+  const [key, setKey] = useState('')
+  const [has, setHas] = useState(false)
+  const [msg, setMsg] = useState<string>()
+  useEffect(() => {
+    getGeminiKey(db).then((k) => setHas(!!k))
+  }, [db])
+  // 옛 설치형(SHELL 5 이하)은 구글 주소로 접속할 수 없다(새 설치형 필요)
+  const oldExe = isDesktopApp() && ((globalThis as { desktop?: { shell?: number } }).desktop?.shell ?? 0) < 6
+  return (
+    <div className="stack">
+      <p className="muted">
+        구글 AI Studio(aistudio.google.com)에서 만든 Gemini API 키로 정리합니다. 키는 {isDesktopApp() ? '이 노트북에만 저장합니다' : '이 창에만 두고, 창을 닫으면 지워집니다'}.
+      </p>
+      {oldExe && <p className="banner">지금 설치형은 구글 주소로 접속할 수 없습니다. 새 설치형(0.11 이상)을 받아 설치하세요.</p>}
+      <p className="banner">무료 키는 입력 내용이 구글의 학습·검토에 쓰일 수 있습니다. 그래서 이 연결에서는 학생 이름 가리기를 끌 수 없습니다. 유료(결제 등록) 키는 학습에 쓰이지 않는다고 구글 약관에 적혀 있습니다.</p>
+      <div className="row">
+        <label>
+          {`구글 API 키 ${has ? '(넣음)' : '(없음)'}`}
+          <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="AIza..." autoComplete="off" />
+        </label>
+        <button
+          type="button"
+          onClick={async () => {
+            await setGeminiKey(db, key)
+            setKey('')
+            setHas(!!key.trim())
+            setMsg(key.trim() ? '구글 API 키를 저장했습니다.' : '구글 API 키를 지웠습니다.')
+          }}
+        >
+          키 저장
+        </button>
+        <label className="inline">
+          모델
+          <select aria-label="Gemini 모델" value={GEMINI_MODELS.some((m) => m.id === model) ? model : GEMINI_MODELS[0].id} onChange={(e) => onModel(e.target.value)}>
+            {GEMINI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={!has}
+          onClick={async () => {
+            setMsg('확인 중…')
+            try {
+              const r = await ai({ system: '한 단어로만 답한다.', user: '"연결됨"이라고만 답하세요.', maxTokens: 20 })
+              setMsg(`구글 Gemini 연결됨(${r.trim().slice(0, 10)})`)
+            } catch (e) {
+              setMsg(e instanceof Error ? e.message : String(e))
+            }
+          }}
+        >
+          연결 확인
+        </button>
+      </div>
+      {msg && <p role="status">{msg}</p>}
+    </div>
   )
 }

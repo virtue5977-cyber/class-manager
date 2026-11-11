@@ -2,7 +2,7 @@
 import JSZip from 'jszip'
 import { buildTableHwpx } from '../../docs/table-doc'
 import { inspectTemplate } from './template'
-import { markTemplate, matchByAi, matchByRules, scanCells } from './scan'
+import { findDateLines, markTemplate, matchByAi, matchByRules, scanCells } from './scan'
 
 /** 2×4 표: 성 명|빈|기 간|빈 / 사 유|위 학생은 결석하였기에|작성일|빈 */
 async function form() {
@@ -106,4 +106,103 @@ test('matchByAi: 채워진 양식이라 칸에 학생 이름이 있으면 가려
   await matchByAi(cells, [], (async (r: unknown) => (sent.push(JSON.stringify(r)), '{"pairs":[]}')) as never, ['홍길동'])
   expect(sent[0]).not.toContain('홍길동')
   expect(sent[0]).toContain('성 명')
+})
+
+/** 사용자 예시(11/11)와 같은 구조의 가상 양식: 채워진 예시 값, 쌍점·괄호 이름표, ◯ 표시 칸, 표 밖 날짜 줄 */
+async function exampleForm() {
+  const info = tbl([[tc(0, 0, t('학 번:')), tc(0, 1, t('9901'))], [tc(1, 0, t('이 름:')), tc(1, 1, t('가상일'))]])
+  const period = tbl([[tc(0, 0, t('기  간')), tc(0, 1, t(' 2026년 11월 09일(월) ~ 11월 10일(화) (2일간)'))]])
+  const kinds = tbl([
+    [tc(0, 0, t('  질  병¹')), tc(0, 1, t('  인  정²')), tc(0, 2, t('  미 인 정³')), tc(0, 3, t('기  타'))],
+    [tc(1, 0, t('◯')), tc(1, 1, ''), tc(1, 2, ''), tc(1, 3, '')],
+    [tc(2, 0, t('결  석')), tc(2, 1, t('지  각')), tc(2, 2, t('조  퇴')), tc(2, 3, t('결  과'))],
+    [tc(3, 0, t('◯')), tc(3, 1, ''), tc(3, 2, ''), tc(3, 3, '')],
+  ])
+  const reason = tbl([[tc(0, 0, t('사  유')), tc(0, 1, t('(학부모 의견)')), tc(0, 2, t('감기로 병원 진료'))]])
+  const reason2 = tbl([[tc(0, 0, t('사  유(학부모 의견)')), tc(0, 1, t('감기로 병원 진료'))]])
+  const date = `</hp:p><hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${t('2026년     11월     11일')}`
+  return hwpxWith(info + period + kinds + reason2 + date + reason.slice(0, 0))
+}
+
+test('채워진 예시 양식: 쌍점·괄호 이름표를 알아보고, 예시 글이 든 칸을 값 칸으로', async () => {
+  const cells = scanCells(await section(await exampleForm()))
+  const slots = matchByRules(cells)
+  const by = Object.fromEntries(slots.map((s) => [s.field, cells[s.target].text]))
+  expect(by['학번']).toBe('9901')
+  expect(by['이름']).toBe('가상일')
+  expect(by['기간']).toContain('2026년 11월 09일')
+  expect(by['사유']).toBe('감기로 병원 진료')
+  // ◯ 표시 자리: 이름표 바로 아래 칸
+  expect(by['표시_질병']).toBe('◯')
+  expect(by['표시_인정']).toBe('')
+  expect(by['표시_결석']).toBe('◯')
+  expect(slots.some((s) => s.field === '표시_조퇴')).toBe(true)
+})
+
+test('채워진 예시 양식 → 예시 글을 지우고 {{표시}}로, 표 밖 날짜 줄은 {{작성날짜}}로, 양식 검사 통과', async () => {
+  const bytes = await exampleForm()
+  const sec = await section(bytes)
+  const cells = scanCells(sec)
+  expect(findDateLines(sec).map((d) => d.text)).toEqual(['2026년 11월 11일'])
+  const marked = await markTemplate(bytes, matchByRules(cells), { dateLine: 0 })
+  const out = await section(marked)
+  const { xmlErrors } = await import('../testUtil')
+  expect(xmlErrors(out)).toEqual([])
+  const texts = scanCells(out).map((c) => c.text)
+  expect(texts).toEqual(expect.arrayContaining(['{{학번}}', '{{이름}}', '{{기간}}', '{{사유}}', '{{표시_질병}}', '{{표시_결석}}']))
+  expect(out).not.toContain('가상일')
+  expect(out).not.toContain('9901')
+  expect(out).toContain('{{작성날짜}}')
+  const r = await inspectTemplate(marked)
+  expect(r.ok).toBe(true)
+  expect(r.unknown).toEqual([])
+})
+
+test('AI에는 이름표 옆 값 칸의 글을 [값]으로 바꿔 보낸다(명단에 없는 이름도 안 나간다)', async () => {
+  const cells = scanCells(await section(await exampleForm()))
+  const sent: string[] = []
+  await matchByAi(cells, [], (async (r: unknown) => (sent.push(JSON.stringify(r)), '{"pairs":[]}')) as never, [])
+  expect(sent[0]).not.toContain('가상일')
+  expect(sent[0]).not.toContain('9901')
+  expect(sent[0]).toContain('[값]')
+  expect(sent[0]).toContain('이 름:')
+})
+
+test('양식 전체가 큰 상자(표) 안에 있어도 그 안의 날짜 글줄을 찾는다', async () => {
+  const inner = tbl([[tc(0, 0, t('성명')), tc(0, 1, '')]])
+  const boxCell = `<hp:tc name="" header="0" hasMargin="0" protect="0" editable="0" dirty="0" borderFillIDRef="3"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0"><hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${inner}</hp:p><hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${t('2026년     11월     11일')}</hp:p></hp:subList><hp:cellAddr colAddr="0" rowAddr="0"/><hp:cellSpan colSpan="1" rowSpan="1"/><hp:cellSz width="1000" height="500"/><hp:cellMargin left="0" right="0" top="0" bottom="0"/></hp:tc>`
+  const sec = await section(await hwpxWith(tbl([[boxCell]])))
+  expect(findDateLines(sec).map((d) => d.text)).toEqual(['2026년 11월 11일'])
+})
+
+test('리뷰 고침: 예시 값이 "질병"이어도 결석종류 값 칸으로 쓰고, 그 칸을 ◯ 이름표로 보지 않는다', async () => {
+  const cells = scanCells(await section(await hwpxWith(tbl([[tc(0, 0, t('구 분')), tc(0, 1, t('질병'))], [tc(1, 0, t('증빙서류')), tc(1, 1, '')]]))))
+  const slots = matchByRules(cells)
+  expect(slots.find((s) => s.field === '결석종류')?.target).toBe(1)
+  expect(slots.some((s) => s.field === '표시_질병')).toBe(false)
+})
+
+test('리뷰 고침: 빈 양식의 □ 목록·(서명) 안내 칸은 덮어쓰지 않고, 긴 안내 글은 이름표로 보지 않는다', async () => {
+  const cells = scanCells(await section(await hwpxWith(tbl([
+    [tc(0, 0, t('구 분')), tc(0, 1, t('□질병 □미인정 □기타'))],
+    [tc(1, 0, t('보호자 성명')), tc(1, 1, t('(서명 또는 인)'))],
+    [tc(2, 0, t('결석 일수는 학교장이 정한 날짜를 기준으로 셉니다')), tc(2, 1, t('3'))],
+  ]))))
+  const slots = matchByRules(cells)
+  expect(slots.some((s) => s.field === '결석종류')).toBe(false)
+  expect(slots.some((s) => s.field === '일수')).toBe(false)
+})
+
+test('리뷰 고침: AI에는 이름표 자리(왼쪽 첫 칸 등)의 글만, 그 오른쪽 값은 이름표 목록에 없어도 [값]으로', async () => {
+  const cells = scanCells(await section(await hwpxWith(tbl([
+    [tc(0, 0, t('보호자 성명')), tc(0, 1, t('김보호'))],
+    [tc(1, 0, t('주소')), tc(1, 1, t('가상시 가상구 1-2'))],
+    [tc(2, 0, t('연락처')), tc(2, 1, t('010-1234-5678 집으로 연락 바랍니다 늦은 시간에는 문자로 부탁'))],
+  ]))))
+  const sent: string[] = []
+  await matchByAi(cells, [], (async (r: unknown) => (sent.push(JSON.stringify(r)), '{"pairs":[]}')) as never, [])
+  expect(sent[0]).toContain('보호자 성명')
+  expect(sent[0]).not.toContain('김보호')
+  expect(sent[0]).not.toContain('가상구')
+  expect(sent[0]).not.toContain('1234')
 })

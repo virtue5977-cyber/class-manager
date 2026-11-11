@@ -4,7 +4,10 @@ import { useDb, useFs } from '../../app/context'
 import type { StudentRec } from '../../lib/db/types'
 import { listStudents, upsertRosterRows } from '../../lib/roster/roster'
 import { parseTsv, rosterTemplate, toRosterRows, type PasteResult } from '../../lib/roster/paste'
-import { DEFAULT_FIELDS, loadFields, templateColumns } from '../../lib/roster/fields'
+import { DEFAULT_FIELDS, fieldValue, loadFields, templateColumns } from '../../lib/roster/fields'
+import { studentCode } from '../../lib/absenceReports/compute'
+import { APP_SETTINGS_ID } from '../../lib/backup/service'
+import { DEFAULT_SETTINGS } from '../../lib/settings'
 import { useLive } from '../../lib/ui/useLive'
 import RosterFieldsEditor from './RosterFieldsEditor'
 import { readFirstSheet } from '../../lib/xlsx/read'
@@ -18,7 +21,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
   const [students, setStudents] = useState<StudentRec[]>([])
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
-  /** 오른쪽에 연 학생(id) 또는 새 학생. null이면 목록 첫 학생. */
+  /** 오른쪽에 연 학생(id) 또는 새 학생. null이면 전체 학생 표(기본 화면). */
   const [selected, setSelected] = useState<string | 'new' | null>(null)
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string>()
@@ -26,6 +29,16 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
   const [editFields, setEditFields] = useState(false)
   const fields = useLive(() => loadFields(db), [db], DEFAULT_FIELDS)
   const cols = useMemo(() => templateColumns(fields), [fields])
+  /** 학번 형식·학년·반(읽기만) */
+  const codeOf = useLive(
+    async () => {
+      const fmt = (await db.app_settings.get(APP_SETTINGS_ID))?.student_code_format || DEFAULT_SETTINGS.student_code_format
+      const c = await db.classes.get(classId)
+      return c ? { fmt, grade: c.grade, classNo: c.class_no } : null
+    },
+    [db, classId],
+    null,
+  )
 
   const reload = useCallback(async () => setStudents(await listStudents(db, classId)), [db, classId])
   useEffect(() => {
@@ -37,7 +50,8 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
   const ordered = useMemo(() => [...students.filter((s) => s.active), ...students.filter((s) => !s.active)], [students])
   const q = query.trim()
   const shown = q ? ordered.filter((s) => s.name.includes(q) || String(s.number) === q) : ordered
-  const current = (selected && selected !== 'new' ? students.find((s) => s.id === selected) : undefined) ?? shown[0] ?? ordered[0]
+  const current = selected && selected !== 'new' ? students.find((s) => s.id === selected) : undefined
+  const shownFields = fields.filter((f) => f.visible)
 
   const parsed = useMemo(() => fileRows?.result ?? toRosterRows(parseTsv(pasteText), cols), [pasteText, fileRows, cols])
   /** 번호는 같은데 이름이 다른 행: 기존 학생 기록이 다른 아이 이름으로 바뀐다. */
@@ -170,7 +184,7 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
             <ul className="plain" aria-label="학생 명단">
               {shown.map((s) => (
                 <li key={s.id}>
-                  <button type="button" className={`roster-item${s.active ? '' : ' inactive'}`} aria-current={current?.id === s.id && selected !== 'new' ? 'true' : undefined} onClick={() => setSelected(s.id)}>
+                  <button type="button" className={`roster-item${s.active ? '' : ' inactive'}`} aria-current={current?.id === s.id && selected !== 'new' ? 'true' : undefined} onClick={() => setSelected(selected === s.id ? null : s.id)}>
                     <span className="pii">{`${s.number}번 ${s.name}`}</span>
                     {!s.active && <span className="tag">(전출)</span>}
                   </button>
@@ -184,7 +198,40 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
               <StudentDetail key="new" classId={classId} fields={fields} onDone={() => { setSelected(null); reload() }} />
             ) : current ? (
               <StudentDetail key={current.id + current.updated_at} classId={classId} fields={fields} student={current} closable={false} onDone={() => reload()} />
-            ) : null}
+            ) : (
+              <div className="roster-overview">
+                <table className="grid roster-all" aria-label="학생 전체">
+                  <thead>
+                    <tr>
+                      <th>번호</th>
+                      <th>이름</th>
+                      <th>학번</th>
+                      {shownFields.map((f) => <th key={f.key}>{f.label}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="pii">
+                    {shown.map((st) => (
+                      <tr key={st.id} className={st.active ? undefined : 'inactive'}>
+                        <td>{st.number}</td>
+                        <td>
+                          <button type="button" className="link" aria-label={`${st.number}번 ${st.name} 자세히`} onClick={() => setSelected(st.id)}>
+                            {st.name}
+                          </button>
+                          {!st.active && <span className="tag">(전출)</span>}
+                        </td>
+                        <td>{codeOf ? studentCode(codeOf.fmt, codeOf.grade, codeOf.classNo, st.number) : ''}</td>
+                        {shownFields.map((f) => <td key={f.key}>{fieldValue(st, f)}</td>)}
+                      </tr>
+                    ))}
+                    {shown.length === 0 && (
+                      <tr>
+                        <td colSpan={3 + shownFields.length} className="muted">찾는 학생이 없습니다.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
