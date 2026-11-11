@@ -25,17 +25,32 @@ export interface Slot {
   target: number
 }
 
-/** 찾을 자리(규칙). 칸 글의 띄어쓰기는 무시하지 않고 정규식이 흡수한다. */
-export const SLOT_FIELDS: { field: string; label: string; re: RegExp }[] = [
-  { field: '이름', label: '학생 이름', re: /^(학생\s*)?(성\s*명|이\s*름)$/ },
-  { field: '학번', label: '학번', re: /^학\s*번$/ },
-  { field: '학년반번호', label: '학년·반·번호', re: /학\s*년.*반|반.*번\s*호/ },
-  { field: '기간', label: '결석 기간', re: /^(결석\s*)?(기\s*간|일\s*시)$/ },
-  { field: '일수', label: '일수', re: /일\s*수/ },
-  { field: '사유', label: '사유', re: /^(결석\s*)?사\s*유$|^내\s*용$/ },
-  { field: '결석종류', label: '결석 종류', re: /^(구\s*분|종\s*류)$/ },
-  { field: '작성날짜', label: '작성 날짜', re: /(작성|신고|제출)\s*일/ },
+/** 찾을 자리(규칙). 이름표 글은 norm()으로 띄어쓰기·끝 쌍점·괄호 설명·윗첨자 숫자를 뗀 뒤 비교한다.
+ * mark: ◯ 표시 자리(이름표 바로 아래 칸에 해당하면 ◯). */
+export const SLOT_FIELDS: { field: string; label: string; re: RegExp; mark?: true }[] = [
+  { field: '이름', label: '학생 이름', re: /^(학생)?(성명|이름)$/ },
+  { field: '학번', label: '학번', re: /^학번$/ },
+  { field: '학년반번호', label: '학년·반·번호', re: /학년.*반|반.*번호/ },
+  { field: '기간', label: '결석 기간', re: /^(결석|출결)?(기간|일시)$/ },
+  { field: '일수', label: '일수', re: /일수/ },
+  { field: '사유', label: '사유', re: /^(결석|출결)?사유$|^내용$/ },
+  { field: '결석종류', label: '결석 종류', re: /^(구분|종류)$/ },
+  { field: '작성날짜', label: '작성 날짜', re: /(작성|신고|제출)일/ },
+  { field: '표시_질병', label: '◯ 질병', re: /^질병$/, mark: true },
+  { field: '표시_인정', label: '◯ 인정(출석인정)', re: /^(출석)?인정$/, mark: true },
+  { field: '표시_미인정', label: '◯ 미인정', re: /^미인정$/, mark: true },
+  { field: '표시_결석', label: '◯ 결석', re: /^결석$/, mark: true },
+  { field: '표시_지각', label: '◯ 지각', re: /^지각$/, mark: true },
+  { field: '표시_조퇴', label: '◯ 조퇴', re: /^조퇴$/, mark: true },
+  { field: '표시_결과', label: '◯ 결과', re: /^결과$/, mark: true },
 ]
+
+/** 이름표 비교용 글: 윗첨자 숫자·괄호 설명·끝 쌍점·띄어쓰기를 뗀다 */
+export const norm = (text: string) =>
+  text.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, '').replace(/\([^)]*\)|（[^）]*）/g, '').replace(/[:：]\s*$/, '').replace(/\s+/g, '')
+const isLabelText = (text: string) => !!text && SLOT_FIELDS.some((f) => f.re.test(norm(text)))
+/** 고정 문장(양식에 원래 있는 글): 값 칸으로 쓰지 않는다 */
+const STATIC_RE = /하였기에|합니다|습니다|함\.?$|에$|바랍니다/
 
 const OBJECT_RE = /<hp:(pic|rect|ellipse|line|arc|polygon|curve|container|ole|equation|textart|checkBtn|radioBtn|btn|edit|comboBox|listBox|scrollBar|ctrl|fieldBegin)\b/
 
@@ -85,15 +100,20 @@ export function scanCells(sectionXml: string): FormCell[] {
   return cellSpans(sectionXml).map((sp, id) => cellInfo(sectionXml.slice(sp.start, sp.end), id, sp.table))
 }
 
-/** 이름표 칸의 값 칸: 오른쪽(같은 줄) 빈 칸, 없으면 아래(같은 열) 빈 칸. */
-const isEmpty = (c: FormCell) => !c.text && !c.filled
+/** 값 칸이 될 수 있는 칸: 비었거나, 예시 값이 든 칸(이름표·고정 문장·그림이 아닌 글). 사용자가 채워 올린 예시 양식도 읽는다. */
+export function isValueCell(c: FormCell): boolean {
+  if (c.filled) return false
+  if (!c.text) return true
+  return c.text.length <= 60 && !isLabelText(c.text) && !STATIC_RE.test(c.text.trim())
+}
 
-function targetOf(cells: FormCell[], label: FormCell): FormCell | undefined {
+/** 이름표 칸의 값 칸: 오른쪽(같은 줄), 없으면 아래(같은 열). ◯ 표시 자리는 아래 칸만. */
+function targetOf(cells: FormCell[], label: FormCell, mark = false): FormCell | undefined {
   const same = cells.filter((c) => c.table === label.table && c.id !== label.id)
   const right = same.find((c) => c.row === label.row && c.col === label.col + label.colSpan)
-  if (right && isEmpty(right)) return right
+  if (!mark && right && isValueCell(right)) return right
   const below = same.find((c) => c.col === label.col && c.row === label.row + label.rowSpan)
-  if (below && isEmpty(below)) return below
+  if (below && isValueCell(below) && (!mark || !below.text || /^[◯○●◎■□✓✔VvOo]$/.test(below.text))) return below
   return undefined
 }
 
@@ -102,8 +122,8 @@ export function matchByRules(cells: FormCell[]): Slot[] {
   const used = new Set<number>()
   for (const f of SLOT_FIELDS) {
     for (const c of cells) {
-      if (!c.text || !f.re.test(c.text)) continue
-      const t = targetOf(cells, c)
+      if (!c.text || !f.re.test(norm(c.text))) continue
+      const t = targetOf(cells, c, f.mark)
       if (!t || used.has(t.id)) continue
       out.push({ field: f.field, label: c.id, target: t.id })
       used.add(t.id)
@@ -118,7 +138,11 @@ export function matchByRules(cells: FormCell[]): Slot[] {
 export async function matchByAi(cells: FormCell[], have: Slot[], ai: AiCaller, names: string[] = []): Promise<Slot[]> {
   const missing = SLOT_FIELDS.filter((f) => !have.some((s) => s.field === f.field))
   if (!missing.length) return []
-  const labels = cells.filter((c) => c.text).map((c) => ({ id: c.id, table: c.table, row: c.row, col: c.col, text: maskText(c.text.slice(0, 40), names).text }))
+  // 이름표 옆(오른쪽·아래) 값 칸의 글은 [값]으로(채워 올린 예시의 이름·학번이 AI로 가지 않게)
+  const labelLike = (c: FormCell) => isLabelText(c.text) || /[:：]\s*$/.test(c.text)
+  const isValueOfLabel = (c: FormCell) =>
+    cells.some((l) => l.table === c.table && l.text && labelLike(l) && ((l.row === c.row && l.col + l.colSpan === c.col) || (l.col === c.col && l.row + l.rowSpan === c.row)))
+  const labels = cells.filter((c) => c.text).map((c) => ({ id: c.id, table: c.table, row: c.row, col: c.col, text: isValueOfLabel(c) && !labelLike(c) ? '[값]' : maskText(c.text.slice(0, 40), names).text }))
   const raw = await ai({
     system:
       '학교 결석신고서 양식의 표 칸 글 목록을 보고, 각 자리(field)의 이름표가 되는 칸 id를 고른다. 이름표 칸의 오른쪽이나 아래 빈 칸에 값이 들어간다. 맞는 칸이 없으면 그 자리는 빼고, 추측하지 않는다.\n출력은 JSON {"pairs":[{"field":"자리","label":칸id}]} 만.',
@@ -131,7 +155,7 @@ export async function matchByAi(cells: FormCell[], have: Slot[], ai: AiCaller, n
   for (const p of pairs) {
     if (typeof p.field !== 'string' || !missing.some((f) => f.field === p.field) || out.some((s) => s.field === p.field)) continue
     const label = cells.find((c) => c.id === p.label)
-    const t = label && targetOf(cells, label)
+    const t = label && targetOf(cells, label, SLOT_FIELDS.find((f) => f.field === p.field)?.mark)
     if (!t || used.has(t.id)) continue
     used.add(t.id)
     out.push({ field: p.field, label: label!.id, target: t.id })
@@ -139,8 +163,34 @@ export async function matchByAi(cells: FormCell[], have: Slot[], ai: AiCaller, n
   return out
 }
 
-/** 값 칸의 첫 문단 글을 {{field}} 하나로 바꾼 hwpx. 칸 모양(글자 모양)은 그 칸 첫 run의 것을 쓴다. */
-export async function markTemplate(bytes: Uint8Array, slots: Slot[]): Promise<Uint8Array> {
+/** 표 칸 밖(또는 양식 전체를 감싼 상자 안) 글줄 중 날짜(2026년 11월 11일 꼴)만 있는 줄: 작성 날짜 자리로 고를 수 있다 */
+export function findDateLines(xml: string): { index: number; start: number; end: number; text: string }[] {
+  // 값 칸(안쪽 표 칸) 안의 문단은 빼고, 양식 전체를 감싼 상자 칸 안의 글줄은 표 밖 글줄로 본다
+  const tables = cellSpans(xml)
+  const out: { index: number; start: number; end: number; text: string }[] = []
+  for (const m of xml.matchAll(/<hp:p\b[^>]*>((?:(?!<hp:p\b|<\/hp:p>)[\s\S])*)<\/hp:p>/g)) {
+    const at = m.index!
+    if (tables.some((t) => at > t.start && at < t.end)) continue
+    const text = [...m[1].matchAll(/<hp:t(?:\s[^>]*)?>([\s\S]*?)<\/hp:t>/g)].map((x) => x[1].replace(/<[^>]+>/g, '')).join('').replace(/\s+/g, ' ').trim()
+    if (/^\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일$/.test(text)) out.push({ index: out.length, start: at, end: at + m[0].length, text: text.replace(/\s*(년|월|일)\s*/g, '$1 ').trim() })
+  }
+  return out
+}
+
+/** 문단 하나(또는 칸의 문단들)의 글을 {{field}} 하나로: 첫 문단 첫 run 모양에 표시를 넣고, 나머지 글은 지운다. */
+function replaceText(xml: string, field: string): string {
+  let first = true
+  return xml.replace(/(<hp:p\b[^>]*>)((?:(?!<hp:p\b|<\/hp:p>)[\s\S])*)(<\/hp:p>)/g, (_m, open: string, inner: string, close: string) => {
+    if (!first) return open + inner.replace(/<hp:t(?:\s[^>]*)?>[\s\S]*?<\/hp:t>/g, '<hp:t></hp:t>') + close
+    first = false
+    const cp = inner.match(/<hp:run charPrIDRef="(\d+)"/)?.[1] ?? '0'
+    const keep = inner.match(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/)?.[0] ?? ''
+    return `${open}<hp:run charPrIDRef="${cp}"><hp:t>${escapeXml(`{{${field}}}`)}</hp:t></hp:run>${keep}${close}`
+  })
+}
+
+/** 값 칸의 글(비었거나 예시 글)을 {{field}} 하나로 바꾼 hwpx. dateLine: 표 밖 날짜 줄 번호 → {{작성날짜}}. */
+export async function markTemplate(bytes: Uint8Array, slots: Slot[], opts: { dateLine?: number } = {}): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(bytes)
   const f = zip.file('Contents/section0.xml')
   if (!f) throw new Error('양식에 본문(section0.xml)이 없습니다.')
@@ -154,14 +204,12 @@ export async function markTemplate(bytes: Uint8Array, slots: Slot[]): Promise<Ui
     if (!field) continue
     const { start, end } = spans[id]
     const cell = out.slice(start, end)
-    const info = cellInfo(cell, id, spans[id].table)
-    if (!isEmpty(info)) continue // 글·그림이 있는 칸은 건드리지 않는다
-    const next = cell.replace(/(<hp:p\b[^>]*>)([\s\S]*?)(<\/hp:p>)/, (_m, open: string, inner: string, close: string) => {
-      const cp = inner.match(/<hp:run charPrIDRef="(\d+)"/)?.[1] ?? '0'
-      const keep = inner.match(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/)?.[0] ?? ''
-      return `${open}<hp:run charPrIDRef="${cp}"><hp:t>${escapeXml(`{{${field}}}`)}</hp:t></hp:run>${keep}${close}`
-    })
-    out = out.slice(0, start) + next + out.slice(end)
+    if (cellInfo(cell, id, spans[id].table).filled) continue // 그림·누름틀이 있는 칸은 건드리지 않는다
+    out = out.slice(0, start) + replaceText(cell, field) + out.slice(end)
+  }
+  if (opts.dateLine !== undefined && !slots.some((s) => s.field === '작성날짜')) {
+    const d = findDateLines(out)[opts.dateLine]
+    if (d) out = out.slice(0, d.start) + replaceText(out.slice(d.start, d.end), '작성날짜') + out.slice(d.end)
   }
   const z2 = new JSZip()
   const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir)

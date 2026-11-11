@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAi, useDb, useFs } from '../../app/context'
 import { buildSampleAbsenceHwpx } from '../../lib/hwpx/absence/build'
-import { markTemplate, matchByAi, matchByRules, SLOT_FIELDS, type FormCell, type Slot } from '../../lib/hwpx/absence/scan'
+import { findDateLines, isValueCell, markTemplate, matchByAi, matchByRules, SLOT_FIELDS, type FormCell, type Slot } from '../../lib/hwpx/absence/scan'
+import JSZip from 'jszip'
 import { installTemplate } from '../../lib/hwpx/absence/template'
 import { getSettings } from '../../lib/settings'
 import { allStudentNames } from '../../lib/roster/roster'
@@ -20,11 +21,26 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
     const found = matchByRules(cells)
     setPick((p) => ({ ...p, ...Object.fromEntries(found.map((s) => [s.field, s.target])) }))
   }, [cells])
-  const empty = useMemo(() => cells.filter((c) => !c.text && !c.filled), [cells])
+  /** 고를 수 있는 값 칸: 빈 칸 + 예시 글이 든 칸(채워 올린 예시 양식) */
+  const empty = useMemo(() => cells.filter(isValueCell), [cells])
+  /** 표 밖 날짜 글줄(작성 날짜로 쓸 수 있음) */
+  const [dates, setDates] = useState<string[]>([])
+  const [dateLine, setDateLine] = useState<number | ''>('')
+  useEffect(() => {
+    JSZip.loadAsync(bytes)
+      .then((z) => z.file('Contents/section0.xml')?.async('string') ?? '')
+      .then((x) => {
+        const d = findDateLines(x).map((l) => l.text)
+        setDates(d)
+        if (d.length) setDateLine(0)
+      })
+      .catch(() => setDates([]))
+  }, [bytes])
+  const opts = () => ({ dateLine: dateLine === '' || pick['작성날짜'] !== '' ? undefined : dateLine })
   /** 빈 칸 옆(왼쪽·위) 글: 고를 때 알아보기 쉽게 */
   const near = (c: FormCell) => cells.find((x) => x.text && x.row === c.row && x.col + x.colSpan === c.col)?.text ?? cells.find((x) => x.text && x.col === c.col && x.row + x.rowSpan === c.row)?.text ?? ''
   const slots = (): Slot[] => SLOT_FIELDS.flatMap((f) => (pick[f.field] === '' ? [] : [{ field: f.field, label: -1, target: pick[f.field] as number }]))
-  const count = slots().length
+  const count = slots().length + (opts().dateLine !== undefined ? 1 : 0)
   const hasKey = pick['이름'] !== '' || pick['학번'] !== ''
 
   async function run(fn: () => Promise<void>) {
@@ -42,7 +58,7 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
   return (
     <section className="card stack" aria-label="다른 학교 양식 확인">
       <h4>{`다른 학교 양식: ${name}`}</h4>
-      <p className="muted">{`표 칸 ${cells.length}개를 읽어 자리 ${count}곳을 찾았습니다. 틀린 곳은 바꾸고, 없는 자리는 '(없음)'으로 두세요. 학생 이름이나 학번 자리 중 하나는 있어야 합니다.`}</p>
+      <p className="muted">{`표 칸 ${cells.length}개를 읽어 자리 ${count}곳을 찾았습니다. 예시를 채워 올렸다면 예시 글이 든 칸을 자리로 씁니다(저장하면 예시 글은 지워짐). 틀린 곳은 바꾸고, 없는 자리는 '(없음)'으로 두세요. 학생 이름이나 학번 자리 중 하나는 있어야 합니다.`}</p>
       <table className="grid" aria-label="찾은 자리">
         <thead>
           <tr><th>자리</th><th>값이 들어갈 칸</th></tr>
@@ -56,13 +72,24 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
                   <option value="">(없음)</option>
                   {empty.map((c) => (
                     <option key={c.id} value={c.id} disabled={Object.entries(pick).some(([k, v]) => k !== f.field && v === c.id)}>
-                      {`${where(c)}${near(c) ? ` (옆: ${near(c)})` : ''}`}
+                      {`${where(c)}${near(c) ? ` (옆: ${near(c)})` : ''}${c.text ? ` — 지금: ${c.text.slice(0, 20)}` : ''}`}
                     </option>
                   ))}
                 </select>
               </td>
             </tr>
           ))}
+          {dates.length > 0 && (
+            <tr>
+              <th scope="row">작성 날짜(표 밖 글줄)</th>
+              <td>
+                <select aria-label="표 밖 날짜 글줄" value={String(dateLine)} disabled={pick['작성날짜'] !== ''} onChange={(e) => setDateLine(e.target.value === '' ? '' : Number(e.target.value))}>
+                  <option value="">(쓰지 않음)</option>
+                  {dates.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                </select>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
       {msg && <p className="error" role="alert">{msg}</p>}
@@ -72,7 +99,7 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
           className="primary"
           disabled={busy || !hasKey}
           onClick={() => run(async () => {
-            const r = await installTemplate(db, name, await markTemplate(bytes, slots()))
+            const r = await installTemplate(db, name, await markTemplate(bytes, slots(), opts()))
             if (!r.ok) throw new Error(r.error ?? '양식을 저장하지 못했습니다.')
             onDone(['다른 학교 양식을 저장해 적용했습니다.', `채울 자리 ${r.found.length}곳`])
           })}
@@ -81,7 +108,7 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
         </button>
         <button type="button" disabled={busy || !count} onClick={() => run(async () => {
           const s = await getSettings(db)
-          fs.downloadFile(`${name}_미리보기.hwpx`, await buildSampleAbsenceHwpx(await markTemplate(bytes, slots()), { teacher: s.teacher_name, school: s.school_name, codeFormat: s.student_code_format }))
+          fs.downloadFile(`${name}_미리보기.hwpx`, await buildSampleAbsenceHwpx(await markTemplate(bytes, slots(), opts()), { teacher: s.teacher_name, school: s.school_name, codeFormat: s.student_code_format }))
         })}>
           가상 학생으로 미리보기
         </button>
@@ -99,7 +126,7 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
           그만두기
         </button>
       </div>
-      {aiOn && <p className="muted">AI에는 양식 칸의 글만 보냅니다(학생 자료 없음).</p>}
+      {aiOn && <p className="muted">AI에는 양식 칸의 글만 보냅니다. 이름표 옆에 채워 둔 예시 값은 [값]으로 바꿔 보냅니다.</p>}
     </section>
   )
 }

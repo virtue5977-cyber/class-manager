@@ -19,6 +19,16 @@ const EVIDENCE: Record<Exclude<EvidenceType, ''>, string> = {
 }
 const CONFIRM = ['확인_진료확인서', '확인_약봉투', '확인_진단서', '확인_보호자통화', '확인_기타']
 const BLANK = '   '
+/** 다른 학교 양식의 ◯ 표시 칸(해당하면 ◯) */
+const MARKS: { name: string; label: string; hit: (r: AbsenceReportRec) => boolean }[] = [
+  { name: '표시_질병', label: '질병', hit: (r) => r.category === '질병' },
+  { name: '표시_인정', label: '출석인정', hit: (r) => r.category === '출석인정' },
+  { name: '표시_미인정', label: '미인정', hit: (r) => r.category === '미인정' },
+  { name: '표시_결석', label: '결석', hit: (r) => r.kind === '결석' },
+  { name: '표시_지각', label: '지각', hit: (r) => r.kind === '지각' },
+  { name: '표시_조퇴', label: '조퇴', hit: (r) => r.kind === '조퇴' },
+  { name: '표시_결과', label: '결과', hit: (r) => r.kind === '결과' },
+]
 
 export const ABSENCE_PLACEHOLDERS: { name: string; description: string }[] = [
   { name: '학번', description: '설정의 학번 형식(예: 1503)' },
@@ -56,6 +66,7 @@ export const ABSENCE_PLACEHOLDERS: { name: string; description: string }[] = [
   { name: '학년반번호', description: '1학년 5반 3번(다른 학교 양식 한 칸용)' },
   { name: '결석종류', description: '질병 결석·미인정 지각처럼 구분과 종류' },
   { name: '작성날짜', description: '2026년 11월 10일(학생 작성일)' },
+  ...MARKS.map((m) => ({ name: m.name, description: `${m.label}이면 ◯, 아니면 빈칸(다른 학교 양식의 표시 칸)` })),
 ]
 
 const ymd = (iso: string) => ({ y: iso.slice(0, 4), m: String(Number(iso.slice(5, 7))), d: String(Number(iso.slice(8, 10))) })
@@ -103,6 +114,7 @@ export function absenceValues(
     ...dateParts('확인', r.confirmed_date),
   }
   for (const k of KINDS) for (const c of CATS) v[`${k}_${c}`] = k === r.kind && c === r.category ? '■' : '□'
+  for (const m of MARKS) v[m.name] = m.hit(r) ? '◯' : ''
   for (const [label, name] of Object.entries(EVIDENCE)) v[name] = r.evidence_type === label ? '○' : ''
   CONFIRM.forEach((name, i) => (v[name] = r.confirm_methods.includes(i) ? '■' : '□'))
   return v
