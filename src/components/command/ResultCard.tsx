@@ -11,7 +11,7 @@ import FloatingForm from './FloatingForm'
 
 const MODE_LABEL = { rule: '규칙', hybrid: '규칙+AI', ai: 'AI' } as const
 
-/** 실행 결과 카드: 요약·링크·되돌리기(10초)·초안/확인/학생/검색 카드·입력 창. */
+/** 실행 결과 카드: 요약·링크·되돌리기(5초)·복사·노트로·초안/확인/학생/검색 카드·입력 창. */
 export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRun?: (input: string) => void; today: string }) {
   const db = useDb()
   const live = useRecall(chat.id)
@@ -32,14 +32,27 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
   }, [left])
 
   const card = r?.card
+  const [copied, setCopied] = useState(false)
+  /** 카드 안 글(초안 글·나눈 전달사항·찾은 것) */
+  function cardText(): { type: NoteBlock['type']; text: string }[] {
+    const d = card?.data as { kind?: string; text?: string; items?: string[] } | SearchHit[] | undefined
+    if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'message' && d.text) return d.text.split('\n').map((text) => ({ type: 'p', text }))
+    if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'notices') return (d.items ?? []).map((text) => ({ type: 'bullet', text }))
+    if (card?.kind === 'search' && Array.isArray(d)) return d.map((h) => ({ type: 'bullet', text: `${h.label} ${h.detail}`.trim() }))
+    return []
+  }
+  /** 대답 복사: 요약 + 빈 줄 + 카드 글 */
+  async function copy() {
+    const lines = cardText().map((x) => (x.type === 'bullet' ? `- ${x.text}` : x.text))
+    await navigator.clipboard?.writeText([chat.summary, ...(lines.length ? ['', ...lines] : [])].join('\n'))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
   /** 대답을 노트로: 입력 · 요약 · 카드 내용(초안 글·나눈 전달사항·찾은 것) · 링크 */
   async function toNote() {
     const b = (type: NoteBlock['type'], text: string): NoteBlock => ({ id: newBlockId(), type, text })
     const body: NoteBlock[] = [b('p', `입력: ${chat.input}`), b('p', chat.summary)]
-    const d = card?.data as { kind?: string; text?: string; items?: string[] } | SearchHit[] | undefined
-    if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'message' && d.text) body.push(...d.text.split('\n').map((t) => b('p', t)))
-    if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'notices') body.push(...(d.items ?? []).map((t) => b('bullet', t)))
-    if (card?.kind === 'search' && Array.isArray(d)) body.push(...d.map((h) => b('bullet', `${h.label} ${h.detail}`.trim())))
+    body.push(...cardText().map((x) => b(x.type, x.text)))
     body.push(...chat.links.map((l) => b('bullet', `${l.label}: #${l.to}`)))
     body.push(b('p', `— 홈 대화(${new Date(chat.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })})에서`))
     await createNote(db, chat.summary.slice(0, 40), body)
@@ -92,9 +105,14 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
             </button>
           )}
           {(chat.mode !== 'rule' || !!card) && (
-            <button type="button" className="link" onClick={toNote}>
-              노트로
-            </button>
+            <>
+              <button type="button" className="link" onClick={copy}>
+                {copied ? '복사됨' : '복사'}
+              </button>
+              <button type="button" className="link" onClick={toNote}>
+                노트로
+              </button>
+            </>
           )}
         </div>
       )}
@@ -121,7 +139,7 @@ function MessageDraft({ text }: { text: string }) {
   return (
     <div className="stack">
       <textarea aria-label="보낼 글" rows={3} value={t} onChange={(e) => setT(e.target.value)} />
-      <button type="button" onClick={async () => { await navigator.clipboard?.writeText(t); setCopied(true) }}>{copied ? '복사됨' : '복사'}</button>
+      <button type="button" onClick={async () => { await navigator.clipboard?.writeText(t); setCopied(true) }}>{copied ? '복사됨' : '글만 복사'}</button>
     </div>
   )
 }

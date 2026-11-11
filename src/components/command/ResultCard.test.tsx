@@ -44,3 +44,23 @@ test('AI 대답 카드의 "노트로": 입력·대답(초안 글)을 새 노트�
   expect(n.blocks.map((b) => b.text).join('\n')).toContain('내일 체육복을 챙겨 주세요.')
   expect(n.blocks.map((b) => b.text).join('\n')).toContain('/전달 학부모 @3 내일 체육복')
 })
+
+test('AI 대답 "복사": 요약과 초안 글을 클립보드로, 단추는 "복사됨"', async () => {
+  const { default: userEvent } = await import('@testing-library/user-event')
+  const user = userEvent.setup()
+  const writeText = vi.fn(async () => {})
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+  const db = createDb('test-' + crypto.randomUUID())
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <ChatLog today="2026-11-10" onRun={() => {}} />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  const chat = await appendChat(db, { input: '내일 준비물 알려줘', mode: 'ai', summary: '내일은 체육복이 필요합니다.', links: [], status: '성공' }, new Date('2026-11-10T01:00:00Z'))
+  act(() => remember(chat.id, { summary: '내일은 체육복이 필요합니다.', links: [], card: { kind: 'draft', data: { kind: 'message', text: '체육복 챙기기' } } }))
+  await user.click(await screen.findByRole('button', { name: '복사' }))
+  expect(writeText).toHaveBeenCalledWith('내일은 체육복이 필요합니다.\n\n체육복 챙기기')
+  expect(await screen.findByRole('button', { name: '복사됨' })).toBeInTheDocument()
+})

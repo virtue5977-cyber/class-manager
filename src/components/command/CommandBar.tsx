@@ -66,7 +66,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
     // 입력 칸이 비었을 때 Ctrl+Z: 방금 실행한 명령 되돌리기(글 쓰는 중에는 보통 되돌리기)
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !value) {
       e.preventDefault()
-      void undoLast().then((sum) => setUndoNote(sum ? `되돌렸습니다: ${sum}` : '되돌릴 명령이 없습니다(10초가 지났거나 이미 되돌림).'))
+      void undoLast().then((sum) => setUndoNote(sum ? `되돌렸습니다: ${sum}` : '되돌릴 명령이 없습니다(5초가 지났거나 이미 되돌림).'))
       return
     }
     if (e.key === 'ArrowDown' && list.length) {

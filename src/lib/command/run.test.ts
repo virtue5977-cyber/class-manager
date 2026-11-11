@@ -88,3 +88,11 @@ test('되돌리기는 10초 안에 한 번만', async () => {
   expect(await v.undo()).toBe(false)
   expect(n).toBe(1)
 })
+
+test('되돌리기 기본은 5초(사용자 요청 11/11)', async () => {
+  let now = 0
+  const u = makeUndo(async () => {}, undefined, () => now)
+  expect(u.expiresAt).toBe(5000)
+  now = 5001
+  expect(await u.undo()).toBe(false)
+})
