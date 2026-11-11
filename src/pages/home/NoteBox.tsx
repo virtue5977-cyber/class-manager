@@ -4,6 +4,9 @@ import { useDb } from '../../app/context'
 import type { NoteRec } from '../../lib/db/types'
 import { createNote } from '../../lib/notes/notes'
 
+/** 최근 노트: 고정 먼저, 그다음 최근에 고친 순(끌어서 정한 순서와 상관없이) 10개 */
+export const recentNotes = (notes: NoteRec[]) => [...notes].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at)).slice(0, 10)
+
 /** 노트함: 최근 노트 10개(아이콘·줄 맞춤, 넓은 칸이면 미리보기·날짜) + 새 노트 */
 export default function NoteBox({ notes }: { notes: NoteRec[] }) {
   const db = useDb()
@@ -18,7 +21,7 @@ export default function NoteBox({ notes }: { notes: NoteRec[] }) {
       </div>
       {notes.length === 0 && <p className="muted">노트가 없습니다.</p>}
       <ul className="plain notebox-list">
-        {notes.slice(0, 10).map((n) => (
+        {recentNotes(notes).map((n) => (
           <li key={n.id}>
             <Link to={`/notes?id=${n.id}`} className="note-link notebox-row">
               <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>

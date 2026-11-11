@@ -44,3 +44,13 @@ test('Esc는 끌기를 그만둔다(onCancel), 오른쪽 버튼은 무시', () =
   window.dispatchEvent(new MouseEvent('pointermove', { clientX: 0, clientY: 30 }))
   expect(log2).toEqual([])
 })
+
+test('브라우저가 끌기를 가져가면(pointercancel) 취소하고 정리한다: 다음 클릭에 엉뚱한 곳에 놓이지 않는다', () => {
+  const log: string[] = []
+  startPointerDrag({ clientX: 0, clientY: 0, button: 0 } as PointerEvent, { onMove: () => log.push('m'), onDrop: () => log.push('drop'), onCancel: () => log.push('cancel') })
+  window.dispatchEvent(new MouseEvent('pointermove', { clientX: 0, clientY: 30 }))
+  window.dispatchEvent(new MouseEvent('pointercancel'))
+  window.dispatchEvent(new MouseEvent('pointerup', { clientX: 5, clientY: 60 }))
+  expect(log).toEqual(['m', 'cancel'])
+  expect(document.body.classList.contains('is-dragging')).toBe(false)
+})

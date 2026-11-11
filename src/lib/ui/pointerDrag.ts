@@ -26,6 +26,7 @@ export function startPointerDrag(e: Pick<PointerEvent, 'clientX' | 'clientY' | '
   const stop = () => {
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', up)
+    window.removeEventListener('pointercancel', cancel)
     window.removeEventListener('keydown', key)
     document.body.classList.remove('is-dragging')
   }
@@ -43,8 +44,14 @@ export function startPointerDrag(e: Pick<PointerEvent, 'clientX' | 'clientY' | '
     stop()
     if (dragging) h.onCancel?.()
   }
+  // 브라우저가 끌기를 가져가면(글자 끌기 등) 취소
+  const cancel = () => {
+    stop()
+    if (dragging) h.onCancel?.()
+  }
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', up)
+  window.addEventListener('pointercancel', cancel)
   window.addEventListener('keydown', key)
 }
 

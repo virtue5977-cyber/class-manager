@@ -12,8 +12,9 @@ export async function addTodo(db: AppDB, parts: TodoPart[], due: string | null =
     const at = open.find((t) => !!t.due && t.due > due)
     if (at) {
       order = at.order
+      // 완료한 할 일도 함께 밀어 순서가 겹치지 않게
       await db.transaction('rw', db.todos, async () => {
-        for (const t of open) if (t.order >= order) await save(db.todos, { ...t, order: t.order + 1 })
+        for (const t of all) if (t.order >= order) await save(db.todos, { ...t, order: t.order + 1 })
       })
     }
   }

@@ -83,7 +83,9 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
     return { kind: 'line' as const, id: li.dataset.id, after: y > r.top + r.height / 2 }
   }
   function beginDrag(e: React.PointerEvent, kind: 'note' | 'folder', id: string) {
-    if ((e.target as Element).closest('button, input, select')) return
+    // 폴더 이름 단추·노트 링크에서도 끌 수 있다(5px 넘게 움직여야 끌기). 다른 단추·입력 칸은 그대로
+    const t = e.target as Element
+    if (t.closest('input, select') || (t.closest('button') && !t.closest('.folder-name'))) return
     let last: typeof drop
     startPointerDrag(e, {
       onStart: () => setDrag({ kind, id }),

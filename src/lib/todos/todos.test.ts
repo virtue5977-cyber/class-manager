@@ -41,3 +41,14 @@ test('할 일 순서: 끌어 바꾼 순서를 지키고, 새 할 일은 마감�
   await addTodo(db, ['마'])
   expect((await listTodos(db)).map((t) => t.parts[0]).at(-1)).toBe('마')
 })
+
+test('마감일 자리에 끼울 때 완료한 할 일도 함께 밀어 순서가 겹치지 않는다', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  const a = await addTodo(db, ['가'], '2026-11-20')
+  const b = await addTodo(db, ['나'], '2026-11-25')
+  await setTodoDone(db, b.id, true)
+  await addTodo(db, ['다'], '2026-11-12')
+  const orders = (await db.todos.toArray()).map((t) => t.order)
+  expect(new Set(orders).size).toBe(orders.length)
+  void a
+})

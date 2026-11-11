@@ -42,7 +42,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
     const n = ++seq.current
     const map = await loadMonthData(db, classId, all[0], all[all.length - 1])
     if (n === seq.current) setData(map)
-  }, [db, classId, month])
+  }, [db, classId, month, weekends])
   useEffect(() => {
     load()
   }, [load])
