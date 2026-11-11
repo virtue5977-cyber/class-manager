@@ -1,9 +1,9 @@
 {
-  "version": "0.10.0",
+  "version": "0.11.0",
   "shell": 1,
-  "bundle": "bundle-0.10.0.zip",
-  "sha256": "f4f7d6e579bd90b95d4a69d6e1233de3e8373aab3c20c72ac608a19911da91c0",
-  "sig": "uK28q/8VhJFNBtX+xfVzfcy3y99Sq9ABWZ8EKztj9UX5+4Tfkui/JsQ/56VCM6zfPR/x9Aiia0aY/+ze0Us7AA==",
-  "note": "0.10.0: 대답 아래 작은 아이콘, 할 일·노트 끌어 순서 바꾸기·폴더로 옮기기, 전달사항 칸 자리·아이콘 도구·전체 지우기, 홈 오른쪽 칸 위로·요약 줄(방학 D-day), 달력 일요일부터, 노트 아이콘 줄 맞춤, 모든 내보내기에 바로 인쇄",
+  "bundle": "bundle-0.11.0.zip",
+  "sha256": "b89207215c8cc09975e2fd3badfd820445352509843117360e188611540f466a",
+  "sig": "fX5QHNrxJDZ63GLTeZiGEmih8D/TCbfLFd6emCgJNcB7x2n4bMZo8PDbx6Tyu0IIXVmhA8mYqkuqWQadaR3tBA==",
+  "note": "0.11.0: 다른 학교 양식 인식 개선(예시를 채워 올려도 됨, ◯ 표시 칸, 표 밖 날짜), 구글 Gemini API 키 연결(새 설치형 필요), 홈 오른쪽 칸 높이 맞춤, 학급 명단 기본 표",
   "date": "2026-11-11"
 }
