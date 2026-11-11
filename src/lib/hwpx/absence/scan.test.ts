@@ -174,3 +174,35 @@ test('양식 전체가 큰 상자(표) 안에 있어도 그 안의 날짜 글줄
   const sec = await section(await hwpxWith(tbl([[boxCell]])))
   expect(findDateLines(sec).map((d) => d.text)).toEqual(['2026년 11월 11일'])
 })
+
+test('리뷰 고침: 예시 값이 "질병"이어도 결석종류 값 칸으로 쓰고, 그 칸을 ◯ 이름표로 보지 않는다', async () => {
+  const cells = scanCells(await section(await hwpxWith(tbl([[tc(0, 0, t('구 분')), tc(0, 1, t('질병'))], [tc(1, 0, t('증빙서류')), tc(1, 1, '')]]))))
+  const slots = matchByRules(cells)
+  expect(slots.find((s) => s.field === '결석종류')?.target).toBe(1)
+  expect(slots.some((s) => s.field === '표시_질병')).toBe(false)
+})
+
+test('리뷰 고침: 빈 양식의 □ 목록·(서명) 안내 칸은 덮어쓰지 않고, 긴 안내 글은 이름표로 보지 않는다', async () => {
+  const cells = scanCells(await section(await hwpxWith(tbl([
+    [tc(0, 0, t('구 분')), tc(0, 1, t('□질병 □미인정 □기타'))],
+    [tc(1, 0, t('보호자 성명')), tc(1, 1, t('(서명 또는 인)'))],
+    [tc(2, 0, t('결석 일수는 학교장이 정한 날짜를 기준으로 셉니다')), tc(2, 1, t('3'))],
+  ]))))
+  const slots = matchByRules(cells)
+  expect(slots.some((s) => s.field === '결석종류')).toBe(false)
+  expect(slots.some((s) => s.field === '일수')).toBe(false)
+})
+
+test('리뷰 고침: AI에는 이름표 자리(왼쪽 첫 칸 등)의 글만, 그 오른쪽 값은 이름표 목록에 없어도 [값]으로', async () => {
+  const cells = scanCells(await section(await hwpxWith(tbl([
+    [tc(0, 0, t('보호자 성명')), tc(0, 1, t('김보호'))],
+    [tc(1, 0, t('주소')), tc(1, 1, t('가상시 가상구 1-2'))],
+    [tc(2, 0, t('연락처')), tc(2, 1, t('010-1234-5678 집으로 연락 바랍니다 늦은 시간에는 문자로 부탁'))],
+  ]))))
+  const sent: string[] = []
+  await matchByAi(cells, [], (async (r: unknown) => (sent.push(JSON.stringify(r)), '{"pairs":[]}')) as never, [])
+  expect(sent[0]).toContain('보호자 성명')
+  expect(sent[0]).not.toContain('김보호')
+  expect(sent[0]).not.toContain('가상구')
+  expect(sent[0]).not.toContain('1234')
+})

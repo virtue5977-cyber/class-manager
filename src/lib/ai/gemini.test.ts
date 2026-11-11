@@ -40,3 +40,8 @@ test('연결 방식 gemini면 Gemini로, 구글 연결은 이름을 늘 가린�
   expect(effectiveMask({ mask_names: false, ai_provider: 'gemini' })).toBe(true)
   expect(effectiveMask({ mask_names: false, ai_provider: 'api-key' })).toBe(false)
 })
+
+test('리뷰 고침: 성공 응답이 JSON이 아니면 한국어 오류', async () => {
+  const bad = createGeminiCaller(async () => 'k', async () => '', async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('x') } }))
+  await expect(bad({ system: '', user: '' })).rejects.toThrow('구글 AI 응답을 읽지 못했습니다')
+})

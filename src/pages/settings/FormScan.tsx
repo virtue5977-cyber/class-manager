@@ -14,7 +14,8 @@ export default function FormScan({ name, bytes, cells, aiOn, onDone, onCancel }:
   const db = useDb()
   const fs = useFs()
   const ai = useAi()
-  const [pick, setPick] = useState<Record<string, number | ''>>(() => Object.fromEntries(SLOT_FIELDS.map((f) => [f.field, ''])))
+  // 규칙으로 찾은 자리는 처음 그릴 때부터 채운다(잠깐 '(없음)'이 보이지 않게)
+  const [pick, setPick] = useState<Record<string, number | ''>>(() => ({ ...Object.fromEntries(SLOT_FIELDS.map((f) => [f.field, ''])), ...Object.fromEntries(matchByRules(cells).map((s) => [s.field, s.target])) }))
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string>()
   useEffect(() => {

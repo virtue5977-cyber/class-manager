@@ -223,6 +223,11 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
                         {shownFields.map((f) => <td key={f.key}>{fieldValue(st, f)}</td>)}
                       </tr>
                     ))}
+                    {shown.length === 0 && (
+                      <tr>
+                        <td colSpan={3 + shownFields.length} className="muted">찾는 학생이 없습니다.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

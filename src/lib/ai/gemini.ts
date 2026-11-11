@@ -33,7 +33,9 @@ export function createGeminiCaller(getKey: () => Promise<string>, getModel: () =
       if (res.status >= 500) throw new AiError('구글 AI 서버가 바쁩니다. 잠시 뒤 다시 시도하세요.', 'SERVER')
       throw new AiError(`구글 AI 요청 오류(${res.status})`, 'HTTP')
     }
-    const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] }
+    const body = (await res.json().catch(() => {
+      throw new AiError('구글 AI 응답을 읽지 못했습니다. 다시 시도하세요.', 'FORMAT')
+    })) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] }
     const text = (body.candidates?.[0]?.content?.parts ?? []).filter((p) => !p.thought).map((p) => p.text ?? '').join('')
     if (!text.trim()) throw new AiError('AI 응답이 비어 있습니다(구글이 답을 막았을 수 있습니다).', 'EMPTY')
     return text
