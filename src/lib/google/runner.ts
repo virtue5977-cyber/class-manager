@@ -42,3 +42,11 @@ export function createSyncRunner(run: () => Promise<void>, delay: number) {
     },
   }
 }
+
+let chain: Promise<unknown> = Promise.resolve()
+/** 구글 맞춤은 앱 안에서 한 번에 하나(설정의 '지금 동기화'와 자동 맞춤이 겹쳐 같은 일정이 두 번 생기지 않게). */
+export function withGoogleLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = chain.then(fn, fn)
+  chain = next.catch(() => {})
+  return next
+}

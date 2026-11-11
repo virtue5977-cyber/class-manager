@@ -144,7 +144,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
               value={edit.name}
               onChange={(e) => setEdit({ id: f.id, name: e.target.value })}
               onKeyDown={(e) => {
-                if (e.nativeEvent.isComposing) return
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
                 if (e.key === 'Enter') (e.preventDefault(), fAct(async () => { await renameFolder(db, f.id, edit.name); setEdit(undefined) }))
                 if (e.key === 'Escape') setEdit(undefined)
               }}

@@ -44,7 +44,11 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
   /** 대답 복사: 요약 + 빈 줄 + 카드 글 */
   async function copy() {
     const lines = cardText().map((x) => (x.type === 'bullet' ? `- ${x.text}` : x.text))
-    await navigator.clipboard?.writeText([chat.summary, ...(lines.length ? ['', ...lines] : [])].join('\n'))
+    try {
+      await navigator.clipboard?.writeText([chat.summary, ...(lines.length ? ['', ...lines] : [])].join('\n'))
+    } catch {
+      return setNote('복사하지 못했습니다. 글을 직접 골라 복사하세요.')
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

@@ -208,7 +208,8 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     }
     const el = e.currentTarget
     // 방향키: 첫·마지막 줄(맨 앞·끝)에서 옆 글 블록으로(구분선·파일·표는 건너뜀)
-    const mv = caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, el)
+    // / 메뉴가 열려 있으면 메뉴가 먼저(←→로도 블록을 떠나지 않는다)
+    const mv = items.length ? null : caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, el)
     if (mv && ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || atVisualEdge(el, mv.dir))) {
       const i = blocks.findIndex((x) => x.id === b.id)
       const dir = mv.dir
@@ -375,7 +376,11 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                     placeholder={i === blocks.length - 1 ? "글을 쓰거나 '/'로 블록 고르기" : ''}
                     onChange={(e) => {
                       // 문단 맨 앞에 '# ', '- ', '1. ', '[] ' 등을 치면 그 블록으로
-                      const md = b.type === 'p' && e.target.value.length === (b.text ?? '').length + 1 ? markdownPrefix(e.target.value) : null
+                      // 방금 친 글자가 띄어쓰기이고, 커서 앞이 바꾸기 글자(예: '- ')뿐일 때만
+                      const v = e.target.value
+                      const at = e.target.selectionStart ?? v.length
+                      const head = markdownPrefix(v.slice(0, at))
+                      const md = b.type === 'p' && v.length === (b.text ?? '').length + 1 && v[at - 1] === ' ' && head && head.rest === '' ? { type: head.type, rest: v.slice(at) } : null
                       if (md) {
                         setBlocks((bs) => setType(bs, b.id, md.type).map((x) => (x.id === b.id ? { ...x, text: md.rest } : x)))
                         focusNext.current = { id: b.id, caret: 0 }

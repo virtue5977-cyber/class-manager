@@ -116,7 +116,8 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   const drag = (axis: 'chatH' | 'sideW') => (e: RPointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     const start = axis === 'chatH' ? e.clientY : e.clientX
-    const from = axis === 'chatH' ? chatHeight : layout[axis]
+    // 오른쪽 폭은 화면에 보이는 실제 폭에서 시작(60% 한도에 걸려 있으면 저장값과 다르다)
+    const from = axis === 'chatH' ? chatHeight : bodyRef.current?.querySelector('.home-side')?.getBoundingClientRect().width || layout[axis]
     const move = (ev: PointerEvent) => {
       const d = (axis === 'chatH' ? ev.clientY : ev.clientX) - start
       // 오른쪽 칸: 240px ~ 홈 본문의 60%(대화 칸은 320px 아래로 줄지 않게)
@@ -145,7 +146,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
         <TodaySummary today={today} />
       </div>
       <GettingStarted />
-      <div className="home-body" ref={bodyRef} style={{ gridTemplateColumns: sidePanels.length ? `minmax(320px, 1fr) 6px min(${layout.sideW}px, 60%)` : 'minmax(0, 1fr)' }}>
+      <div className="home-body" ref={bodyRef} style={{ gridTemplateColumns: sidePanels.length ? `minmax(min(320px, 38%), 1fr) 6px min(${layout.sideW}px, 60%)` : 'minmax(0, 1fr)' }}>
         <div className="home-main">
           <div className="home-tabs" role="tablist" aria-label="홈 보기">
             <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
@@ -220,7 +221,7 @@ function PanelFrame({ label, height, onHeight, onMove, children }: { label: stri
   return (
     <div className="panel-frame">
       <button type="button" className="icon-btn panel-move" aria-label={`${label} 왼쪽 탭으로`} title="왼쪽 탭으로 옮기기" onClick={onMove}>
-        ⇤
+        ⇤ 탭으로
       </button>
       <div className={`panel-body${h ? ' sized' : ''}`} ref={box} style={h ? { height: h } : undefined}>
         {children}

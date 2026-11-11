@@ -232,3 +232,26 @@ test('폴더: + 폴더 → 이름 짓기, 폴더를 고르고 새 노트면 그 
   await waitFor(async () => expect((await db.notes.get(n.id))!.folder_id).toBeNull())
   expect(screen.queryByRole('button', { name: /학급 행사 폴더\(/ })).not.toBeInTheDocument()
 })
+
+test('글자 바꾸기는 줄 맨 앞에서 띄어쓰기를 칠 때만: 이미 "- 체육복"인 줄 끝에 글자를 쳐도 그대로', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  const b1 = blocks()[0]
+  fireEvent.change(b1, { target: { value: '- 체육복' } })
+  await user.click(b1)
+  await user.keyboard('{End}!')
+  expect(b1.closest('.nb')).toHaveClass('nb-p')
+  expect(b1).toHaveValue('- 체육복!')
+})
+
+test('/ 메뉴가 열려 있으면 ←→도 블록을 옮기지 않는다', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('위{Enter}/제')
+  expect(await screen.findByRole('listbox', { name: '블록 고르기' })).toBeInTheDocument()
+  await user.keyboard('{Home}{ArrowLeft}')
+  expect(screen.getByRole('textbox', { name: '블록 2' })).toHaveFocus()
+})

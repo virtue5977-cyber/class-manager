@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { createDb } from '../../lib/db/schema'
@@ -99,4 +99,18 @@ test('붙여넣어 AI로 나누기 → 항목 추가', async () => {
   await user.type(screen.getByLabelText('붙여 넣을 글'), '공지 글')
   await user.click(screen.getByRole('button', { name: 'AI로 나누기' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toEqual(['강당 집합', '체육복']))
+})
+
+test('저장된 줄을 다 지우고 떠나면 그 줄을 없애고(되돌리기 있음), 한글 조합 중(229) 방향키·Enter는 줄을 옮기지 않는다', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  await waitFor(() => expect(rows()).toHaveLength(2))
+  const second = screen.getByRole('textbox', { name: '2번 내용' })
+  fireEvent.keyDown(second, { key: 'ArrowUp', keyCode: 229 })
+  fireEvent.keyDown(second, { key: 'Enter', keyCode: 229 })
+  expect(screen.queryByRole('textbox', { name: '새 전달사항 줄' })).not.toBeInTheDocument()
+  await user.clear(second)
+  await user.click(document.body)
+  await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toEqual(['동의서 걷기']))
+  expect(screen.getByRole('button', { name: /되돌리기/ })).toBeInTheDocument()
 })

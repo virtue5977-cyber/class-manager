@@ -65,7 +65,7 @@ export default function NoticeTab({ date }: { date: string }) {
   }
   /** ↑↓←→: 첫·마지막 줄(또는 맨 앞·끝)에서 옆 줄로 */
   const arrow = (e: KeyboardEvent<HTMLTextAreaElement>, id: string): boolean => {
-    const m: CaretMove | null = caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, e.currentTarget)
+    const m: CaretMove | null = caretNav({ ...e, isComposing: e.nativeEvent.isComposing || e.keyCode === 229 }, e.currentTarget)
     if (!m || ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !atVisualEdge(e.currentTarget, m.dir))) return false
     const j = ids.indexOf(id) + m.dir
     const to = ids[j]
@@ -183,14 +183,19 @@ export default function NoticeTab({ date }: { date: string }) {
               onKeyDown={(e) => {
                 if (arrow(e, n.id)) return
                 // Enter는 저장하고 다음 줄로(줄바꿈은 Shift+Enter). 저장은 떠날 때(blur) 한다.
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                   e.preventDefault()
                   const el = e.currentTarget
                   goNext(n.id)
                   if (document.activeElement === el) el.blur()
                 }
               }}
-              onBlur={(e) => e.target.value.trim() !== n.text && act(() => updateNotice(db, n.id, { text: e.target.value }))}
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                // 다 지우고 떠나면 그 줄을 없앤다(되돌리기 가능)
+                if (!v) return void act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))
+                if (v !== n.text) act(() => updateNotice(db, n.id, { text: e.target.value }))
+              }}
             />
             <button type="button" className="notice-period link" aria-label={`${n.text} 기간 고치기`} onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>
               {period(n)}
@@ -230,7 +235,7 @@ export default function NoticeTab({ date }: { date: string }) {
                 }}
                 onKeyDown={(e) => {
                   if (arrow(e, DRAFT)) return
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                     e.preventDefault()
                     const t = draft.trim()
                     if (!t) return
