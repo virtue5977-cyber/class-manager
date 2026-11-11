@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { closeAllMenus, installMenuAutoClose } from '../lib/ui/autoCloseMenus'
 import { dispatchShortcut, matchShortcut } from '../lib/ui/shortcuts'
 
 const isField = (t: EventTarget | null) => !!t && t instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)
@@ -7,6 +8,10 @@ const isField = (t: EventTarget | null) => !!t && t instanceof HTMLElement && (/
 /** 앱 전체 단축키. 메뉴 이동은 여기서, 나머지(앞뒤·내보내기·이름 가림·명령·닫기)는 화면에 알린다. */
 export default function Shortcuts() {
   const navigate = useNavigate()
+  const { pathname, search } = useLocation()
+  // 펼침 메뉴: 바깥 누르기·Esc·항목 고르기·화면 이동에 닫힌다
+  useEffect(() => installMenuAutoClose(document), [])
+  useEffect(() => closeAllMenus(document), [pathname, search])
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const a = matchShortcut(e, isField(e.target))
