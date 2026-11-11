@@ -599,6 +599,7 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 @media (max-width: 900px) { .home-body { grid-template-columns: 1fr !important; } .resize-v { display: none; } .home-side { padding-left: 0; margin-top: 12px; } }
 /* 전달사항 탭 */
 .notice-tab { overflow-y: auto; }
+.notice-tab > .notice-list, .notice-tab > .row.between { align-self: stretch; }
 .notice-list { display: flex; flex-direction: column; gap: 4px; }
 .notice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 0; }
 .notice-box { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 6px; border: 1px solid transparent; border-radius: 6px; padding-right: 4px; }
