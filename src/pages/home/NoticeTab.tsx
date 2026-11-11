@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { atVisualEdge, caretNav, placeCaret, type CaretMove } from '../../lib/ui/caretNav'
 import Icon from '../../components/Icon'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { NoticeItemRec } from '../../lib/db/types'
@@ -13,6 +14,7 @@ import { useLive } from '../../lib/ui/useLive'
 import ExportMenu from '../../components/ExportMenu'
 import { Link } from 'react-router-dom'
 
+const DRAFT = '__draft'
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
 const period = (n: NoticeItemRec) => (n.start_date === n.end_date ? md(n.start_date) : `${md(n.start_date)}~${md(n.end_date)}`)
 
@@ -29,9 +31,56 @@ export default function NoticeTab({ date }: { date: string }) {
   const fs = useFs()
   const ai = useAi()
   const list = useLive<NoticeItemRec[]>(() => noticesOn(db, date), [db, date], [])
-  const [text, setText] = useState('')
-  const [start, setStart] = useState(date)
-  const [end, setEnd] = useState(date)
+  /** 새 줄(아직 저장 안 함). null이면 없음 */
+  const [draft, setDraft] = useState<string | null>(null)
+  const fields = useRef(new Map<string, HTMLTextAreaElement>())
+  const pending = useRef<{ id: string; caret: number | 'end' } | null>(null)
+  const ids = [...list.map((n) => n.id), ...(draft !== null ? [DRAFT] : [])]
+  // 줄을 옮긴 뒤 초점·커서(새 줄은 그려진 다음에)
+  useEffect(() => {
+    const p = pending.current
+    const el = p && fields.current.get(p.id)
+    if (!p || !el) return
+    pending.current = null
+    el.focus()
+    const c = p.caret === 'end' ? el.value.length : p.caret
+    el.setSelectionRange(c, c)
+  })
+  const focusRow = (id: string, caret: number | 'end' = 'end') => {
+    pending.current = { id, caret }
+    const el = fields.current.get(id)
+    if (el) {
+      pending.current = null
+      el.focus()
+      const c = caret === 'end' ? el.value.length : caret
+      el.setSelectionRange(c, c)
+    }
+  }
+  /** 다음 줄로(마지막이면 새 빈 줄) */
+  const goNext = (id: string) => {
+    const i = ids.indexOf(id)
+    if (i >= 0 && i < ids.length - 1) return focusRow(ids[i + 1])
+    setDraft('')
+    pending.current = { id: DRAFT, caret: 0 }
+  }
+  /** ↑↓←→: 첫·마지막 줄(또는 맨 앞·끝)에서 옆 줄로 */
+  const arrow = (e: KeyboardEvent<HTMLTextAreaElement>, id: string): boolean => {
+    const m: CaretMove | null = caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, e.currentTarget)
+    if (!m || ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !atVisualEdge(e.currentTarget, m.dir))) return false
+    const j = ids.indexOf(id) + m.dir
+    const to = ids[j]
+    const el = to && fields.current.get(to)
+    if (!el) return false
+    e.preventDefault()
+    focusRow(to, placeCaret(el.value, m))
+    return true
+  }
+  const fieldRef = (id: string) => (el: HTMLTextAreaElement | null) => {
+    if (el) {
+      fields.current.set(id, el)
+      grow(el)
+    } else fields.current.delete(id)
+  }
   const [msg, setMsg] = useState<string>()
   const [undo, setUndo] = useState<{ text: string; run: () => Promise<void> }>()
   const [rangeFor, setRangeFor] = useState<string>()
@@ -122,19 +171,23 @@ export default function NoticeTab({ date }: { date: string }) {
         {list.map((n, i) => (
           <li key={n.id} className={`notice-row${n.done ? ' done' : ''}${n.pinned ? ' pinned' : ''}`}>
             <input type="checkbox" aria-label={`${n.text} 완료`} checked={n.done} onChange={(e) => act(() => updateNotice(db, n.id, { done: e.target.checked }))} />
+            <span className="notice-box">
             <textarea
               rows={1}
               className="notice-text"
               aria-label={`${i + 1}번 내용`}
               defaultValue={n.text}
               key={n.text}
-              ref={grow}
+              ref={fieldRef(n.id)}
               onInput={(e) => grow(e.currentTarget)}
               onKeyDown={(e) => {
-                // Enter는 저장(줄바꿈은 Shift+Enter)
+                if (arrow(e, n.id)) return
+                // Enter는 저장하고 다음 줄로(줄바꿈은 Shift+Enter). 저장은 떠날 때(blur) 한다.
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
-                  e.currentTarget.blur()
+                  const el = e.currentTarget
+                  goNext(n.id)
+                  if (document.activeElement === el) el.blur()
                 }
               }}
               onBlur={(e) => e.target.value.trim() !== n.text && act(() => updateNotice(db, n.id, { text: e.target.value }))}
@@ -150,6 +203,7 @@ export default function NoticeTab({ date }: { date: string }) {
             <button type="button" className="icon-btn" aria-label={`${n.text} 아래로`} disabled={i === list.length - 1} onClick={() => act(() => moveNotice(db, date, n.id, 1))}>↓</button>
             <button type="button" className="icon-btn" aria-label={`${n.text} 지우기`} onClick={() => act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))}>×</button>
             </span>
+            </span>
             {rangeFor === n.id && (
               <span className="row notice-range">
                 <input type="date" aria-label="시작" defaultValue={n.start_date} onChange={(e) => e.target.value && act(() => updateNotice(db, n.id, { start_date: e.target.value }))} />
@@ -159,24 +213,45 @@ export default function NoticeTab({ date }: { date: string }) {
             )}
           </li>
         ))}
-        {list.length === 0 && <li className="muted">이날 전달사항이 없습니다.</li>}
+        {draft !== null && (
+          <li className="notice-row draft">
+            <input type="checkbox" aria-hidden="true" tabIndex={-1} disabled />
+            <span className="notice-box">
+              <textarea
+                rows={1}
+                className="notice-text"
+                aria-label="새 전달사항 줄"
+                placeholder="전달사항을 쓰고 Enter"
+                value={draft}
+                ref={fieldRef(DRAFT)}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  grow(e.target)
+                }}
+                onKeyDown={(e) => {
+                  if (arrow(e, DRAFT)) return
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault()
+                    const t = draft.trim()
+                    if (!t) return
+                    setDraft('')
+                    act(() => addNotice(db, { text: t, start_date: date, end_date: date }))
+                  }
+                }}
+                onBlur={() => {
+                  const t = (draft ?? '').trim()
+                  setDraft(null)
+                  if (t) act(() => addNotice(db, { text: t, start_date: date, end_date: date }))
+                }}
+              />
+            </span>
+          </li>
+        )}
+        {list.length === 0 && draft === null && <li className="muted">이날 전달사항이 없습니다.</li>}
       </ul>
-      <form
-        className="row notice-add"
-        onSubmit={(e) => {
-          e.preventDefault()
-          act(async () => {
-            await addNotice(db, { text, start_date: start, end_date: end })
-            setText('')
-          })
-        }}
-      >
-        <input aria-label="새 전달사항" value={text} onChange={(e) => setText(e.target.value)} placeholder="전달사항 직접 추가" />
-        <input type="date" aria-label="시작 날짜" value={start} onChange={(e) => setStart(e.target.value)} />
-        ~
-        <input type="date" aria-label="끝 날짜" value={end} onChange={(e) => setEnd(e.target.value)} />
-        <button type="submit">추가</button>
-      </form>
+      <button type="button" className="link notice-add-btn" onClick={() => { setDraft((d) => d ?? ''); pending.current = { id: DRAFT, caret: 'end' } }}>
+        + 추가
+      </button>
     </section>
   )
 }
