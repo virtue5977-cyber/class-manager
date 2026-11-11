@@ -1,4 +1,4 @@
-import { DEFAULT_MENU, DEFAULT_PANELS, mergeOrder, movePref, readPrefs, savePrefs, togglePref } from './layoutPrefs'
+import { DEFAULT_MENU, DEFAULT_PANELS, mergeOrder, movePref, panelPlace, readPrefs, savePrefs, setPlace, togglePref } from './layoutPrefs'
 
 beforeEach(() => localStorage.clear())
 
@@ -29,4 +29,23 @@ test('옮기기·숨기기(홈은 숨길 수 없음), 저장하면 다시 읽힌
   const q = readPrefs()
   expect(q.panels.find((x) => x.key === 'meal')!.hidden).toBe(true)
   expect(q.sidebarW).toBe(320) // 160~320
+})
+
+test('칸 자리: 옛 저장값(자리 없음)은 모두 오른쪽, 높이는 없음', () => {
+  localStorage.setItem('watson.layout', JSON.stringify({ panels: [{ key: 'notes', hidden: false }, { key: 'todo', hidden: true }] }))
+  const p = readPrefs()
+  expect(p.panels.map(panelPlace)).toEqual(['side', 'hidden', 'side', 'side'])
+  expect(p.panelH).toEqual({})
+})
+
+test('칸 자리 바꾸기(오른쪽 / 왼쪽 탭 / 숨김)와 높이가 저장되고 다시 읽힌다(높이는 120~900)', () => {
+  let p = readPrefs()
+  p = { ...p, panels: setPlace(setPlace(p.panels, 'notes', 'tab'), 'meal', 'hidden'), panelH: { todo: 50, upcoming: 300 } }
+  expect(p.panels.map((x) => [x.key, panelPlace(x)])).toEqual([['todo', 'side'], ['upcoming', 'side'], ['notes', 'tab'], ['meal', 'hidden']])
+  savePrefs(p)
+  const q = readPrefs()
+  expect(q.panels.map(panelPlace)).toEqual(['side', 'side', 'tab', 'hidden'])
+  expect(q.panelH).toEqual({ todo: 120, upcoming: 300 })
+  // 숨긴 칸을 다시 보이게 하면 전에 있던 자리가 아니라 고른 자리로
+  expect(panelPlace(setPlace(q.panels, 'meal', 'tab').find((x) => x.key === 'meal')!)).toBe('tab')
 })

@@ -564,6 +564,17 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .resize-v { width: 6px; align-self: stretch; cursor: col-resize; border-radius: 3px; }
 .resize-h:hover, .resize-v:hover { background: var(--accent-soft); }
 .home-side { display: flex; flex-direction: column; gap: 12px; padding-left: 10px; min-width: 0; }
+/* 홈 칸 틀: 자리 옮기기 단추(마우스 올릴 때), 높이 끌기 */
+.panel-frame { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.panel-frame > .panel-move { position: absolute; top: 8px; right: 6px; z-index: 2; opacity: 0; transition: opacity .12s; }
+.panel-frame:hover > .panel-move, .panel-frame > .panel-move:focus-visible { opacity: 1; }
+.panel-body { min-height: 0; }
+.panel-body.sized { overflow: hidden; display: flex; flex-direction: column; }
+.panel-body.sized > .panel-card { flex: 1; min-height: 0; overflow-y: auto; }
+.panel-resize { margin: 1px 0 -5px; }
+.home-tabpanel { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.home-tabpanel > .panel-move { align-self: flex-end; font-size: 12px; }
+.home-tabpanel > .panel-card { border: 0; padding: 0; background: transparent; }
 .panel-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .panel-card h3 { margin: 0; font-size: 14px; }
 .todo-list li { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; }

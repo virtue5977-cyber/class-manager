@@ -29,3 +29,14 @@ test('메뉴 기본 순서는 홈·달력·학급·출결·상담일지·노트�
   await user.click(within(card).getByRole('button', { name: '메뉴·배치 기본으로' }))
   expect(names()).toEqual(['홈', '달력', '학급', '출결', '상담일지', '노트함'])
 })
+
+test('홈 칸 자리: 오른쪽 / 왼쪽 탭 / 숨김을 고르면 저장된다', async () => {
+  const user = userEvent.setup()
+  render(<MemoryRouter><LayoutSettings /></MemoryRouter>)
+  const sel = screen.getByRole('combobox', { name: '홈 노트함 자리' })
+  expect(sel).toHaveValue('side')
+  await user.selectOptions(sel, 'tab')
+  expect(JSON.parse(localStorage.getItem('watson.layout')!).panels.find((x: { key: string }) => x.key === 'notes').place).toBe('tab')
+  await user.selectOptions(screen.getByRole('combobox', { name: '홈 오늘 급식 자리' }), 'hidden')
+  expect(JSON.parse(localStorage.getItem('watson.layout')!).panels.find((x: { key: string }) => x.key === 'meal').hidden).toBe(true)
+})

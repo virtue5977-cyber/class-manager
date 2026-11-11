@@ -8,6 +8,9 @@ import { addLocalEvent } from '../../lib/events/localEvents'
 import { addNotice } from '../../lib/notices/notices'
 import { createNote } from '../../lib/notes/notes'
 import { newRecord } from '../../lib/db/records'
+import { resetPrefs } from '../../lib/ui/layoutPrefs'
+
+beforeEach(() => resetPrefs())
 import type { SchoolCalendarRec } from '../../lib/db/types'
 import HomePage from './HomePage'
 
@@ -41,11 +44,11 @@ test('새 홈: 제목·입력 막대·할 일·다가오는 일정(학사·내 �
   expect(within(up).getByText('학사')).toBeInTheDocument()
 })
 
-test('전달사항이 없는 날엔 탭이 없고, 있으면 "전달사항 2"', async () => {
+test('전달사항 탭은 늘 있고(없으면 "전달사항"), 있으면 "전달사항 2"', async () => {
   const { db, show } = await home()
   const a = show()
   await screen.findByRole('combobox', { name: '명령 입력' })
-  expect(screen.queryByRole('tab', { name: /전달사항/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '전달사항' })).toBeInTheDocument()
   a.unmount()
   await addNotice(db, { text: '체육복', start_date: '2026-11-10' })
   await addNotice(db, { text: '동의서', start_date: '2026-11-09', end_date: '2026-11-11' })
@@ -145,4 +148,21 @@ test('/전달로 전달사항을 넣으면 홈이 전달사항 탭으로 바뀐�
   await waitFor(() => expect(tab).toHaveAttribute('aria-selected', 'true'))
   const box = await screen.findByDisplayValue('체육복 지참')
   expect(box.tagName).toBe('TEXTAREA') // 긴 글은 줄바꿈(잘리지 않음)
+})
+
+test('칸 자리를 "왼쪽 탭"으로 옮기면 오른쪽에서 빠지고 탭으로, "오른쪽으로"로 되돌린다', async () => {
+  const user = userEvent.setup()
+  const { show } = await home()
+  show()
+  const side = await screen.findByRole('complementary', { name: '홈 오른쪽 칸' })
+  expect(within(side).getByRole('region', { name: '노트함' })).toBeInTheDocument()
+  await user.click(within(side).getByRole('button', { name: '노트함 왼쪽 탭으로' }))
+  expect(within(side).queryByRole('region', { name: '노트함' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('tab', { name: '노트함' }))
+  const panel = screen.getByRole('tabpanel', { name: '노트함' })
+  expect(within(panel).getByRole('region', { name: '노트함' })).toBeInTheDocument()
+  await user.click(within(panel).getByRole('button', { name: '노트함 오른쪽으로' }))
+  expect(screen.queryByRole('tab', { name: '노트함' })).not.toBeInTheDocument()
+  expect(within(screen.getByRole('complementary', { name: '홈 오른쪽 칸' })).getByRole('region', { name: '노트함' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '대화' })).toHaveAttribute('aria-selected', 'true')
 })
