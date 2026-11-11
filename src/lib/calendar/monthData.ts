@@ -19,9 +19,10 @@ export interface DayData {
 export const emptyDay = (): DayData => ({ events: [], google: [], local: [], atts: [], logs: [] })
 
 /** 달력 칸: 월요일부터 6주 중 그달이 끝나는 주까지. weekends=false면 평일만. */
-export function monthCells(month: string, weekends: boolean): string[] {
+/** sundayFirst: 일요일부터 시작(달력 화면). 기본은 월요일부터(출결 작은 달력). */
+export function monthCells(month: string, weekends: boolean, sundayFirst = false): string[] {
   const first = `${month}-01`
-  const gridStart = addDays(first, -(weekday(first) - 1))
+  const gridStart = addDays(first, sundayFirst ? -(weekday(first) % 7) : -(weekday(first) - 1))
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
   let lastRow = 0
   cells.forEach((d, i) => d.startsWith(month) && (lastRow = i))

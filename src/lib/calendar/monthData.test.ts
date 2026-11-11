@@ -26,3 +26,12 @@ test('loadMonthData: 학사·내 일정·출결을 날짜별로', async () => {
   expect(r['2026-11-10'].atts).toHaveLength(1)
   expect(r['2026-11-13'].local).toHaveLength(1)
 })
+
+test('일요일부터: 주말을 보이면 칸이 일요일에서 시작하고 7칸씩(2026-11-01은 일요일)', () => {
+  const c = monthCells('2026-11', true, true)
+  expect(c[0]).toBe('2026-11-01')
+  expect(c.length % 7).toBe(0)
+  const d = monthCells('2026-12', true, true)
+  expect(d[0]).toBe('2026-11-29') // 12/1(화) 앞 일요일
+  expect(monthCells('2026-11', false, true).every((x) => x.length === 10)).toBe(true)
+})
