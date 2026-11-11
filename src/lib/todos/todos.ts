@@ -4,16 +4,38 @@ import { newRecord, save, scrubDelete } from '../db/records'
 
 export async function addTodo(db: AppDB, parts: TodoPart[], due: string | null = null): Promise<TodoRec> {
   if (!parts.some((p) => (typeof p === 'string' ? p.trim() : true))) throw new Error('할 일을 입력하세요.')
-  const order = (await db.todos.toArray()).reduce((m, t) => Math.max(m, t.order), -1) + 1
+  const all = (await db.todos.toArray()).filter((t) => !t.deleted)
+  let order = all.reduce((m, t) => Math.max(m, t.order), -1) + 1
+  // 마감일이 있으면 미완료 중 마감이 더 늦은 첫 할 일 앞에 끼운다(없으면 끝에)
+  if (due) {
+    const open = all.filter((t) => !t.done).sort((a, b) => a.order - b.order)
+    const at = open.find((t) => !!t.due && t.due > due)
+    if (at) {
+      order = at.order
+      await db.transaction('rw', db.todos, async () => {
+        for (const t of open) if (t.order >= order) await save(db.todos, { ...t, order: t.order + 1 })
+      })
+    }
+  }
   const rec = newRecord({ parts, due, done: false, done_at: null, order }) as TodoRec
   await db.todos.add(rec)
   return rec
 }
 
-/** 미완료(마감일 있는 것 먼저, 마감일 순 → 순서) 다음에 완료(최근 완료 먼저). */
+/** 끌어서 바꾼 순서대로 order를 0..n으로 */
+export async function reorderTodos(db: AppDB, ids: string[]): Promise<void> {
+  await db.transaction('rw', db.todos, async () => {
+    for (const [i, id] of ids.entries()) {
+      const t = await db.todos.get(id)
+      if (t && !t.deleted && t.order !== i) await save(db.todos, { ...t, order: i })
+    }
+  })
+}
+
+/** 미완료(순서대로 — 새 할 일은 마감일 자리에 들어가고, 끌어서 바꿀 수 있다) 다음에 완료(최근 완료 먼저). */
 export async function listTodos(db: AppDB): Promise<TodoRec[]> {
   const all = (await db.todos.toArray()).filter((t) => !t.deleted)
-  const open = all.filter((t) => !t.done).sort((a, b) => (a.due ?? '9999') .localeCompare(b.due ?? '9999') || a.order - b.order)
+  const open = all.filter((t) => !t.done).sort((a, b) => a.order - b.order)
   const done = all.filter((t) => t.done).sort((a, b) => (b.done_at ?? '').localeCompare(a.done_at ?? ''))
   return [...open, ...done]
 }

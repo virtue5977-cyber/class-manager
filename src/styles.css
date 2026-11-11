@@ -592,6 +592,13 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .panel-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .panel-card h3 { margin: 0; font-size: 14px; }
 .todo-list li { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; }
+.drag-grip { flex: none; align-self: center; color: var(--sub); cursor: grab; opacity: 0; touch-action: none; display: inline-flex; margin-left: -6px; }
+li:hover > .drag-grip, .is-dragging .drag-grip { opacity: .7; }
+@media (hover: none) { .drag-grip { opacity: .7; } }
+body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }
+li.dragging { opacity: .45; }
+li.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .todo-list li.done .todo-text { color: var(--sub); text-decoration: line-through; }
 .todo-text { flex: 1; min-width: 0; }
 .todo-text a, .note-link { color: inherit; text-decoration: none; }
