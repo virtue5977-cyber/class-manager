@@ -95,7 +95,7 @@ test('붙여넣어 AI로 나누기 → 항목 추가', async () => {
       </AppProviders>
     </MemoryRouter>,
   )
-  await user.click(screen.getByRole('button', { name: '붙여넣어 AI로 나누기' }))
+  await user.click(screen.getByRole('button', { name: '가져오기(붙여넣어 AI로 나누기)' }))
   await user.type(screen.getByLabelText('붙여 넣을 글'), '공지 글')
   await user.click(screen.getByRole('button', { name: 'AI로 나누기' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toEqual(['강당 집합', '체육복']))
@@ -113,4 +113,15 @@ test('저장된 줄을 다 지우고 떠나면 그 줄을 없애고(되돌리기
   await user.click(document.body)
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).map((n) => n.text)).toEqual(['동의서 걷기']))
   expect(screen.getByRole('button', { name: /되돌리기/ })).toBeInTheDocument()
+})
+
+test('머리 아이콘의 전체 지우기: 한 번 더 묻고, 되돌리기로 모두 돌아온다', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  await waitFor(() => expect(rows()).toHaveLength(2))
+  await user.click(screen.getByRole('button', { name: '전체 지우기' }))
+  await user.click(screen.getByRole('button', { name: '모두 지우기' }))
+  await waitFor(async () => expect(await noticesOn(db, '2026-11-11')).toEqual([]))
+  await user.click(screen.getByRole('button', { name: /되돌리기/ }))
+  await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).length).toBe(2))
 })

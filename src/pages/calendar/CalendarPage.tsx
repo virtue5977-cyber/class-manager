@@ -18,6 +18,8 @@ import { toYmd, weekday } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
 
 const DAYS = ['월', '화', '수', '목', '금', '토', '일']
+/** 주말을 보일 때 머리 줄(일요일부터 — 사용자 요청 11/11) */
+const DAYS_SUN = ['일', '월', '화', '수', '목', '금', '토']
 const shortKind = (a: AttendanceRec) => `${a.kind}${a.period ? `(${a.period}교시)` : ''}·${a.category === '출석인정' ? '인정' : a.category}`
 
 
@@ -33,14 +35,14 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
   const [data, setData] = useState<Record<string, DayData>>({})
   const seq = useRef(0)
 
-  const shownCells = monthCells(month, weekends)
-  const all = monthCells(month, true)
+  const shownCells = monthCells(month, weekends, weekends)
+  const all = monthCells(month, true, weekends)
 
   const load = useCallback(async () => {
     const n = ++seq.current
     const map = await loadMonthData(db, classId, all[0], all[all.length - 1])
     if (n === seq.current) setData(map)
-  }, [db, classId, month])
+  }, [db, classId, month, weekends])
   useEffect(() => {
     load()
   }, [load])
@@ -82,7 +84,7 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
       </PageHead>
       <div className="cal-layout">
         <div className="cal print-area" style={{ gridTemplateColumns: `repeat(${weekends ? 7 : 5}, minmax(0, 1fr))` }} role="grid" aria-label={`${month} 달력`}>
-          {DAYS.slice(0, weekends ? 7 : 5).map((d) => (
+          {(weekends ? DAYS_SUN : DAYS.slice(0, 5)).map((d) => (
             <div key={d} className="cal-head" role="columnheader">
               {d}
             </div>

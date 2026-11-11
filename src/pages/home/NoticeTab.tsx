@@ -3,7 +3,7 @@ import { atVisualEdge, caretNav, placeCaret, type CaretMove } from '../../lib/ui
 import Icon from '../../components/Icon'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { NoticeItemRec } from '../../lib/db/types'
-import { addNotice, deleteNotice, moveNotice, noticesOn, updateNotice } from '../../lib/notices/notices'
+import { addNotice, clearNoticesOn, deleteNotice, moveNotice, noticesOn, updateNotice } from '../../lib/notices/notices'
 import { splitNoticesByAi } from '../../lib/notices/aiSplit'
 import { createNote, newBlockId } from '../../lib/notes/notes'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
@@ -85,6 +85,7 @@ export default function NoticeTab({ date }: { date: string }) {
   const [undo, setUndo] = useState<{ text: string; run: () => Promise<void> }>()
   const [rangeFor, setRangeFor] = useState<string>()
   const [pasteOpen, setPasteOpen] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [raw, setRaw] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -108,24 +109,38 @@ export default function NoticeTab({ date }: { date: string }) {
     <section className="notice-tab stack" aria-label="전달사항">
       <div className="row between">
         <strong>{`${md(date)} 전달사항 ${list.length}개`}</strong>
-        <div className="row">
-          <button type="button" className="link" onClick={() => setPasteOpen((v) => !v)}>
-            붙여넣어 AI로 나누기
+        <div className="row notice-tools" role="toolbar" aria-label="전달사항 도구">
+          <button type="button" className="icon-btn tool-ico" aria-label="가져오기(붙여넣어 AI로 나누기)" title="가져오기 — 붙여넣어 AI로 나누기" aria-pressed={pasteOpen} onClick={() => setPasteOpen((v) => !v)}>
+            <Icon name="upload" size={16} />
           </button>
           <button
             type="button"
-            className="link"
+            className="icon-btn tool-ico"
+            aria-label="노트로 보내기"
+            title="노트로 보내기"
             disabled={!list.length}
             onClick={() => act(async () => {
               const n = await createNote(db, `${md(date)} 전달사항`, list.map((x) => ({ id: newBlockId(), type: 'check' as const, text: x.text, checked: x.done })))
               setMsg(`노트 '${n.title}'로 보냈습니다.`)
             })}
           >
-            노트로 보내기
+            <Icon name="noteAdd" size={16} />
           </button>
-          <ExportMenu items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`전달사항_${date}.pdf`) }]} />
+          <ExportMenu icon items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`전달사항_${date}.pdf`) }]} />
+          <button type="button" className="icon-btn tool-ico" aria-label="전체 지우기" title="이날 전달사항 전체 지우기" disabled={!list.length} onClick={() => setConfirmClear(true)}>
+            <Icon name="trash" size={16} />
+          </button>
         </div>
       </div>
+      {confirmClear && (
+        <p className="row confirm-inline" role="group" aria-label="전체 지우기 확인">
+          <span>{`${md(date)} 전달사항 ${list.length}개를 모두 지울까요?`}</span>
+          <button type="button" className="danger" onClick={() => act(async () => { setConfirmClear(false); const n = list.length; setUndo({ text: `전달사항 ${n}개`, run: await clearNoticesOn(db, date) }) })}>
+            모두 지우기
+          </button>
+          <button type="button" className="link" onClick={() => setConfirmClear(false)}>취소</button>
+        </p>
+      )}
       {pasteOpen && (
         <div className="card stack">
           <label className="wide">

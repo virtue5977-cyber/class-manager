@@ -66,7 +66,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   const [classDay, setClassDay] = useState<boolean>()
   const prefs = useLayoutPrefs()
   const [params, setParams] = useSearchParams()
-  const [tab, setTab] = useState<'chat' | 'notice' | PanelKey>(params.get('tab') === 'notice' ? 'notice' : 'chat')
+  const [tab, setTab] = useState<'chat' | PanelKey>(params.get('tab') === 'notice' ? 'notice' : 'chat')
   // 결과 카드의 '전달사항 보기'(/?tab=notice)
   useEffect(() => {
     if (params.get('tab') === 'notice') {
@@ -90,8 +90,10 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
   const sidePanels = prefs.panels.filter((x) => panelPlace(x) === 'side').map((x) => x.key)
   // 탭에 있던 칸을 오른쪽으로 보내면 대화로
   useEffect(() => {
-    if (tab !== 'chat' && tab !== 'notice' && !tabPanels.includes(tab)) setTab('chat')
+    if (tab !== 'chat' && !tabPanels.includes(tab)) setTab('chat')
   }, [tab, tabPanels])
+  /** 전달사항을 넣었을 때: 전달사항이 왼쪽 탭이면 그 탭으로 */
+  const showNotice = () => setTab(tabPanels.includes('notice') ? 'notice' : 'chat')
   const bodyRef = useRef<HTMLDivElement>(null)
   /** 칸 자리 바꾸기(머리 단추) */
   const movePanel = (key: PanelKey, place: 'side' | 'tab') => savePrefs({ ...prefs, panels: setPlace(prefs.panels, key, place) })
@@ -103,7 +105,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
     savePrefs({ ...prefs, panelH })
   }
   const renderPanel = (key: PanelKey) =>
-    key === 'todo' ? <TodoList ctx={ctx} /> : key === 'upcoming' ? <Upcoming today={today} /> : key === 'notes' ? <NoteBox notes={ctx.notes} /> : <TodayMeal today={today} panel />
+    key === 'notice' ? <NoticeTab date={today} /> : key === 'todo' ? <TodoList ctx={ctx} /> : key === 'upcoming' ? <Upcoming today={today} /> : key === 'notes' ? <NoteBox notes={ctx.notes} /> : <TodayMeal today={today} panel />
   useEffect(() => {
     try {
       localStorage.setItem(LAYOUT_KEY2, JSON.stringify(layout))
@@ -141,30 +143,26 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
 
   return (
     <section className="home2">
-      <div className="home-head">
-        <h2>{`${md(today)} ${classDay === undefined ? '' : classDay ? '· 수업일' : '· 수업 없는 날'}`}</h2>
-        <TodaySummary today={today} />
-      </div>
-      <GettingStarted />
       <div className="home-body" ref={bodyRef} style={{ gridTemplateColumns: sidePanels.length ? `minmax(min(320px, 38%), 1fr) 6px min(${layout.sideW}px, 60%)` : 'minmax(0, 1fr)' }}>
         <div className="home-main">
+          {/* 날짜·요약·시작하기는 왼쪽 열에만(오른쪽 칸은 맨 위 날짜 줄부터) */}
+          <div className="home-head">
+            <h2>{`${md(today)} ${classDay === undefined ? '' : classDay ? '· 수업일' : '· 수업 없는 날'}`}</h2>
+            <TodaySummary today={today} />
+          </div>
+          <GettingStarted />
           <div className="home-tabs" role="tablist" aria-label="홈 보기">
             <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
               대화
             </button>
-            <button type="button" role="tab" aria-selected={tab === 'notice'} onClick={() => setTab('notice')}>
-              {notices.length ? `전달사항 ${notices.length}` : '전달사항'}
-            </button>
             {tabPanels.map((k) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
-                {PANEL_LABEL[k]}
+                {k === 'notice' && notices.length ? `전달사항 ${notices.length}` : PANEL_LABEL[k]}
               </button>
             ))}
           </div>
           <div className="home-chat" ref={chatRef} style={{ height: chatHeight }}>
-            {tab === 'notice' ? (
-              <NoticeTab date={today} />
-            ) : tab === 'chat' ? (
+            {tab === 'chat' ? (
               <ChatLog today={today} onRun={rerun} />
             ) : (
               <div className="home-tabpanel" role="tabpanel" aria-label={PANEL_LABEL[tab]}>
@@ -177,7 +175,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
           </div>
           <div className="resize-h" role="separator" aria-orientation="horizontal" aria-label="대화 높이 조절" title="끌어서 높이 조절 · 두 번 누르면 화면에 맞춤" onPointerDown={drag('chatH')} onDoubleClick={() => setLayout((l) => ({ ...l, chatH: 0 }))} />
           <div ref={barRef}>
-            <CommandBar inputRef={input} autoFocus today={today} onRan={(r) => setTab(r.result?.links?.some((l) => l.to === '/?tab=notice') ? 'notice' : 'chat')} />
+            <CommandBar inputRef={input} autoFocus today={today} onRan={(r) => (r.result?.links?.some((l) => l.to === '/?tab=notice') ? showNotice() : setTab('chat'))} />
           </div>
         </div>
         {sidePanels.length > 0 && <div className="resize-v" role="separator" aria-orientation="vertical" aria-label="오른쪽 폭 조절" title="끌어서 오른쪽 칸 폭 조절" onPointerDown={drag('sideW')} />}

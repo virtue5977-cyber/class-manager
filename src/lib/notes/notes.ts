@@ -37,9 +37,10 @@ export async function setPinned(db: AppDB, id: string, pinned: boolean): Promise
   })
 }
 
-/** 고정 먼저, 그다음 최근에 고친 순 */
+/** 고정 먼저, 그다음 순서 없는 노트(최근에 고친 순), 그다음 끌어서 정한 순서 */
 export async function listNotes(db: AppDB): Promise<NoteRec[]> {
-  return (await db.notes.toArray()).filter((n) => !n.deleted).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at))
+  const ord = (n: NoteRec) => (n.order === undefined ? -1 : n.order)
+  return (await db.notes.toArray()).filter((n) => !n.deleted).sort((a, b) => Number(b.pinned) - Number(a.pinned) || ord(a) - ord(b) || b.updated_at.localeCompare(a.updated_at))
 }
 
 /** 첨부 지우기: 삭제 표시와 함께 내용(base64)을 비운다. */

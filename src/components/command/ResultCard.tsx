@@ -8,6 +8,7 @@ import { createNote, newBlockId } from '../../lib/notes/notes'
 import type { NoteBlock } from '../../lib/db/types'
 import { useRecall } from './session'
 import FloatingForm from './FloatingForm'
+import Icon from '../Icon'
 
 const MODE_LABEL = { rule: '규칙', hybrid: '규칙+AI', ai: 'AI' } as const
 
@@ -63,6 +64,7 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
     setNote('노트로 보냈습니다.')
   }
   return (
+    <div className="result-wrap">
     <article className={`result-card status-${chat.status === '성공' ? 'ok' : chat.status === '실패' ? 'bad' : 'ask'}`} aria-label="결과">
       <div className="result-head">
         {chat.mode !== 'rule' && <span className={`badge mode-${chat.mode}`}>{MODE_LABEL[chat.mode]}</span>}
@@ -98,7 +100,7 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
           <button type="button" className="primary" onClick={() => onRun?.((card.data as { command: string }).command)}>이렇게 실행</button>
         </div>
       )}
-      {(chat.links.length > 0 || (live?.undo && left > 0) || chat.mode !== 'rule' || !!card) && (
+      {(chat.links.length > 0 || (live?.undo && left > 0)) && (
         <div className="row result-actions">
           {chat.links.map((l) => (
             <Link key={l.to + l.label} to={l.to}>{l.label}</Link>
@@ -108,21 +110,23 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
               {`되돌리기 ${left}초`}
             </button>
           )}
-          {(chat.mode !== 'rule' || !!card) && (
-            <>
-              <button type="button" className="link" onClick={copy}>
-                {copied ? '복사됨' : '복사'}
-              </button>
-              <button type="button" className="link" onClick={toNote}>
-                노트로
-              </button>
-            </>
-          )}
+
         </div>
       )}
       {r?.form && formOpen && <FloatingForm form={r.form} onClose={(m) => { setFormOpen(false); if (m) setNote(m) }} />}
       {r?.form && !formOpen && !note && <button type="button" className="link" onClick={() => setFormOpen(true)}>입력 창 열기</button>}
     </article>
+    {(chat.mode !== 'rule' || !!card) && (
+      <div className="result-icons">
+        <button type="button" className="icon-btn" aria-label={copied ? '복사됨' : '복사'} title={copied ? '복사됨' : '복사'} onClick={copy}>
+          <Icon name={copied ? 'done' : 'copy'} size={15} />
+        </button>
+        <button type="button" className="icon-btn" aria-label="노트로" title="노트로 보내기" onClick={toNote}>
+          <Icon name="noteAdd" size={15} />
+        </button>
+      </div>
+    )}
+    </div>
   )
 }
 

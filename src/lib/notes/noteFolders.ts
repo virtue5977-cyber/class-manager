@@ -100,3 +100,13 @@ export function folderTree(folders: NoteFolder[], notes: NoteRec[]): { folders: 
       })
   return { folders: build(null), notes: live.filter((n) => !n.folder_id || !ids.has(n.folder_id)) }
 }
+
+/** 끌어 놓은 순서대로: ids를 그 폴더(null = 맨 위)로 옮기며 order를 0..n으로 */
+export async function reorderNotes(db: AppDB, folderId: string | null, ids: string[]): Promise<void> {
+  await db.transaction('rw', db.notes, async () => {
+    for (const [i, id] of ids.entries()) {
+      const n = await db.notes.get(id)
+      if (n && !n.deleted && (n.order !== i || (n.folder_id ?? null) !== folderId)) await save(db.notes, { ...n, order: i, folder_id: folderId })
+    }
+  })
+}

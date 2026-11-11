@@ -2,7 +2,9 @@ import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
 import type { NoteRec, StudentRec, TodoRec } from '../../lib/db/types'
-import { addTodo, deleteTodo, listTodos, renderParts, setTodoDone } from '../../lib/todos/todos'
+import { addTodo, deleteTodo, listTodos, renderParts, reorderTodos, setTodoDone } from '../../lib/todos/todos'
+import { dropIndex, reorderIds, startPointerDrag } from '../../lib/ui/pointerDrag'
+import Icon from '../../components/Icon'
 import { applySuggestion, suggest } from '../../lib/command/suggest'
 import { parseCommand, type ParseCtx } from '../../lib/command/parse'
 import { commandNames, commandSubs } from '../../lib/command/registry'
@@ -16,6 +18,9 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
   const notes = useMemo(() => new Map<string, NoteRec>(ctx.notes.map((n) => [n.id, n])), [ctx.notes])
   const studs = useMemo(() => new Map<string, StudentRec>(ctx.students.map((s) => [s.id, s])), [ctx.students])
   const [text, setText] = useState('')
+  const listRef = useRef<HTMLUListElement>(null)
+  const [dragId, setDragId] = useState<string>()
+  const [dropAt, setDropAt] = useState<number>()
   const [caret, setCaret] = useState(0)
   const [sel, setSel] = useState(0)
   const [err, setErr] = useState<string>()
@@ -57,15 +62,33 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
       add()
     }
   }
+  const openIds = todos.filter((t) => !t.done).map((t) => t.id)
+  /** 손잡이를 끌어 미완료 할 일 순서 바꾸기 */
+  function beginDrag(e: React.PointerEvent, id: string) {
+    e.preventDefault()
+    const mids = () => Array.from(listRef.current?.querySelectorAll<HTMLElement>('li[data-id]') ?? []).filter((li) => openIds.includes(li.dataset.id!)).map((li) => { const r = li.getBoundingClientRect(); return r.top + r.height / 2 })
+    let at = -1
+    startPointerDrag(e, {
+      onStart: () => setDragId(id),
+      onMove: (_x, y) => { at = dropIndex(mids(), y); setDropAt(at) },
+      onDrop: () => { setDragId(undefined); setDropAt(undefined); if (at >= 0) void reorderTodos(db, reorderIds(openIds, id, at)) },
+      onCancel: () => { setDragId(undefined); setDropAt(undefined) },
+    })
+  }
   return (
     <section className="panel-card" aria-label="할 일">
       <h3>할 일</h3>
-      <ul className="plain todo-list">
-        {todos.map((t) => {
+      <ul className="plain todo-list" ref={listRef}>
+        {todos.map((t, idx) => {
           const parts = renderParts(t.parts, notes, studs)
           const label = parts.map((p) => p.text).join('')
           return (
-            <li key={t.id} className={t.done ? 'done' : undefined}>
+            <li key={t.id} data-id={t.id} className={`${t.done ? 'done' : ''}${dragId === t.id ? ' dragging' : ''}${dropAt === idx ? ' drop-before' : ''}${dropAt === idx + 1 && idx === openIds.length - 1 ? ' drop-after' : ''}`}>
+              {!t.done && (
+                <span className="drag-grip" role="button" tabIndex={-1} aria-label={`${label} 끌어서 순서 바꾸기`} title="끌어서 순서 바꾸기" onPointerDown={(e) => beginDrag(e, t.id)}>
+                  <Icon name="grip" size={14} />
+                </span>
+              )}
               <input type="checkbox" aria-label={label} checked={t.done} onChange={(e) => setTodoDone(db, t.id, e.target.checked)} />
               <span className="todo-text pii">
                 {parts.map((p, i) => (p.to ? <Link key={i} to={p.to}>{p.text}</Link> : p.dead ? <span key={i} className="dead" title="지운 노트입니다">{p.text}</span> : <span key={i}>{p.text}</span>))}

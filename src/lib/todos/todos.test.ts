@@ -26,3 +26,29 @@ test('조각 표시: 노트는 지금 제목·링크, 지운 노트는 흐리게
     { text: '3번 박도윤', to: `/counseling?sid=${st.id}` },
   ])
 })
+
+test('할 일 순서: 끌어 바꾼 순서를 지키고, 새 할 일은 마감일 자리에(마감 없으면 끝에)', async () => {
+  const { reorderTodos } = await import('./todos')
+  const db = createDb('test-' + crypto.randomUUID())
+  const a = await addTodo(db, ['가'], '2026-11-12')
+  const b = await addTodo(db, ['나'], '2026-11-14')
+  const c = await addTodo(db, ['다'])
+  await reorderTodos(db, [c.id, b.id, a.id])
+  expect((await listTodos(db)).map((t) => t.parts[0])).toEqual(['다', '나', '가'])
+  await addTodo(db, ['라'], '2026-11-13')
+  // 마감 11/13은 마감이 그보다 늦은 첫 할 일(나 11/14) 앞에
+  expect((await listTodos(db)).map((t) => t.parts[0])).toEqual(['다', '라', '나', '가'])
+  await addTodo(db, ['마'])
+  expect((await listTodos(db)).map((t) => t.parts[0]).at(-1)).toBe('마')
+})
+
+test('마감일 자리에 끼울 때 완료한 할 일도 함께 밀어 순서가 겹치지 않는다', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  const a = await addTodo(db, ['가'], '2026-11-20')
+  const b = await addTodo(db, ['나'], '2026-11-25')
+  await setTodoDone(db, b.id, true)
+  await addTodo(db, ['다'], '2026-11-12')
+  const orders = (await db.todos.toArray()).map((t) => t.order)
+  expect(new Set(orders).size).toBe(orders.length)
+  void a
+})

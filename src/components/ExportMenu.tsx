@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShortcut } from '../lib/ui/shortcuts'
+import Icon from './Icon'
 
 export type ExportFormat = 'hwpx' | 'xlsx' | 'pdf'
 const LABEL: Record<ExportFormat, string> = { hwpx: '한글(hwpx)', xlsx: '엑셀(xlsx)', pdf: 'PDF' }
 
-/** 화면마다 하나인 '내보내기 ▾'(한글·엑셀·PDF). Ctrl+E로도 연다. */
-export default function ExportMenu({ items }: { items: { format: ExportFormat; run: () => unknown }[] }) {
+/** 화면마다 하나인 '내보내기 ▾'(한글·엑셀·PDF·바로 인쇄). Ctrl+E로도 연다. icon이면 아이콘만 있는 작은 단추. */
+export default function ExportMenu({ items, icon }: { items: { format: ExportFormat; run: () => unknown }[]; icon?: boolean }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string>()
   const box = useRef<HTMLDivElement>(null)
@@ -20,9 +21,15 @@ export default function ExportMenu({ items }: { items: { format: ExportFormat; r
   }, [open])
   return (
     <div className="menu export-menu" ref={box}>
-      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        내보내기 ▾
-      </button>
+      {icon ? (
+        <button type="button" className="icon-btn tool-ico" aria-label="내보내기" title="내보내기(한글·엑셀·PDF·인쇄)" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          <Icon name="download" size={16} />
+        </button>
+      ) : (
+        <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          내보내기 ▾
+        </button>
+      )}
       {open && (
         <div className="menu-list" role="menu">
           {items.map((it) => (
@@ -42,6 +49,17 @@ export default function ExportMenu({ items }: { items: { format: ExportFormat; r
               {LABEL[it.format]}
             </button>
           ))}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              // 메뉴가 닫힌 뒤 인쇄 창을 연다
+              setTimeout(() => window.print(), 0)
+            }}
+          >
+            바로 인쇄
+          </button>
         </div>
       )}
       {error && (

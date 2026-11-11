@@ -66,3 +66,16 @@ test('시작 날짜가 비었거나 날짜가 아니면 거절', async () => {
   await expect(addNotice(db, { text: '가', start_date: '2026-11-10', end_date: '11/12' })).rejects.toThrow('날짜를 고르세요.')
   expect(await db.notice_items.count()).toBe(0)
 })
+
+test('그날 전달사항 전체 지우기: 그날 보이는 것만 지우고, 되돌리면 모두 돌아온다', async () => {
+  const { clearNoticesOn } = await import('./notices')
+  const db = createDb('test-' + crypto.randomUUID())
+  await addNotice(db, { text: '오늘 하나', start_date: '2026-11-11' })
+  await addNotice(db, { text: '기간 걸침', start_date: '2026-11-10', end_date: '2026-11-12' })
+  await addNotice(db, { text: '내일 것', start_date: '2026-11-12' })
+  const undo = await clearNoticesOn(db, '2026-11-11')
+  expect(await noticesOn(db, '2026-11-11')).toEqual([])
+  expect((await noticesOn(db, '2026-11-12')).map((n) => n.text)).toEqual(['내일 것'])
+  await undo()
+  expect((await noticesOn(db, '2026-11-11')).map((n) => n.text).sort()).toEqual(['기간 걸침', '오늘 하나'])
+})
