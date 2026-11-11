@@ -636,10 +636,12 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .nb textarea:focus { outline: none; box-shadow: none; }
 .nb-h1 textarea { font-size: 20px; font-weight: 700; }
 .nb-h2 textarea { font-size: 17px; font-weight: 600; }
-.nb-check input[type='checkbox'] { margin-top: 8px; }
 .nb-check:has(input:checked) textarea { color: var(--sub); text-decoration: line-through; }
-.nb-mark { margin-top: 4px; min-width: 18px; color: var(--sub); text-align: right; font-variant-numeric: tabular-nums; }
-.nb-mark-number { min-width: 24px; }
+/* 표시 칸(번호·점·체크)은 같은 너비 → 목록 글은 모두 같은 세로선에서 시작(/로 바꾸든 단축키로 바꾸든) */
+.nb-lead { flex: none; min-width: 26px; height: 30px; display: flex; align-items: center; justify-content: flex-end; padding-right: 2px; }
+.nb-lead-bullet, .nb-lead-check { justify-content: center; }
+.nb-lead input[type='checkbox'] { margin: 0 !important; }
+.nb-mark { color: var(--sub); font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1; }
 .nb-h1 { margin-top: 14px; }
 .nb-h2 { margin-top: 8px; }
 .nb-l1 textarea, .nb-l2 textarea { font-size: 14.5px; }
@@ -784,7 +786,6 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .notice-row.pinned:not(:hover):not(:focus-within) .row-tools { opacity: 1; }
 .notice-row.pinned:not(:hover):not(:focus-within) .row-tools > :not(.on) { opacity: 0; }
 @media (hover: none) { .notice-row .row-tools { opacity: 1; } }
-.nb-check input[type='checkbox'] { margin-top: 10px; }
 /* 좁은 창(노트북 창 줄임): 사이드바·여백을 줄이고, 홈 오른쪽 칸은 아래로 */
 @media (max-width: 1100px) {
   .layout { grid-template-columns: min(var(--side-w, 224px), 180px) 1fr; }

@@ -31,6 +31,7 @@ test('글자 칸에서는 Ctrl/Alt 조합만, 한글 조합 중에는 아무것�
   expect(matchShortcut(k('a'), false)).toBeNull()
 })
 
-test('설정 화면용 단축키 표는 7줄', () => {
-  expect(SHORTCUT_TABLE).toHaveLength(7)
+test('설정 화면용 단축키 표: 앱 7줄 + 노트·전달사항 5줄(노트 Ctrl+Shift 단축키가 보인다)', () => {
+  expect(SHORTCUT_TABLE).toHaveLength(12)
+  expect(SHORTCUT_TABLE.map((r) => r.keys).join(' ')).toContain('Ctrl+Shift+7 / 8 / 9')
 })

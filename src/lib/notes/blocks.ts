@@ -5,16 +5,16 @@ import { newBlockId } from './notes'
 const LIST: NoteBlockType[] = ['check', 'bullet', 'number']
 
 export const SLASH_ITEMS: { type: NoteBlockType; label: string; keywords: string; icon: string; hint: string }[] = [
-  { type: 'p', label: '문단', keywords: '글 텍스트', icon: '¶', hint: '보통 글' },
-  { type: 'h1', label: '제목 1', keywords: '큰제목 헤딩', icon: 'H1', hint: '큰 제목' },
-  { type: 'h2', label: '제목 2', keywords: '작은제목 헤딩', icon: 'H2', hint: '작은 제목' },
-  { type: 'check', label: '체크 목록', keywords: '할일 체크박스 todo', icon: '☑', hint: '할 일처럼 체크' },
-  { type: 'bullet', label: '글머리 목록', keywords: '점 목록', icon: '•', hint: '점으로 나열' },
-  { type: 'number', label: '번호 목록', keywords: '숫자', icon: '1.', hint: '1. 가. 1) 순서' },
+  { type: 'p', label: '문단', keywords: '글 텍스트', icon: '¶', hint: '보통 글 · Ctrl+Shift+0' },
+  { type: 'h1', label: '제목 1', keywords: '큰제목 헤딩', icon: 'H1', hint: '큰 제목 · Ctrl+Shift+1 · # ' },
+  { type: 'h2', label: '제목 2', keywords: '작은제목 헤딩', icon: 'H2', hint: '작은 제목 · Ctrl+Shift+2 · ## ' },
+  { type: 'check', label: '체크 목록', keywords: '할일 체크박스 todo', icon: '☑', hint: '할 일처럼 체크 · Ctrl+Shift+9 · [] ' },
+  { type: 'bullet', label: '글머리 목록', keywords: '점 목록', icon: '•', hint: '점으로 나열 · Ctrl+Shift+8 · - ' },
+  { type: 'number', label: '번호 목록', keywords: '숫자', icon: '1.', hint: '1. 가. 1) 순서 · Ctrl+Shift+7 · 1. ' },
   { type: 'divider', label: '구분선', keywords: '선 줄', icon: '—', hint: '가로줄' },
   { type: 'file', label: '파일', keywords: '첨부 붙이기', icon: '📎', hint: '파일 붙이기(50MB까지)' },
   { type: 'folder', label: '폴더', keywords: '연결 탐색기', icon: '📁', hint: '노트북 폴더 연결' },
-  { type: 'roster', label: '명렬표 체크', keywords: '명렬표 학생 체크 표 제출 확인', icon: '☑', hint: '학생 이름 표 + 체크(@명렬표)' },
+  { type: 'roster', label: '명렬표 체크', keywords: '명렬표 학생 체크 표 제출 확인', icon: '☑', hint: '학생 이름 표 + 체크(@명렬표) · Ctrl+Alt+T' },
 ]
 
 export function filterSlash(q: string) {
@@ -96,3 +96,22 @@ export function rosterBlock(students: { id: string; number: number; name: string
 
 /** 노트 안 단축키(Ctrl+Alt+…): 블록 종류 */
 export const NOTE_SHORTCUTS: Record<string, NoteBlockType> = { '1': 'h1', '2': 'h2', '0': 'p', '7': 'number', '8': 'bullet', '9': 'check', t: 'roster' }
+
+/** 노트 단축키 → 블록 종류. Ctrl+Shift+숫자(구글 문서와 같은 번호)와 Ctrl+Alt+숫자·T. 한글 자판·Shift 기호여도 code(키 자리)로 읽는다. */
+export function noteShortcut(e: { key: string; code: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean }): NoteBlockType | null {
+  if (!(e.ctrlKey || e.metaKey)) return null
+  const alt = e.altKey && !e.shiftKey
+  const shift = e.shiftKey && !e.altKey
+  if (!alt && !shift) return null
+  const k = /^Digit(\d)$/.exec(e.code)?.[1] ?? (e.code === 'KeyT' ? 't' : /^[0-9t]$/i.test(e.key) ? e.key.toLowerCase() : '')
+  if (k === 't' && !alt) return null
+  return NOTE_SHORTCUTS[k] ?? null
+}
+
+/** 줄 맨 앞 글자로 블록 바꾸기 */
+export function markdownPrefix(text: string): { type: NoteBlockType; rest: string } | null {
+  const m = /^(##|#|-|\*|1\.|\[\]) ([\s\S]*)$/.exec(text)
+  if (!m) return null
+  const type: NoteBlockType = m[1] === '#' ? 'h1' : m[1] === '##' ? 'h2' : m[1] === '1.' ? 'number' : m[1] === '[]' ? 'check' : 'bullet'
+  return { type, rest: m[2] }
+}
