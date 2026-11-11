@@ -211,12 +211,13 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     const mv = caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, el)
     if (mv && ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || atVisualEdge(el, mv.dir))) {
       const i = blocks.findIndex((x) => x.id === b.id)
-      for (let j = i + mv.dir; j >= 0 && j < blocks.length; j += mv.dir) {
+      const dir = mv.dir
+      for (let j = i + dir; j >= 0 && j < blocks.length; j += dir) {
         const to = refs.current.get(blocks[j].id)
         if (!to) continue
         e.preventDefault()
         to.focus()
-        const c = placeCaret(to.value, mv!)
+        const c = placeCaret(to.value, mv)
         to.setSelectionRange(c, c)
         return
       }
