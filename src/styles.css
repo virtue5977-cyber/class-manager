@@ -562,7 +562,7 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .home2 { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 .home-head { display: flex; flex-direction: column; gap: 4px; }
 .home-main > .home-head + * { margin-top: 4px; }
-.home-side { align-self: start; padding-top: 6px; }
+.home-side { align-self: start; padding-top: 0; }
 .home-head h2 { margin: 0; }
 .today-toggle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 2px 0; font-size: 13px; color: var(--ink); text-align: left; }
 .today-more-btn { width: 24px; height: 22px; display: inline-grid; place-items: center; border-radius: 6px; color: var(--sub); }
@@ -863,7 +863,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .banner > a, .banner > button { white-space: nowrap; }
 /* 홈: 오른쪽 칸 첫 상자를 대화 상자 윗줄에 맞춘다(탭 줄 높이만큼 내림) */
 .home-tabs { min-height: 36px; box-sizing: border-box; }
-@media (min-width: 1101px) { .home-body:has(.home-tabs) .home-side { padding-top: 44px; } }
+/* 오른쪽 칸 첫 칸 위쪽 = 왼쪽 날짜 제목 위쪽(사용자 요청 11/11) */
 .layout-prefs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .meal-panel ul { margin: 4px 0; }
 .meal-panel h3 { margin: 0; }
