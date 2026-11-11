@@ -100,7 +100,7 @@ export default function SchoolSettings({ today = toYmd(new Date()) }: { today?: 
     <div className="card stack">
       <h3>학교·NEIS</h3>
       <p className="muted" aria-label="자동 받기">
-        {`자동 받기(앱을 켤 때): 학사일정은 7일마다 — ${when(syncT.schedule, NEIS_EVERY.schedule)} · 급식·시간표는 하루마다 — ${when(syncT.week, NEIS_EVERY.week)}. 구글 캘린더는 앱을 켤 때마다 맞춥니다.`}
+        {`자동 받기(앱을 켤 때, 켜 둔 동안 1시간마다 확인): 학사일정(학년도 전체)은 7일마다 — ${when(syncT.schedule, NEIS_EVERY.schedule)} · 급식(이번 주·다음 주)·시간표(이번 주)는 하루마다 — ${when(syncT.week, NEIS_EVERY.week)}. 구글 캘린더는 앱을 켤 때, 켜 둔 동안 30분마다, 일정을 새로 쓰거나 고치면 10초 뒤에 맞춥니다.`}
       </p>
       <form className="stack" onSubmit={saveKey}>
         <label>
