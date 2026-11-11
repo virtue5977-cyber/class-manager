@@ -1,9 +1,9 @@
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "shell": 1,
-  "bundle": "bundle-0.8.0.zip",
-  "sha256": "5cc74e4c0d7d5dc8bcf92a72c0bca713785a78b33625bded47d524ebf09b15dc",
-  "sig": "Qw1gKlvc+9PzyklDOCVRjsC/I7mVSu/gIlw/IHrPrt5xFWMQ77jLsdKpg2izSWnbSGOLzVZgCS0/FA65kOa/Bw==",
-  "note": "0.8.0: 날짜 여러 꼴, 메뉴·홈 배치 바꾸기, 노트 학생 체크 표·단축키, 반성문 좋은 글·바로 인쇄, 전달사항 줄바꿈·Ctrl+Z 등",
-  "date": "2026-11-10"
+  "bundle": "bundle-0.9.0.zip",
+  "sha256": "b2ffc6255bcb162c51acc2043fb2fe1cc361dc4b49713f2ba0c5017bfc7c7508",
+  "sig": "8812P1PNBTHgJnOO1AKr/kBKwSOcL7juhTCog84MAY5Pe+aebqxoUrH2iPbcbGstiA2OHO9aewfXnVR1wckFAQ==",
+  "note": "0.9.0: 홈 칸 자리(오른쪽/왼쪽 탭)·칸마다 높이, 메뉴 바깥 누르면 닫힘, AI 대답 복사, 되돌리기 5초, 노트 폴더·단축키(Ctrl+Shift+숫자)·방향키, 전달사항 줄 편집(+ 추가·Enter), 구글 달력 자동 맞춤",
+  "date": "2026-11-11"
 }
