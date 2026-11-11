@@ -1,7 +1,7 @@
 /** 화면 배치(이 기기): 왼쪽 메뉴 순서·숨기기, 홈 오른쪽 칸 순서·숨기기, 사이드바 너비. */
 import { useSyncExternalStore } from 'react'
 
-export type PanelKey = 'todo' | 'upcoming' | 'notes' | 'meal'
+export type PanelKey = 'notice' | 'todo' | 'upcoming' | 'notes' | 'meal'
 export interface PrefItem<K extends string = string> {
   key: K
   hidden: boolean
@@ -19,8 +19,10 @@ export interface LayoutPrefs {
 
 /** 기본 순서: 달력 다음에 학급(사용자 요청 11/11) */
 export const DEFAULT_MENU = ['/', '/calendar', '/class/roster', '/attendance', '/counseling', '/notes']
-export const DEFAULT_PANELS: PanelKey[] = ['todo', 'upcoming', 'notes', 'meal']
-export const PANEL_LABEL: Record<PanelKey, string> = { todo: '할 일', upcoming: '다가오는 일정', notes: '노트함', meal: '오늘 급식' }
+export const DEFAULT_PANELS: PanelKey[] = ['notice', 'todo', 'upcoming', 'notes', 'meal']
+/** 처음(또는 예전 저장값에 없을 때) 왼쪽 탭에 두는 칸 */
+const DEFAULT_TAB = new Set<PanelKey>(['notice'])
+export const PANEL_LABEL: Record<PanelKey, string> = { notice: '전달사항', todo: '할 일', upcoming: '다가오는 일정', notes: '노트함', meal: '오늘 급식' }
 const KEY = 'watson.layout'
 const LOCKED = new Set(['/'])
 
@@ -39,6 +41,10 @@ export function movePref<K extends string>(list: PrefItem<K>[], key: K, dir: -1 
 }
 export function togglePref<K extends string>(list: PrefItem<K>[], key: K, hidden: boolean): PrefItem<K>[] {
   return list.map((x) => (x.key === key ? { ...x, hidden: LOCKED.has(key) ? false : hidden } : x))
+}
+function withDefaultTabs(saved: PrefItem<PanelKey>[] | undefined): PrefItem<PanelKey>[] {
+  const had = new Set((saved ?? []).map((x) => x.key))
+  return mergeOrder(saved, DEFAULT_PANELS).map((x) => (!had.has(x.key) && DEFAULT_TAB.has(x.key) ? { ...x, place: 'tab' as const } : x))
 }
 export const panelPlace = (x: PrefItem): PanelPlace => (x.hidden ? 'hidden' : x.place === 'tab' ? 'tab' : 'side')
 export function setPlace<K extends string>(list: PrefItem<K>[], key: K, place: PanelPlace): PrefItem<K>[] {
@@ -62,7 +68,7 @@ export function readPrefs(): LayoutPrefs {
   } catch {
     raw = {}
   }
-  return { menu: mergeOrder(raw.menu, DEFAULT_MENU), panels: mergeOrder(raw.panels as PrefItem<PanelKey>[] | undefined, DEFAULT_PANELS), sidebarW: clampW(raw.sidebarW), panelH: readPanelH(raw.panelH) }
+  return { menu: mergeOrder(raw.menu, DEFAULT_MENU), panels: withDefaultTabs(raw.panels as PrefItem<PanelKey>[] | undefined), sidebarW: clampW(raw.sidebarW), panelH: readPanelH(raw.panelH) }
 }
 export function savePrefs(p: LayoutPrefs): void {
   const v = { ...p, sidebarW: clampW(p.sidebarW), panelH: readPanelH(p.panelH) }

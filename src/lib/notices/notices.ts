@@ -51,6 +51,15 @@ export async function deleteNotice(db: AppDB, id: string): Promise<() => Promise
   }
 }
 
+/** 그날 보이는 전달사항을 모두 지운다. 되돌리기 함수를 돌려준다. */
+export async function clearNoticesOn(db: AppDB, date: string): Promise<() => Promise<void>> {
+  const undos: (() => Promise<void>)[] = []
+  for (const n of await noticesOn(db, date)) undos.push(await deleteNotice(db, n.id))
+  return async () => {
+    for (const u of undos) await u()
+  }
+}
+
 /** 그날 보이는 목록에서 한 칸 위·아래로(순서 값을 맞바꿈). */
 export async function moveNotice(db: AppDB, date: string, id: string, dir: -1 | 1): Promise<void> {
   const list = await noticesOn(db, date)

@@ -627,6 +627,10 @@ li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .notice-row:hover .notice-box, .notice-box:focus-within { border-color: var(--line-input); background: var(--panel); }
 .notice-row .notice-text { flex: 1; min-width: 120px; border: 0; background: transparent; box-shadow: none; outline: none; }
 .notice-row.draft > input[type='checkbox'] { visibility: hidden; }
+.notice-tools { gap: 2px; }
+.tool-ico { width: 30px; height: 28px; display: inline-grid; place-items: center; border-radius: 6px; color: var(--sub); }
+.tool-ico:hover:not(:disabled), .tool-ico[aria-pressed='true'], .tool-ico[aria-expanded='true'] { color: var(--ink); background: var(--hover); }
+.tool-ico:disabled { opacity: .35; }
 .notice-add-btn { align-self: flex-start; font-size: 13px; padding: 2px 4px; }
 .notice-row.done .notice-text { color: var(--sub); text-decoration: line-through; }
 .notice-row.pinned { background: var(--accent-soft); border-radius: 6px; }
