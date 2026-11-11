@@ -561,9 +561,14 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 /* ---- 새 홈 ---- */
 .home2 { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 .home-head { display: flex; flex-direction: column; gap: 4px; }
+.home-main > .home-head + * { margin-top: 4px; }
+.home-side { align-self: start; padding-top: 6px; }
 .home-head h2 { margin: 0; }
-.today-toggle { display: flex; flex-wrap: wrap; gap: 6px 14px; border: 0; background: transparent; padding: 2px 0; font-size: 13px; color: var(--ink); cursor: pointer; text-align: left; }
-.today-toggle span + span::before { content: '·'; margin-right: 14px; color: var(--sub); }
+.today-toggle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 2px 0; font-size: 13px; color: var(--ink); text-align: left; }
+.today-more-btn { width: 24px; height: 22px; display: inline-grid; place-items: center; border-radius: 6px; color: var(--sub); }
+.today-more-btn:hover { background: var(--hover); color: var(--ink); }
+.today-more-btn[aria-expanded='true'] svg { transform: rotate(180deg); }
+.today-toggle > span + span::before { content: '·'; margin-right: 14px; color: var(--sub); }
 .today-more { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 8px; }
 .home-body { display: grid; gap: 0; align-items: start; width: 100%; }
 .home-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding-right: 10px; }

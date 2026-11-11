@@ -143,13 +143,14 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
 
   return (
     <section className="home2">
-      <div className="home-head">
-        <h2>{`${md(today)} ${classDay === undefined ? '' : classDay ? '· 수업일' : '· 수업 없는 날'}`}</h2>
-        <TodaySummary today={today} />
-      </div>
-      <GettingStarted />
       <div className="home-body" ref={bodyRef} style={{ gridTemplateColumns: sidePanels.length ? `minmax(min(320px, 38%), 1fr) 6px min(${layout.sideW}px, 60%)` : 'minmax(0, 1fr)' }}>
         <div className="home-main">
+          {/* 날짜·요약·시작하기는 왼쪽 열에만(오른쪽 칸은 맨 위 날짜 줄부터) */}
+          <div className="home-head">
+            <h2>{`${md(today)} ${classDay === undefined ? '' : classDay ? '· 수업일' : '· 수업 없는 날'}`}</h2>
+            <TodaySummary today={today} />
+          </div>
+          <GettingStarted />
           <div className="home-tabs" role="tablist" aria-label="홈 보기">
             <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
               대화
