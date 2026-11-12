@@ -219,7 +219,7 @@ ol.steps li.done .step-no { background: var(--accent); color: #fff; }
 .sidebar .side-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 .class-switch { margin: 0 4px 8px; }
 .class-switch select { width: 100%; font-weight: 600; background: var(--panel); }
-.content { padding: 24px 32px 48px; max-width: 1240px; width: 100%; margin-inline: auto; }
+.content { padding: 24px 32px 48px; max-width: calc(1240px / var(--zoom, 1)); /* 글자를 줄여도(zoom) 화면에서 차지하는 최대 너비는 그대로 → 남는 공간을 씀 */ width: 100%; margin-inline: auto; }
 .content h2 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.02em; }
 .card { border-radius: 8px; padding: 16px; border: 1px solid var(--line); box-shadow: none; }
 .card h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }

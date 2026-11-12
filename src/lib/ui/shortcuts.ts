@@ -10,17 +10,20 @@ export type ShortcutAction =
 
 type KeyLike = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey' | 'isComposing'>
 
-const NAV = ['/', '/calendar', '/attendance', '/counseling', '/class/roster', '/settings']
+/** 기본 메뉴 순서(설정 > 화면에서 바꾸면 그 순서를 넘겨받는다) */
+const NAV = ['/', '/calendar', '/class/roster', '/attendance', '/counseling', '/notes']
 
 /** 키 하나를 앱 동작으로. 글자 칸 안(inField)에서는 Ctrl/Alt 조합과 Esc만 듣는다. 한글 자판이어도 code(키 위치)로 알아듣는다. */
-export function matchShortcut(e: KeyLike, inField: boolean): ShortcutAction | null {
+/** nav: 보이는 메뉴 순서(Ctrl+1~9가 이 순서를 따른다). Ctrl+쉼표는 설정. */
+export function matchShortcut(e: KeyLike, inField: boolean, nav: string[] = NAV): ShortcutAction | null {
   if (e.isComposing) return null
   const mod = e.ctrlKey || e.metaKey
   const letter = (c: string) => e.code === `Key${c}` || e.key.toLowerCase() === c.toLowerCase()
   if (e.key === 'Escape') return { kind: 'close' }
   if (mod && !e.altKey) {
-    const n = /^Digit([1-6])$/.exec(e.code)?.[1] ?? (/^[1-6]$/.test(e.key) ? e.key : undefined)
-    if (n && !e.shiftKey) return { kind: 'nav', to: NAV[Number(n) - 1] }
+    const n = /^Digit([1-9])$/.exec(e.code)?.[1] ?? (/^[1-9]$/.test(e.key) ? e.key : undefined)
+    if (n && !e.shiftKey) return nav[Number(n) - 1] ? { kind: 'nav', to: nav[Number(n) - 1] } : null
+    if (!e.shiftKey && (e.code === 'Comma' || e.key === ',')) return { kind: 'nav', to: '/settings' }
     if (e.shiftKey && letter('H')) return { kind: 'hideNames' }
     if (!e.shiftKey && letter('K')) return { kind: 'command' }
     if (!e.shiftKey && letter('E')) return { kind: 'export' }
@@ -33,7 +36,7 @@ export function matchShortcut(e: KeyLike, inField: boolean): ShortcutAction | nu
 
 export const SHORTCUT_TABLE: { keys: string; label: string }[] = [
   { keys: 'Ctrl+K', label: '명령 입력 열기' },
-  { keys: 'Ctrl+1 ~ Ctrl+6', label: '홈 · 달력 · 출결 · 상담일지 · 학급 · 설정으로 이동' },
+  { keys: 'Ctrl+1 ~ Ctrl+9', label: '왼쪽 메뉴 순서대로 이동(메뉴 순서를 바꾸면 따라 바뀜) · Ctrl+쉼표: 설정' },
   { keys: 'Alt+← / Alt+→', label: '앞 · 뒤(출결 날짜, 달력·신고서·통계 달)' },
   { keys: 'Ctrl+E', label: '지금 화면 내보내기' },
   { keys: 'Ctrl+P', label: '인쇄' },
