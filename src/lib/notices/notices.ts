@@ -113,3 +113,51 @@ export async function migrateBriefings(db: AppDB): Promise<number> {
   })
   return n
 }
+
+/** 끌어 놓은 순서대로: ids(그날 보이는 목록 순서)에 원래 순서 값들을 차례로 다시 준다. */
+export async function reorderNotices(db: AppDB, date: string, ids: string[]): Promise<void> {
+  const list = await noticesOn(db, date)
+  const by = new Map(list.map((n) => [n.id, n]))
+  const picked = ids.filter((id) => by.has(id))
+  const orders = picked.map((id) => by.get(id)!.order).sort((a, b) => a - b)
+  const changed: NoticeItemRec[] = []
+  await db.transaction('rw', db.notice_items, async () => {
+    for (const [i, id] of picked.entries()) {
+      const n = by.get(id)!
+      if (n.order !== orders[i]) changed.push(await save(db.notice_items, { ...n, order: orders[i] }))
+    }
+  })
+  await resync(db, ...changed)
+}
+
+export interface NoticeDateGroup {
+  /** 묶음 열쇠(하루짜리는 날짜, 여러 날은 'start~end') */
+  key: string
+  label: string
+  start: string
+  items: NoticeItemRec[]
+}
+const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
+
+/** 날짜별 묶음: 보고 있는 날(date) 하루짜리는 빼고, 앞날짜(가까운 순)·여러 날(진행·앞으로)·지난 날짜(최근 순). */
+export async function noticeDateGroups(db: AppDB, date: string): Promise<{ upcoming: NoticeDateGroup[]; ranges: NoticeDateGroup[]; past: NoticeDateGroup[] }> {
+  const all = (await db.notice_items.toArray()).filter((n) => !n.deleted)
+  const groups = new Map<string, NoticeDateGroup>()
+  for (const n of all) {
+    const one = n.start_date === n.end_date
+    if (one && n.start_date === date) continue
+    const key = one ? n.start_date : `${n.start_date}~${n.end_date}`
+    const g = groups.get(key) ?? { key, label: one ? md(n.start_date) : `${md(n.start_date)}~${md(n.end_date)}`, start: n.start_date, items: [] }
+    g.items.push(n)
+    groups.set(key, g)
+  }
+  const list = [...groups.values()].map((g) => ({ ...g, items: g.items.sort(sortNotices) }))
+  const isRange = (g: NoticeDateGroup) => g.key.includes('~')
+  const endOf = (g: NoticeDateGroup) => (isRange(g) ? g.key.split('~')[1] : g.start)
+  const asc = (a: NoticeDateGroup, b: NoticeDateGroup) => a.key.localeCompare(b.key)
+  return {
+    upcoming: list.filter((g) => !isRange(g) && g.start > date).sort(asc),
+    ranges: list.filter((g) => isRange(g) && endOf(g) >= date).sort(asc),
+    past: list.filter((g) => endOf(g) < date).sort((a, b) => endOf(b).localeCompare(endOf(a))),
+  }
+}

@@ -79,3 +79,32 @@ test('그날 전달사항 전체 지우기: 그날 보이는 것만 지우고, �
   await undo()
   expect((await noticesOn(db, '2026-11-11')).map((n) => n.text).sort()).toEqual(['기간 걸침', '오늘 하나'])
 })
+
+test('끌어 놓은 순서대로(그날 보이는 목록), 짝 노트 줄 순서도 맞춘다', async () => {
+  const { reorderNotices } = await import('./notices')
+  const { openNoticeNote } = await import('./noteSync')
+  const db = createDb('t-' + crypto.randomUUID())
+  const D = '2026-11-13'
+  const a = await addNotice(db, { text: '가', start_date: D })
+  const b = await addNotice(db, { text: '나', start_date: D })
+  const c = await addNotice(db, { text: '다', start_date: D })
+  const n = await openNoticeNote(db, D)
+  await reorderNotices(db, D, [c.id, a.id, b.id])
+  expect((await noticesOn(db, D)).map((x) => x.text)).toEqual(['다', '가', '나'])
+  expect((await db.notes.get(n.id))!.blocks.map((x) => x.text)).toEqual(['다', '가', '나'])
+})
+
+test('날짜별 묶음: 보고 있는 날 빼고, 앞날짜 먼저(가까운 순), 지난 날짜는 따로(최근 순)', async () => {
+  const { noticeDateGroups } = await import('./notices')
+  const db = createDb('t-' + crypto.randomUUID())
+  await addNotice(db, { text: '오늘', start_date: '2026-11-12' })
+  await addNotice(db, { text: '내일', start_date: '2026-11-13' })
+  await addNotice(db, { text: '모레', start_date: '2026-11-14' })
+  await addNotice(db, { text: '기간', start_date: '2026-11-10', end_date: '2026-11-20' })
+  await addNotice(db, { text: '지난', start_date: '2026-11-05' })
+  await addNotice(db, { text: '더 지난', start_date: '2026-11-01' })
+  const g = await noticeDateGroups(db, '2026-11-12')
+  expect(g.upcoming.map((x) => [x.label, x.items.map((i) => i.text)])).toEqual([['11/13', ['내일']], ['11/14', ['모레']]])
+  expect(g.ranges.map((x) => [x.label, x.items.map((i) => i.text)])).toEqual([['11/10~11/20', ['기간']]])
+  expect(g.past.map((x) => x.label)).toEqual(['11/5', '11/1'])
+})

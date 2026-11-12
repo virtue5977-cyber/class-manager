@@ -144,3 +144,31 @@ test('전달사항 줄에서 @를 치면 노트 후보, 고르면 노트 링크(
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).find((n) => n.text.startsWith('자세히는'))?.parts).toEqual(['자세히는 ', { note: ref.id }]))
   expect(await screen.findByRole('link', { name: '📄 수학올림피아드 안내' })).toHaveAttribute('href', `/notes?id=${ref.id}`)
 })
+
+test('날짜 표시: 보고 있는 날 하루짜리는 날짜 없음, 여러 날은 오른쪽 끝에 기간. 날짜별 목록에서 다른 날을 보고 지운다', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  await addNotice(db, { text: '모레 준비물', start_date: '2026-11-13' })
+  await addNotice(db, { text: '지난 안내', start_date: '2026-11-02' })
+  await screen.findByDisplayValue('체육복')
+  expect(screen.queryByRole('button', { name: '체육복 기간 고치기' })).toHaveTextContent('')
+  expect(screen.getByRole('button', { name: '동의서 걷기 기간 고치기' })).toHaveTextContent('11/10~11/12')
+  await user.click(screen.getByRole('button', { name: '날짜별 전달사항' }))
+  const box = await screen.findByRole('region', { name: '날짜별 전달사항' })
+  expect(within(box).getByRole('button', { name: '11/13 보기' })).toBeInTheDocument()
+  expect(within(box).getByText('지난 날짜 1')).toBeInTheDocument()
+  await user.click(within(box).getByRole('button', { name: '모레 준비물 지우기' }))
+  await waitFor(async () => expect((await noticesOn(db, '2026-11-13')).length).toBe(0))
+  expect(await screen.findByRole('button', { name: '되돌리기' })).toBeInTheDocument()
+  // 다른 날 보기 → 그날 목록, '오늘로'
+  await user.click(within(box).getByRole('button', { name: '11/10~11/12 보기' }))
+  expect(await screen.findByText('11/10 전달사항 1개')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '보던 날로' }))
+  expect(await screen.findByText('11/11 전달사항 2개')).toBeInTheDocument()
+})
+
+test('전달사항 줄 왼쪽 손잡이(끌어서 순서 바꾸기)가 있다', async () => {
+  await setup()
+  await screen.findByDisplayValue('체육복')
+  expect(screen.getByRole('button', { name: '체육복 끌어서 순서 바꾸기' })).toBeInTheDocument()
+})

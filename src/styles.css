@@ -846,7 +846,10 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .todo-list li { align-items: center; gap: 8px; }
 .todo-list li .todo-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 /* 전달사항 줄: 긴 글은 줄바꿈, 단추는 오른쪽 끝에 두고 마우스를 올리거나 초점이 있을 때만 보임 */
-.notice-row { align-items: flex-start; flex-wrap: nowrap; }
+.notice-row { align-items: flex-start; flex-wrap: wrap; }
+.notice-row > .notice-box { flex: 1 1 0; }
+.notice-row > .notice-range { flex: 1 0 100%; }
+.notice-row > .drag-grip { margin-top: 8px; }
 .notice-row > input[type="checkbox"] { margin-top: 9px; }
 .notice-row .notice-text { resize: none; overflow: hidden; min-height: 32px; line-height: 1.45; padding: 6px 8px; }
 .notice-row .notice-period { margin-top: 6px; white-space: nowrap; }
@@ -1017,3 +1020,17 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .modal .grow { flex: 1; }
 .modal-actions { align-items: center; }
 .suggest-place { width: 9em; }
+
+/* 전달사항: 날짜는 오른쪽 끝, @ 노트 후보는 줄 아래, 날짜별 목록 */
+.notice-box { position: relative; }
+.notice-box .mention-list { top: calc(100% + 2px); bottom: auto; }
+.notice-row .notice-period:empty { display: none; }
+.notice-dates { display: grid; gap: 6px; padding: 8px 10px; font-size: 13px; }
+.notice-dates details > summary { cursor: pointer; color: var(--sub); }
+.notice-date-group { display: grid; grid-template-columns: 6.5em 1fr; gap: 6px; align-items: start; }
+.notice-date-group.on .notice-date { font-weight: 700; }
+.notice-date { padding: 0; text-align: left; white-space: nowrap; }
+.notice-date-item { gap: 4px; justify-content: space-between; }
+.notice-date-item .icon-btn { opacity: 0; }
+.notice-date-item:hover .icon-btn, .notice-date-item:focus-within .icon-btn { opacity: 1; }
+.notice-date-item.done .pii { color: var(--sub); text-decoration: line-through; }
