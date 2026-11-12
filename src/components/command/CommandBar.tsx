@@ -6,6 +6,8 @@ import { executeInput, type Executed } from '../../lib/command/run'
 import { aiFallback } from '../../lib/command/ai'
 import { useCommandCtx } from './useCommandCtx'
 import { remember, undoLast } from './session'
+import { addPending, enqueue, removePending, resolvePending } from '../../lib/command/pending'
+import { currentThread } from '../../lib/command/chatThreads'
 
 const history: string[] = []
 
@@ -47,17 +49,25 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
     const r = applySuggestion(value, caret, s)
     set(r.value, r.caret, true)
   }
+  /** 보내면 입력 칸은 바로 비우고 내 말을 대화에 올린다. 실행은 줄 세워 차례로. */
   async function run() {
-    if (!value.trim() || !env || busy) return
+    const input = value
+    if (!input.trim() || !env) return
+    const thread = currentThread()
+    const pid = addPending({ input: input.trim(), thread })
+    history.unshift(input)
+    set('')
+    setHist(-1)
     setBusy(true)
+    let done = false
     try {
-      const r = await executeInput(value, ctx, env, aiFallback)
+      const r = await enqueue(() => executeInput(input, ctx, env, aiFallback, thread))
+      resolvePending(pid, r.chat.id)
+      done = true
       remember(r.chat.id, r.result)
-      history.unshift(value)
-      set('')
-      setHist(-1)
       onRan?.(r)
     } finally {
+      if (!done) removePending(pid)
       setBusy(false)
     }
   }
@@ -121,8 +131,8 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
           aria-expanded={list.length > 0}
           aria-autocomplete="list"
         />
-        <button type="button" className="primary" disabled={!value.trim() || busy || !env} onClick={run}>
-          {busy ? '실행 중…' : '실행'}
+        <button type="button" className="primary" disabled={!value.trim() || !env} onClick={run}>
+          {busy ? '보내기' : '실행'}
         </button>
       </div>
       {/* 명령 이름을 아직 치는 중(후보가 열림)이면 오류 대신 안내 */}
