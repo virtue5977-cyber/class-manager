@@ -24,6 +24,10 @@ export interface HwpxDoc {
   title: string
   /** 글꼴·문단 모양을 더한 header(없으면 기본 양식) */
   headerXml?: string
+  /** 그림 등 BinData(id는 hp:pic의 binaryItemIDRef) */
+  bins?: { id: string; ext: string; mime: string; bytes: Uint8Array }[]
+  /** secPr 바꾸기(여백 등) */
+  secPr?: (xml: string) => string
 }
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
@@ -31,7 +35,8 @@ const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
 const esc = escapeXml
 
 function sectionXml(doc: HwpxDoc): string {
-  const secPr = secPrXml.replace(/landscape="[A-Z]+"/, `landscape="${doc.landscape ? 'NARROWLY' : 'WIDELY'}"`)
+  let secPr = secPrXml.replace(/landscape="[A-Z]+"/, `landscape="${doc.landscape ? 'NARROWLY' : 'WIDELY'}"`)
+  if (doc.secPr) secPr = doc.secPr(secPr)
   return (
     XML_DECL +
     sectionOpen +
@@ -52,7 +57,11 @@ function headerWith(charPrXml: string[], base = headerXml): string {
 
 export async function buildHwpx(doc: HwpxDoc, now: Date = new Date()): Promise<Uint8Array> {
   const date = now.toISOString().replace(/\.\d{3}Z$/, 'Z')
-  const hpf = contentHpf.replace(/\{\{DATE\}\}/g, date).replace('{{TITLE}}', esc(doc.title))
+  const bins = doc.bins ?? []
+  const hpf = contentHpf
+    .replace(/\{\{DATE\}\}/g, date)
+    .replace('{{TITLE}}', esc(doc.title))
+    .replace('</opf:manifest>', bins.map((b) => `<opf:item id="${b.id}" href="BinData/${b.id}.${b.ext}" media-type="${b.mime}" isEmbeded="1"/>`).join('') + '</opf:manifest>')
   const zip = new JSZip()
   const add = (name: string, body: string) => zip.file(name, body, { createFolders: false })
   zip.file('mimetype', 'application/hwp+zip', { compression: 'STORE', createFolders: false })
@@ -65,5 +74,6 @@ export async function buildHwpx(doc: HwpxDoc, now: Date = new Date()): Promise<U
   add('Contents/content.hpf', hpf)
   add('META-INF/container.xml', containerXml)
   add('META-INF/manifest.xml', manifestXml)
+  for (const b of bins) zip.file(`BinData/${b.id}.${b.ext}`, b.bytes, { createFolders: false, compression: 'STORE' })
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } })
 }

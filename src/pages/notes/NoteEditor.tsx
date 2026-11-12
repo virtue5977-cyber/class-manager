@@ -7,6 +7,8 @@ import { caretNav, placeCaret } from '../../lib/ui/caretNav'
 import RichLine, { type LineHandle, type LineValue } from './RichLine'
 import NoteToolbar, { type InsertKind, type MarkKey } from './NoteToolbar'
 import NoteTable from './NoteTable'
+import NoteImage from './NoteImage'
+import { imageMime, isImageName, MAX_IMAGE, shrinkImage } from '../../lib/notes/images'
 import { newTable } from '../../lib/notes/tableOps'
 import { applyStyle, forceStyle, styleAt, type Style } from '../../lib/notes/marks'
 import { getSel } from '../../lib/notes/richDom'
@@ -269,6 +271,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   async function addFiles(files: File[], afterId?: string) {
     setMsg(undefined)
     for (const f of files) {
+      if (isImageName(f.name) || f.type.startsWith('image/')) {
+        await addImage(f.name || '그림.png', await fileBytes(f))
+        continue
+      }
       if (f.size > MAX_FILE) {
         setMsg('50MB까지 붙일 수 있습니다.')
         continue
@@ -432,7 +438,25 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     freshTable.current = nb.id
     insertAfterCur(nb, 'none')
   }
-  async function pickImage() {}
+  /** 그림 넣기: 형식 검사·10MB·큰 그림 줄이기 → 지금 줄 다음에 */
+  async function addImage(name: string, raw: Uint8Array) {
+    const mime = imageMime(raw)
+    if (!mime) return setMsg('png·jpg·gif·webp 그림만 넣을 수 있습니다.')
+    if (raw.length > MAX_IMAGE) return setMsg('그림은 한 장에 10MB까지입니다.')
+    const { bytes, mime: m2 } = await shrinkImage(raw, mime)
+    try {
+      const rec = await attachFile(db, note.id, { name, mime: m2, bytes })
+      insertAfterCur({ id: newBlockId(), type: 'image', file_id: rec.id })
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    }
+  }
+  async function pickImage() {
+    const f = await fs.pickFileToRead('image/png,image/jpeg,image/gif,image/webp', { maxBytes: MAX_IMAGE })
+    if (!f) return
+    if (f.tooBig) return setMsg('그림은 한 장에 10MB까지입니다.')
+    await addImage(f.name, f.bytes)
+  }
   // ---- 도구 막대 ----
   const curBlock = cur ? blocks.find((x) => x.id === cur.id) : undefined
   const curStyle: Style = (() => {
@@ -646,7 +670,18 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     const names = new Map<string, string>()
     for (const b of blocks) if (b.type === 'file' && b.file_id) names.set(b.file_id, fileInfo[b.file_id]?.name ?? '파일')
     const n = { title, blocks }
-    const ok = await copyRich(noteToHtml(n, { files: names }), noteToPlain(n))
+    const images = new Map<string, string>()
+    for (const b of blocks)
+      if (b.type === 'image' && b.file_id)
+        try {
+          const f = await readFile(db, b.file_id)
+          let bin = ''
+          f.bytes.forEach((x) => (bin += String.fromCharCode(x)))
+          images.set(b.file_id, `data:${f.mime};base64,${btoa(bin)}`)
+        } catch {
+          /* 없는 그림은 빼고 */
+        }
+    const ok = await copyRich(noteToHtml(n, { files: names, images }), noteToPlain(n))
     setMsg(ok ? '복사했습니다. 한글에서 Ctrl+V로 붙여 넣으세요.' : '복사하지 못했습니다. 글을 골라 Ctrl+C를 눌러 보세요.')
   }
 
@@ -660,7 +695,20 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
 
   const marks = outlineMarks(blocks)
   return (
-    <section className="note-editor" aria-label="노트 편집" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+    <section
+      className="note-editor"
+      aria-label="노트 편집"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+      onPasteCapture={(e) => {
+        // 그림을 붙여 넣으면 그림 블록으로(글은 각 칸이 받는다)
+        const img = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'))
+        if (!img || (e.target as HTMLElement).closest('.nb-tbl, input, textarea')) return
+        e.preventDefault()
+        e.stopPropagation()
+        void addFiles([img])
+      }}
+    >
       <div className="note-head">
         <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
         <div className="row note-tools">
@@ -745,6 +793,8 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
               )}
               {b.type === 'table' ? (
                 <NoteTable b={b} autoFocus={freshTable.current === b.id} onChange={(patch) => update(b.id, patch)} onDelete={() => setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))} />
+              ) : b.type === 'image' ? (
+                <NoteImage b={b} onChange={(patch) => update(b.id, patch)} onDelete={() => setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))} />
               ) : b.type === 'pagebreak' ? (
                 <div className="nb-pagebreak" role="separator" aria-label="쪽 나눔"><span>쪽 나눔</span></div>
               ) : b.type === 'roster' ? (

@@ -11,17 +11,18 @@ import NotesPage from './NotesPage'
 
 async function setup() {
   const db = createDb('test-' + crypto.randomUUID())
+  const fs = createMemoryFsAdapter()
   const n = await createNote(db, '회의록')
   await createNote(db, '다른 노트')
   await addTodo(db, ['회신 ', { note: n.id }])
   render(
     <MemoryRouter initialEntries={[`/notes?id=${n.id}`]}>
-      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <AppProviders db={db} fs={fs}>
         <NotesPage today="2026-11-10" />
       </AppProviders>
     </MemoryRouter>,
   )
-  return { db, n }
+  return { db, n, fs }
 }
 const blocks = () => screen.getAllByRole('textbox', { name: /블록/ })
 
@@ -519,4 +520,26 @@ test('표: 도구 막대로 2×2 넣기 → 첫 칸에 쓰고 Tab으로 옮겨 �
   await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.find((b) => b.type === 'table')!.cells).toEqual([['이름', '확인'], ['가상일', '✔'], ['가상이', '']]), { timeout: 3000 })
   await user.click(screen.getByRole('button', { name: '머리 줄' }))
   await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.find((b) => b.type === 'table')!.head).toBe(true), { timeout: 3000 })
+})
+
+test('그림: 도구 막대로 넣기(형식 검사), 너비 50%·설명 저장', async () => {
+  const user = userEvent.setup()
+  const { db, n, fs } = await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  const tb = screen.getByRole('toolbar', { name: '노트 도구' })
+  fs.nextFileToRead = { name: '메모.txt', bytes: new Uint8Array([1, 2, 3]) }
+  await user.click(within(tb).getByRole('button', { name: '그림 넣기' }))
+  expect(await screen.findByText('png·jpg·gif·webp 그림만 넣을 수 있습니다.')).toBeInTheDocument()
+  const png = new Uint8Array(33)
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
+  new DataView(png.buffer).setUint32(16, 40)
+  new DataView(png.buffer).setUint32(20, 20)
+  fs.nextFileToRead = { name: '운동장.png', bytes: png }
+  await user.click(within(tb).getByRole('button', { name: '그림 넣기' }))
+  const tools = await screen.findByRole('toolbar', { name: '그림 도구' })
+  await user.click(within(tools).getByRole('button', { name: '50%' }))
+  await user.type(screen.getByLabelText('그림 설명'), '운동장')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.find((b) => b.type === 'image')).toMatchObject({ width: 50, caption: '운동장' }), { timeout: 3000 })
+  expect((await db.note_files.toArray()).map((f) => f.mime)).toEqual(['image/png'])
 })

@@ -36,7 +36,7 @@ function para(inner: string, o: { pt?: number; bold?: boolean; indent?: number; 
   return `<p style="${css.join(';')}">${inner || '&nbsp;'}</p>`
 }
 
-function blockHtml(b: NoteBlock, mark: string, files: Map<string, string>): string {
+function blockHtml(b: NoteBlock, mark: string, files: Map<string, string>, images: Map<string, string> = new Map()): string {
   const ind = b.indent ?? 0
   const look = { align: b.align, line: b.line }
   const body = lineHtml(b.text ?? '', b.marks, b.links)
@@ -64,6 +64,12 @@ function blockHtml(b: NoteBlock, mark: string, files: Map<string, string>): stri
       }
       return `<table style="border-collapse:collapse;border:1px solid #000;width:100%">${(b.cells ?? []).map((row, r) => `<tr>${row.map((t, c) => cell(t, r, c)).join('')}</tr>`).join('')}</table>`
     }
+    case 'image': {
+      const src = images.get(b.file_id ?? '')
+      const align = b.align ?? 'center'
+      const img = src ? `<img src="${src}" style="width:${b.width ?? 100}%" alt="${esc(b.caption ?? '')}">` : '[그림]'
+      return `<p style="margin:0;text-align:${align}">${img}</p>${b.caption ? `<p style="margin:0;text-align:${align};font-size:9pt;color:#555">${esc(b.caption)}</p>` : ''}`
+    }
     case 'pagebreak':
       return '<p style="page-break-before:always;margin:0"></p>'
     case 'roster': {
@@ -77,10 +83,10 @@ function blockHtml(b: NoteBlock, mark: string, files: Map<string, string>): stri
 }
 
 /** 노트 전체(또는 고른 블록들) → HTML 조각. 제목을 맨 위에. files: 첨부 id → 이름 */
-export function noteToHtml(note: Pick<NoteRec, 'title' | 'blocks'>, o: { withTitle?: boolean; files?: Map<string, string> } = {}): string {
+export function noteToHtml(note: Pick<NoteRec, 'title' | 'blocks'>, o: { withTitle?: boolean; files?: Map<string, string>; images?: Map<string, string> } = {}): string {
   const marks = outlineMarks(note.blocks)
   const files = o.files ?? new Map()
-  const parts = note.blocks.map((b, i) => blockHtml(b, marks[i], files))
+  const parts = note.blocks.map((b, i) => blockHtml(b, marks[i], files, o.images))
   if (o.withTitle !== false && note.title) parts.unshift(para(esc(note.title), { pt: 18, bold: true }))
   return `<html><head><meta charset="utf-8"></head><body><!--StartFragment-->${parts.join('')}<!--EndFragment--></body></html>`
 }

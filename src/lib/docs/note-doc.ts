@@ -5,6 +5,7 @@ import { escapeXml } from '../hwpx/xml'
 import { tableXml, PARA_JUSTIFY } from '../hwpx/xml'
 import { outlineMarks } from '../notes/blocks'
 import { tableWidths } from '../notes/tableOps'
+import { imageExt, imageMime, imageSize } from '../notes/images'
 import { ptOf, segments, type Style } from '../notes/marks'
 import { A4_PORTRAIT_BODY_WIDTH } from './roster-doc'
 import { tableColWidths } from './table-doc'
@@ -98,7 +99,27 @@ function runs(reg: Registry, text: string, b: NoteBlock, pt: number, base: Style
 }
 const para = (paraPr: number, inner: string, pageBreak = false) => `<hp:p id="0" paraPrIDRef="${paraPr}" styleIDRef="0" pageBreak="${pageBreak ? 1 : 0}" columnBreak="0" merged="0">${inner}</hp:p>`
 
-export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, files: Map<string, string> = new Map(), now?: Date): Promise<Uint8Array> {
+let picSeq = 0
+/** 글자처럼 놓인 그림(hp:pic). w·h는 HWPUNIT */
+function picXml(binId: string, w: number, h: number): string {
+  const id = 1_500_000_000 + ++picSeq
+  return (
+    `<hp:pic id="${id}" zOrder="${picSeq}" numberingType="PICTURE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0" instid="${id}" reverse="0">` +
+    `<hp:offset x="0" y="0"/><hp:orgSz width="${w}" height="${h}"/><hp:curSz width="${w}" height="${h}"/><hp:flip horizontal="0" vertical="0"/>` +
+    `<hp:rotationInfo angle="0" centerX="${Math.round(w / 2)}" centerY="${Math.round(h / 2)}" rotateimage="1"/>` +
+    `<hp:renderingInfo><hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/></hp:renderingInfo>` +
+    `<hc:img binaryItemIDRef="${binId}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/>` +
+    `<hp:imgRect><hc:pt0 x="0" y="0"/><hc:pt1 x="${w}" y="0"/><hc:pt2 x="${w}" y="${h}"/><hc:pt3 x="0" y="${h}"/></hp:imgRect>` +
+    `<hp:imgClip left="0" right="${w}" top="0" bottom="${h}"/><hp:inMargin left="0" right="0" top="0" bottom="0"/><hp:imgDim dimwidth="${w}" dimheight="${h}"/><hp:effects/>` +
+    `<hp:sz width="${w}" widthRelTo="ABSOLUTE" height="${h}" heightRelTo="ABSOLUTE" protect="0"/>` +
+    `<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>` +
+    `<hp:outMargin left="0" right="0" top="0" bottom="0"/></hp:pic>`
+  )
+}
+
+/** images: 그림 블록 file_id → 그림 바이트 */
+export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, files: Map<string, string> = new Map(), now?: Date, images: Map<string, Uint8Array> = new Map()): Promise<Uint8Array> {
+  const bins: { id: string; ext: string; mime: string; bytes: Uint8Array }[] = []
   const reg = new Registry()
   const marks = outlineMarks(note.blocks)
   const body: string[] = []
@@ -149,6 +170,20 @@ export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, fil
           }),
         )
       }
+      case 'image': {
+        const bytes = images.get(b.file_id ?? '')
+        const mime = bytes && imageMime(bytes)
+        const sz = bytes && imageSize(bytes)
+        if (!bytes || !mime || !sz) return push(para(P(0), lead('[그림]')))
+        const id = `image${bins.length + 1}`
+        bins.push({ id, ext: imageExt(mime), mime, bytes })
+        const w = Math.round((A4_PORTRAIT_BODY_WIDTH * Math.max(10, Math.min(100, b.width ?? 100))) / 100)
+        const h = Math.round((w * sz.h) / sz.w)
+        const center = reg.para(0, b.align ?? 'center')
+        push(para(center, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT })}">${picXml(id, w, h)}<hp:t/></hp:run>`))
+        if (b.caption) push(para(center, `<hp:run charPrIDRef="${reg.cp({ pt: 9, color: '#555555' })}">${tx(b.caption)}</hp:run>`))
+        return
+      }
       case 'roster': {
         if (text) push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT, b: true })}">${tx(text)}</hp:run>`))
         const cp = reg.cp({ pt: BASE_PT })
@@ -169,5 +204,5 @@ export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, fil
   })
   if (breakNext) body.push(para(PARA_JUSTIFY, '<hp:run charPrIDRef="0"/>', true))
   const previewText = [note.title, ...note.blocks.map((b) => b.text ?? '')].join('\n').slice(0, 2000)
-  return buildHwpx({ landscape: false, bodyXml: body.join(''), charPrXml: reg.charPrXml(), previewText, title: note.title || '노트', headerXml: reg.header() }, now)
+  return buildHwpx({ landscape: false, bodyXml: body.join(''), charPrXml: reg.charPrXml(), previewText, title: note.title || '노트', headerXml: reg.header(), bins }, now)
 }

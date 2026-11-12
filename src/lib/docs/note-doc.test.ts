@@ -50,3 +50,22 @@ test('노트 hwpx: 표 블록은 hp:tbl(칸 너비 비율), 쪽 나누기는 pag
   expect(ws[0] / ws[1]).toBeCloseTo(3, 0)
   expect(sec).toMatch(/pageBreak="1"[^>]*>[\s\S]*?다음 쪽/)
 })
+
+test('노트 hwpx: 그림 블록은 BinData 파일 + manifest + hp:pic(너비 비율 유지)', async () => {
+  const JSZip = (await import('jszip')).default
+  const png = new Uint8Array(33)
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
+  new DataView(png.buffer).setUint32(16, 400)
+  new DataView(png.buffer).setUint32(20, 200)
+  const bytes = await buildNoteHwpx({ title: '', blocks: [{ id: 'i', type: 'image', file_id: 'f1', width: 50, caption: '운동장' }] }, new Map(), undefined, new Map([['f1', png]]))
+  const zip = await JSZip.loadAsync(bytes)
+  expect(zip.file('BinData/image1.png')).not.toBeNull()
+  const hpf = await zip.file('Contents/content.hpf')!.async('string')
+  expect(hpf).toContain('<opf:item id="image1" href="BinData/image1.png" media-type="image/png" isEmbeded="1"/>')
+  const sec = await zip.file('Contents/section0.xml')!.async('string')
+  expect(xmlErrors(sec)).toEqual([])
+  expect(sec).toContain('binaryItemIDRef="image1"')
+  const [, w, h] = /<hp:curSz width="(\d+)" height="(\d+)"/.exec(sec)!.map(Number)
+  expect(w / h).toBeCloseTo(2, 1)
+  expect(sec).toContain('운동장')
+})

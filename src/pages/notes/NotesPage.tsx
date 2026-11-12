@@ -17,6 +17,7 @@ import { buildNoteHwpx } from '../../lib/docs/note-doc'
 import PageHead from '../../components/PageHead'
 import NoteEditor from './NoteEditor'
 import NoticeTag, { shownTitle } from './NoticeTag'
+import { readFile } from '../../lib/notes/notes'
 import { unlinkNoticeNote } from '../../lib/notices/noteSync'
 
 /** 노트함: 왼쪽 목록(찾기·고정·지우기) + 오른쪽 편집. */
@@ -144,7 +145,15 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       // 한글: 글자 서식·들여쓰기·목록·체크·학생 표를 한글 문단 그대로
       const names = new Map<string, string>()
       for (const b of n.blocks) if (b.type === 'file' && b.file_id) names.set(b.file_id, (await db.note_files.get(b.file_id))?.name ?? '파일')
-      fs.downloadFile(name, await buildNoteHwpx(n, names))
+      const images = new Map<string, Uint8Array>()
+      for (const b of n.blocks)
+        if (b.type === 'image' && b.file_id)
+          try {
+            images.set(b.file_id, (await readFile(db, b.file_id)).bytes)
+          } catch {
+            /* 없는 그림은 [그림]으로 */
+          }
+      fs.downloadFile(name, await buildNoteHwpx(n, names, undefined, images))
     }
   }
 
