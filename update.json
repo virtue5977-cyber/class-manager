@@ -1,9 +1,9 @@
 {
-  "version": "0.14.0",
+  "version": "0.15.0",
   "shell": 1,
-  "bundle": "bundle-0.14.0.zip",
-  "sha256": "02ad5692b99343b6b38243ff63150496a6794a31239e1ccbbfcfdb3863df9f0f",
-  "sig": "/SoAdov07q+1FyVOsoIkzOauDlD4EA3kC1iNH1bZNxaiSld0wHw5rRdtoCjEJShZIDP5Iro/F1Tcb+Z0jCpoCA==",
-  "note": "0.14.0: /설명서, !상담, ! 뒤 @학생, AI가 출결 통계에서 누구인지 대답, 달력 일정 누르면 고치기·지우기·장소·개인/업무 색, 전달사항 끌어 순서·날짜별 목록, 홈 노트함에서 전달사항 지정, 누가기록 내보내기·관찰 분야·미정리 알림 끄기, 결석 기간, 노트 여러 줄 고르기·명렬표 크기·숨기기",
+  "bundle": "bundle-0.15.0.zip",
+  "sha256": "7611ac653ef4779aaaa8ca798563b8fa84511a997e3b7c6fafc409705ecb6b5a",
+  "sig": "mTad3uUEvF6VllgxX4Xa6Kzib09TnaufxA29j+XhnaX/URu5GEdlZvFFHwtqhuHdMwndJM6SFYw7vkUMnxWtBw==",
+  "note": "0.15.0: 노트 편집기 — 위쪽 도구 막대(글꼴·글자 크기·굵게·밑줄·색·정렬·줄 간격), 표(Tab 이동·줄칸 더하기·너비 끌기), 그림(붙여넣기·크기), 쪽 보기(A4·여백·격자)·쪽 나누기, 머리말·꼬리말({쪽}{날짜}), 한글로 내보내기에 모두 반영",
   "date": "2026-11-12"
 }
