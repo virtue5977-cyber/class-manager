@@ -3,6 +3,7 @@ import { useDb } from '../app/context'
 import { getSettings } from '../lib/settings'
 import { classLabel } from '../lib/roster/roster'
 import { useClasses } from '../pages/common/useClasses'
+import RecentChats from './RecentChats'
 import Nav, { SettingsNav } from './Nav'
 import { useBadges } from '../lib/ui/badges'
 
@@ -40,6 +41,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <Brand />
       <Nav badges={badges} />
+      <RecentChats />
       <div className="side-bottom">
         <SettingsNav />
         <div className="version">{`v${__APP_VERSION__}`}</div>

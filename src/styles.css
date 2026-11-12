@@ -918,3 +918,17 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .home-tabs.drop-here { box-shadow: inset -2px 0 0 var(--accent); }
 .panel-slot.drop-here { box-shadow: 0 -3px 0 var(--accent); border-radius: 8px; }
 .home-side.drop-here { box-shadow: inset 0 -3px 0 var(--accent); }
+
+/* 최근 대화(왼쪽 메뉴 아래) */
+.recent-chats { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; }
+.recent-chats h3 { font-size: 11.5px; color: var(--sub); font-weight: 600; margin: 0 8px 2px; }
+.recent-chats li { display: flex; align-items: center; gap: 2px; border-radius: 6px; padding: 0 2px 0 0; }
+.recent-chats li:hover, .recent-chats li.on { background: var(--hover); }
+.recent-title { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 5px 8px; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-del { opacity: 0; color: var(--sub); }
+.recent-chats li:hover .recent-del, .recent-del:focus-visible { opacity: 1; }
+@media (hover: none) { .recent-del { opacity: .7; } }
+.recent-ask { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; flex-wrap: wrap; padding: 2px 8px; }
+.recent-all { align-self: flex-start; font-size: 12px; margin: 2px 8px; color: var(--sub); }
+.danger-text { color: var(--c-red) !important; }
+.home-tabs .new-chat { margin-left: auto; font-size: 13px; align-self: center; }

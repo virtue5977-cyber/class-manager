@@ -1,5 +1,6 @@
 import { PANEL_LABEL, panelPlace, placePanel, savePrefs, setPlace, useLayoutPrefs, type PanelKey } from '../../lib/ui/layoutPrefs'
 import { startPointerDrag } from '../../lib/ui/pointerDrag'
+import { newThread } from '../../lib/command/chatThreads'
 import { TodayMeal } from './TodaySummary'
 import { useLayoutEffect, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -181,6 +182,11 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
             <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
               대화
             </button>
+            {tab === 'chat' && (
+              <button type="button" className="link new-chat" title="새 채팅(지금 대화는 왼쪽 '최근 대화'로)" onClick={() => newThread()}>
+                ＋ 새 채팅
+              </button>
+            )}
             {tabPanels.map((k) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} data-drop={`tab:${k}`} className={`${dragKey === k ? 'dragging' : ''}${dropCls(`tab:${k}`)}`} title="끌어서 순서를 바꾸거나 오른쪽으로 옮길 수 있습니다" onPointerDown={(e) => beginPanelDrag(e, k)} onClick={() => setTab(k)}>
                 {k === 'notice' && notices.length ? `전달사항 ${notices.length}` : PANEL_LABEL[k]}
