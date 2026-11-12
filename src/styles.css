@@ -932,3 +932,5 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .recent-all { align-self: flex-start; font-size: 12px; margin: 2px 8px; color: var(--sub); }
 .danger-text { color: var(--c-red) !important; }
 .home-tabs .new-chat { margin-left: auto; font-size: 13px; align-self: center; }
+
+.result-list .pii, .notice-text { white-space: pre-line; }
