@@ -4,6 +4,7 @@ import { useDb } from '../../app/context'
 import type { AbsenceReportRec, AttendanceCategory, AttendanceKind, AttendanceRec, RecognizedEvidence, StudentRec } from '../../lib/db/types'
 import { deleteAttendance, saveAttendance, type AttendanceInput } from '../../lib/attendance/attendance'
 import { impactOfChange, reconcileStudent } from '../../lib/absenceReports/reconcile'
+import { planAbsenceRange, saveAbsenceRange } from '../../lib/attendance/range'
 
 const KINDS: AttendanceKind[] = ['결석', '지각', '조퇴', '결과']
 const CATS: AttendanceCategory[] = CATEGORIES
@@ -44,6 +45,33 @@ export default function AttendanceForm({
   const [memo, setMemo] = useState(current?.memo ?? '')
   const [error, setError] = useState<string>()
   const [pending, setPending] = useState<Pending | null>(null)
+  /** 결석 기간 끝날(기본 = 그날 하루) */
+  const [endDate, setEndDate] = useState(date)
+  const [plan, setPlan] = useState<{ days: string[]; taken: string[] }>()
+  const [askTaken, setAskTaken] = useState(false)
+  const ranged = kind === '결석' && !editingId && endDate > date
+  useEffect(() => {
+    let live = true
+    if (!ranged) return setPlan(undefined)
+    planAbsenceRange(db, student.id, date, endDate).then((p) => live && setPlan(p), () => live && setPlan(undefined))
+    return () => {
+      live = false
+    }
+  }, [db, student.id, date, endDate, ranged])
+  async function saveRange(overwrite: boolean) {
+    if (!plan || busy.current) return
+    busy.current = true
+    try {
+      const n = await saveAbsenceRange(db, input(), plan.days, overwrite)
+      await reconcileStudent(db, student.id)
+      setAskTaken(false)
+      onDone(`결석 ${n}일을 넣었습니다.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      busy.current = false
+    }
+  }
 
   function pick(r?: AttendanceRec) {
     setEditingId(r?.id)
@@ -88,6 +116,12 @@ export default function AttendanceForm({
   })
 
   async function run(action: 'save' | 'delete', confirmed = false) {
+    // 결석 기간: 이미 출결이 있는 날이 있으면 먼저 묻는다
+    if (action === 'save' && ranged) {
+      if (!plan) return
+      if (plan.taken.length) return setAskTaken(true)
+      return saveRange(false)
+    }
     if (busy.current) return // 두 번 눌러도 한 번만 저장
     busy.current = true
     setError(undefined)
@@ -156,6 +190,17 @@ export default function AttendanceForm({
           </label>
         )}
       </div>
+      {kind === '결석' && !editingId && (
+        <div className="row">
+          <label className="inline">
+            기간
+            <input type="date" aria-label="결석 끝날" value={endDate} min={date} onChange={(e) => (setEndDate(e.target.value || date), setAskTaken(false))} />
+          </label>
+          <span className="muted">
+            {ranged && plan ? `수업일 ${plan.days.length}일(${plan.days.map(md).join(', ')})에 넣습니다.` : '하루(끝날을 고르면 여러 날)'}
+          </span>
+        </div>
+      )}
       <label className="wide">
         사유
         <input value={reason} onChange={(e) => setReason(e.target.value)} onKeyDown={enterSaves} />
@@ -169,7 +214,20 @@ export default function AttendanceForm({
           {error}
         </p>
       )}
-      {pending ? (
+      {askTaken && plan ? (
+        <div className="row confirm" role="group" aria-label="이미 출결이 있는 날">
+          <span>{`${plan.taken.map(md).join(', ')}에는 이미 출결이 있습니다.`}</span>
+          <button type="button" className="danger" onClick={() => void saveRange(true)}>
+            덮어쓰기
+          </button>
+          <button type="button" onClick={() => void saveRange(false)}>
+            그날은 빼고
+          </button>
+          <button type="button" onClick={() => setAskTaken(false)}>
+            취소
+          </button>
+        </div>
+      ) : pending ? (
         <div className="row confirm">
           <span>{`제출했거나 직접 고친 신고서(${pending.reports.map(periodText).join(', ')})에 영향을 줍니다. 계속할까요?`}</span>
           <button type="button" className="danger" onClick={() => run(pending.kind, true)}>
