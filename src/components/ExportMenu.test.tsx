@@ -47,3 +47,18 @@ test('바로 인쇄는 인쇄 창을 연다', async () => {
   await new Promise((r) => setTimeout(r, 5))
   expect(print).toHaveBeenCalled()
 })
+
+test('/내보내기 화면 형식: 미리 부탁한 형식은 그 화면의 내보내기 메뉴가 생기자마자 실행(인쇄 포함)', async () => {
+  const { render } = await import('@testing-library/react')
+  const { default: ExportMenu, requestExport } = await import('./ExportMenu')
+  const run = vi.fn()
+  requestExport('xlsx')
+  render(<ExportMenu items={[{ format: 'hwpx', run: () => {} }, { format: 'xlsx', run }]} />)
+  await new Promise((r) => setTimeout(r, 30))
+  expect(run).toHaveBeenCalledTimes(1)
+  const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+  requestExport('print')
+  render(<ExportMenu items={[{ format: 'pdf', run: () => {} }]} />)
+  await new Promise((r) => setTimeout(r, 30))
+  expect(print).toHaveBeenCalledTimes(1)
+})

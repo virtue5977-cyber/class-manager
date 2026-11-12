@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShortcut } from '../lib/ui/shortcuts'
+import { takeExport } from '../lib/ui/exportRequest'
 import Icon from './Icon'
 
 export type ExportFormat = 'hwpx' | 'xlsx' | 'pdf'
+
+export { requestExport } from '../lib/ui/exportRequest'
 const LABEL: Record<ExportFormat, string> = { hwpx: '한글(hwpx)', xlsx: '엑셀(xlsx)', pdf: 'PDF' }
 
 /** 화면마다 하나인 '내보내기 ▾'(한글·엑셀·PDF·바로 인쇄). Ctrl+E로도 연다. icon이면 아이콘만 있는 작은 단추. */
@@ -12,6 +15,24 @@ export default function ExportMenu({ items, icon, onPrint }: { items: { format: 
   const [error, setError] = useState<string>()
   const box = useRef<HTMLDivElement>(null)
   useShortcut('export', useCallback(() => setOpen(true), []))
+  // 부탁받은 형식이 있으면 바로 실행(화면이 막 열렸을 때·이미 열려 있을 때)
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+  useEffect(() => {
+    const take = () => {
+      const f = takeExport()
+      if (!f) return
+      setTimeout(() => {
+        if (f === 'print') return onPrint ? onPrint() : window.print()
+        const it = itemsRef.current.find((x) => x.format === f)
+        if (it) void it.run()
+        else setOpen(true)
+      }, 0)
+    }
+    take()
+    window.addEventListener('watson-export-request', take)
+    return () => window.removeEventListener('watson-export-request', take)
+  }, [onPrint])
   useShortcut('close', useCallback(() => setOpen(false), []))
   useEffect(() => {
     if (!open) return
