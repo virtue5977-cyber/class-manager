@@ -114,3 +114,13 @@ test('/관찰 @3 내용 → 관찰 기록(누가기록)', async () => {
   expect(logs).toHaveLength(1)
   expect(logs[0]).toMatchObject({ kind: '관찰', date: '2026-11-09', content: '모둠 활동에서 친구를 도움' })
 })
+
+test('/설명서 → 명령·스킬·단축키 안내 카드', async () => {
+  const { ctx, env } = await setup()
+  const r = await executeInput('/설명서', ctx, env)
+  expect(r.result?.card?.kind).toBe('help')
+  const d = r.result!.card!.data as { sections: { title: string; rows: { keys: string; label: string }[] }[] }
+  expect(d.sections.map((s) => s.title)).toEqual(['/ 빠른 실행', '! AI 실행', '@ 학생·노트', '앱 단축키', '노트 단축키'])
+  expect(d.sections[0].rows.some((x) => x.keys === '/출결')).toBe(true)
+  expect(d.sections[1].rows.some((x) => x.keys === '!상담')).toBe(true)
+})

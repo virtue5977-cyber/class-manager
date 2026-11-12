@@ -31,6 +31,7 @@ export const COMMAND_META: CommandMeta[] = [
   { id: 'report', names: ['신고서'], group: '기록', mode: 'rule', help: '/신고서 @학생 — 최근 결석신고서 한글 파일' },
   { id: 'reflection', names: ['반성문'], group: '정리', mode: 'rule', help: '/반성문 @학생 — 반성문 화면' },
   { id: 'seat', names: ['자리'], group: '이동', mode: 'rule', help: '/자리 — 자리배치 화면' },
+  { id: 'help', names: ['설명서', '도움말'], group: '이동', mode: 'rule', help: '/설명서 — 명령·스킬·단축키 안내' },
   { id: 'export', names: ['내보내기'], group: '이동', mode: 'rule', help: '/내보내기 화면 [한글·엑셀·PDF·인쇄] — 형식까지 쓰면 바로 저장·인쇄, 없으면 메뉴', subs: ['출결', '신고서', '통계', '누가기록', '명렬표', '자리배치', '청소배치', '달력'] },
 ]
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
 import type { ChatRec, StudentRec, AttendanceRec, CounselingLogRec } from '../../lib/db/types'
@@ -80,6 +80,23 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
         </p>
       )}
       {card?.kind === 'student' && <StudentCard data={card.data as { student: StudentRec; atts: AttendanceRec[]; logs: CounselingLogRec[]; open: number }} />}
+      {card?.kind === 'help' && (
+        <div className="help-card">
+          {(card.data as { sections: { title: string; rows: { keys: string; label: string }[] }[] }).sections.map((sec) => (
+            <section key={sec.title} aria-label={sec.title}>
+              <h4>{sec.title}</h4>
+              <dl>
+                {sec.rows.map((r) => (
+                  <Fragment key={r.keys}>
+                    <dt>{r.keys}</dt>
+                    <dd>{r.label}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </div>
+      )}
       {card?.kind === 'search' && (
         <ul className="plain result-list">
           {(card.data as SearchHit[]).map((h, i) => (

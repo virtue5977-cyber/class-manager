@@ -6,7 +6,7 @@ test('! 스킬 읽기: 이름·하위·본문, 스킬 없이 붙여 넣으면 au
   expect(parseSkill('! 공문 내용입니다')).toEqual({ skill: 'auto', sub: undefined, body: '공문 내용입니다' })
   expect(parseSkill('!안녕 반가워')).toEqual({ skill: 'auto', sub: undefined, body: '안녕 반가워' })
   expect(parseSkill('!전달 학생')).toEqual({ skill: '전달', sub: '학생', body: '' })
-  expect(SKILLS.map((s) => s.id)).toEqual(['전달', '일정', '할일', '나누기', '요약', '누가', '상담정리'])
+  expect(SKILLS.map((s) => s.id)).toEqual(['전달', '일정', '할일', '나누기', '요약', '누가', '상담'])
 })
 
 test('! 자동완성: 스킬 → 하위', () => {
@@ -24,4 +24,9 @@ test('AI 추천 정리: 날짜·시간 형식이 아니면 비우고, 빈 글은
     { kind: 'event', text: 'x', date: '2026-11-12', time: '' },
     { kind: 'todo', text: '명단 입력', date: '2026-11-11' },
   ])
+})
+
+test('!상담 = !상담정리(옛 이름도 받음)', () => {
+  expect(parseSkill('!상담 @3')).toEqual({ skill: '상담', sub: undefined, body: '@3' })
+  expect(parseSkill('!상담정리 @3')).toEqual({ skill: '상담', sub: undefined, body: '@3' })
 })

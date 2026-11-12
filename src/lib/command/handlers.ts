@@ -38,7 +38,7 @@ export interface RunResult {
   summary: string
   links: { label: string; to: string }[]
   undo?: () => Promise<void>
-  card?: { kind: 'student' | 'search' | 'draft' | 'confirm' | 'suggest'; data: unknown }
+  card?: { kind: 'student' | 'search' | 'draft' | 'confirm' | 'suggest' | 'help'; data: unknown }
   form?: { kind: 'attendance' | 'counsel'; studentId: string; date: string }
   /** 저장하지 않은 결과(확인 필요) */
   pending?: boolean
@@ -192,6 +192,12 @@ export const HANDLERS: Record<string, Handler> = {
     async run(_p, _ctx, env) {
       env.navigate('/class/seating')
       return { summary: '자리배치 화면을 열었습니다.', links: [{ label: '자리배치', to: '/class/seating' }] }
+    },
+  },
+  help: {
+    async run() {
+      const { helpSections } = await import('./help')
+      return { summary: '명령·단축키 설명서', links: [], card: { kind: 'help', data: { sections: helpSections() } } }
     },
   },
   export: {

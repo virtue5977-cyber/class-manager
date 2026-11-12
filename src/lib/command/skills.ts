@@ -11,7 +11,7 @@ export const SKILLS: Skill[] = [
   { id: '나누기', help: '!나누기 공문 — 전달사항으로 나눠 추천(안내 하나 = 하나)' },
   { id: '요약', help: '!요약 글 — 요점만' },
   { id: '누가', help: '!누가 관찰 메모 — 누가기록 문체로' },
-  { id: '상담정리', help: '!상담정리 @학생 — 미정리 상담을 누가기록 초안으로' },
+  { id: '상담', help: '!상담 @학생 — 미정리 상담·관찰을 누가기록 초안으로' },
 ]
 
 export interface ParsedSkill {
@@ -24,7 +24,8 @@ export interface ParsedSkill {
 export function parseSkill(input: string): ParsedSkill {
   const t = input.replace(/^\s*!/, '')
   const m = /^(\S+)([\s\S]*)$/.exec(t.trimStart())
-  const sk = m && SKILLS.find((s) => s.id === m[1])
+  // 옛 이름 !상담정리도 받는다
+  const sk = m && SKILLS.find((s) => s.id === (m[1] === '상담정리' ? '상담' : m[1]))
   if (!sk || t.match(/^\s/)) return { skill: 'auto', sub: undefined, body: t.trim() }
   let rest = m![2]
   let sub: string | undefined

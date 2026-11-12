@@ -554,8 +554,10 @@ div.menu .menu-list > button:hover, div.menu .menu-list > button:focus-visible {
 .floating-form { position: fixed; right: 24px; bottom: 90px; z-index: 40; width: min(420px, calc(100vw - 48px)); max-height: 70vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, .2); }
 .w-float { position: fixed; right: 24px; bottom: 24px; z-index: 35; }
 .w-button { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 20px; font-weight: 700; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); cursor: pointer; }
-.w-panel { width: min(640px, calc(100vw - 260px)); display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); animation: w-open .15s ease-out; transform-origin: right bottom; }
-@keyframes w-open { from { transform: scaleX(.2); opacity: .4; } to { transform: none; opacity: 1; } }
+.w-panel { width: min(640px, calc(100vw - 260px)); display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); animation: w-unroll .32s cubic-bezier(.2, .8, .2, 1); }
+/* 두루마리처럼: W 단추 쪽(오른쪽)에서 왼쪽으로 펼쳐진다. 글자는 눌리지 않는다. */
+@keyframes w-unroll { from { clip-path: inset(0 0 0 calc(100% - 52px) round 14px); opacity: .6; } to { clip-path: inset(0 0 0 0 round 14px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .w-panel { animation: none; } }
 @media print { .w-float, .floating-form { display: none !important; } }
 
 /* ---- 새 홈 ---- */
@@ -994,3 +996,11 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .all-logs-table tr.clickable:hover { background: var(--hover, rgba(127, 127, 127, .08)); }
 .back-all { align-self: flex-start; }
 .nowrap { white-space: nowrap; }
+
+/* /설명서 카드 */
+.help-card { display: grid; gap: 10px; }
+.help-card h4 { margin: 0 0 4px; font-size: 13px; }
+.help-card dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; font-size: 13px; }
+.help-card dt { font-family: var(--mono, ui-monospace, monospace); color: var(--accent); white-space: nowrap; }
+.help-card dd { margin: 0; color: var(--sub); }
+@container (max-width: 520px) { .help-card dl { grid-template-columns: 1fr; } .help-card dd { margin-bottom: 4px; } }
