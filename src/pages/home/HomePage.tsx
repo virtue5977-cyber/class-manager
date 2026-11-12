@@ -1,4 +1,5 @@
-import { PANEL_LABEL, panelPlace, savePrefs, setPlace, useLayoutPrefs, type PanelKey } from '../../lib/ui/layoutPrefs'
+import { PANEL_LABEL, panelPlace, placePanel, savePrefs, setPlace, useLayoutPrefs, type PanelKey } from '../../lib/ui/layoutPrefs'
+import { startPointerDrag } from '../../lib/ui/pointerDrag'
 import { TodayMeal } from './TodaySummary'
 import { useLayoutEffect, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -104,6 +105,31 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
     else delete panelH[key]
     savePrefs({ ...prefs, panelH })
   }
+  /** 탭·칸 끌기: 왼쪽 탭 줄이나 오른쪽 열의 원하는 자리에 놓는다(반대쪽으로도) */
+  const [dragKey, setDragKey] = useState<PanelKey>()
+  const [dropAt, setDropAt] = useState<string>()
+  function beginPanelDrag(e: React.PointerEvent, key: PanelKey) {
+    let target: string | undefined
+    startPointerDrag(e, {
+      onStart: () => setDragKey(key),
+      onMove: (x, y) => {
+        const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-drop]')
+        target = el?.dataset.drop
+        setDropAt(target)
+      },
+      onCancel: () => (setDragKey(undefined), setDropAt(undefined)),
+      onDrop: () => {
+        setDragKey(undefined)
+        setDropAt(undefined)
+        if (!target) return
+        const [place, before] = target.split(':') as ['tab' | 'side', string]
+        if (before === key) return
+        savePrefs({ ...prefs, panels: placePanel(prefs.panels, key, place, (before || null) as PanelKey | null) })
+        if (place === 'tab') setTab(key)
+      },
+    })
+  }
+  const dropCls = (id: string) => (dragKey && dropAt === id ? ' drop-here' : '')
   const renderPanel = (key: PanelKey) =>
     key === 'notice' ? <NoticeTab date={today} /> : key === 'todo' ? <TodoList ctx={ctx} /> : key === 'upcoming' ? <Upcoming today={today} /> : key === 'notes' ? <NoteBox notes={ctx.notes} /> : <TodayMeal today={today} panel />
   useEffect(() => {
@@ -151,12 +177,12 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
             <TodaySummary today={today} />
           </div>
           <GettingStarted />
-          <div className="home-tabs" role="tablist" aria-label="홈 보기">
+          <div className={`home-tabs${dropCls('tab:')}`} role="tablist" aria-label="홈 보기" data-drop="tab:">
             <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>
               대화
             </button>
             {tabPanels.map((k) => (
-              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+              <button key={k} type="button" role="tab" aria-selected={tab === k} data-drop={`tab:${k}`} className={`${dragKey === k ? 'dragging' : ''}${dropCls(`tab:${k}`)}`} title="끌어서 순서를 바꾸거나 오른쪽으로 옮길 수 있습니다" onPointerDown={(e) => beginPanelDrag(e, k)} onClick={() => setTab(k)}>
                 {k === 'notice' && notices.length ? `전달사항 ${notices.length}` : PANEL_LABEL[k]}
               </button>
             ))}
@@ -180,11 +206,13 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
         </div>
         {sidePanels.length > 0 && <div className="resize-v" role="separator" aria-orientation="vertical" aria-label="오른쪽 폭 조절" title="끌어서 오른쪽 칸 폭 조절" onPointerDown={drag('sideW')} />}
         {sidePanels.length > 0 && (
-          <aside className="home-side" aria-label="홈 오른쪽 칸">
+          <aside className={`home-side${dropCls('side:')}`} aria-label="홈 오른쪽 칸" data-drop="side:">
             {sidePanels.map((k) => (
-              <PanelFrame key={k} label={PANEL_LABEL[k]} height={prefs.panelH[k]} onHeight={(h) => setPanelH(k, h)} onMove={() => movePanel(k, 'tab')}>
-                {renderPanel(k)}
-              </PanelFrame>
+              <div key={k} data-drop={`side:${k}`} className={`panel-slot${dragKey === k ? ' dragging' : ''}${dropCls(`side:${k}`)}`}>
+                <PanelFrame label={PANEL_LABEL[k]} height={prefs.panelH[k]} onHeight={(h) => setPanelH(k, h)} onMove={() => movePanel(k, 'tab')} onGrip={(e) => beginPanelDrag(e, k)}>
+                  {renderPanel(k)}
+                </PanelFrame>
+              </div>
             ))}
           </aside>
         )}
@@ -194,7 +222,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
 }
 
 /** 오른쪽 칸 틀: 머리의 '왼쪽 탭으로' 단추(마우스를 올리면 보임), 아래 경계선 끌어 높이(두 번 누르면 내용에 맞춤). */
-function PanelFrame({ label, height, onHeight, onMove, children }: { label: string; height?: number; onHeight: (h: number) => void; onMove: () => void; children: React.ReactNode }) {
+function PanelFrame({ label, height, onHeight, onMove, onGrip, children }: { label: string; height?: number; onHeight: (h: number) => void; onMove: () => void; onGrip: (e: React.PointerEvent) => void; children: React.ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
   const [live, setLive] = useState<number>()
   const h = live ?? height
@@ -218,6 +246,9 @@ function PanelFrame({ label, height, onHeight, onMove, children }: { label: stri
   }
   return (
     <div className="panel-frame">
+      <span className="panel-grip" role="button" tabIndex={-1} aria-label={`${label} 끌어서 옮기기`} title="끌어서 순서를 바꾸거나 왼쪽 탭 줄로 옮기기" onPointerDown={(e) => (e.preventDefault(), onGrip(e))}>
+        ⠿ 옮기기
+      </span>
       <button type="button" className="icon-btn panel-move" aria-label={`${label} 왼쪽 탭으로`} title="왼쪽 탭으로 옮기기" onClick={onMove}>
         ⇤ 탭으로
       </button>

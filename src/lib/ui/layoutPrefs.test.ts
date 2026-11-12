@@ -60,3 +60,21 @@ test('전달사항 칸: 기본은 왼쪽 탭, 예전 저장값에 없으면 왼�
   savePrefs({ ...p, panels: setPlace(p.panels, 'notice', 'side') })
   expect(panelPlace(readPrefs().panels.find((x) => x.key === 'notice')!)).toBe('side')
 })
+
+test('placePanel: 칸을 오른쪽/왼쪽 탭 어디로든, 그 쪽에서 원하는 칸 앞(없으면 끝)으로', async () => {
+  const { placePanel } = await import('./layoutPrefs')
+  const base = readPrefs().panels // notice(tab), todo, upcoming, notes, meal(side)
+  const keys = (l: typeof base, place: 'tab' | 'side') => l.filter((x) => panelPlace(x) === place).map((x) => x.key)
+  // 오른쪽 안에서 순서: meal을 todo 앞으로
+  let l = placePanel(base, 'meal', 'side', 'todo')
+  expect(keys(l, 'side')).toEqual(['meal', 'todo', 'upcoming', 'notes'])
+  // 오른쪽 → 왼쪽 탭(전달사항 앞)
+  l = placePanel(l, 'notes', 'tab', 'notice')
+  expect(keys(l, 'tab')).toEqual(['notes', 'notice'])
+  expect(keys(l, 'side')).toEqual(['meal', 'todo', 'upcoming'])
+  // 왼쪽 탭 → 오른쪽 끝
+  l = placePanel(l, 'notice', 'side', null)
+  expect(keys(l, 'side')).toEqual(['meal', 'todo', 'upcoming', 'notice'])
+  // 숨긴 칸은 그대로 숨김
+  expect(placePanel(setPlace(base, 'meal', 'hidden'), 'todo', 'side', null).find((x) => x.key === 'meal')!.hidden).toBe(true)
+})

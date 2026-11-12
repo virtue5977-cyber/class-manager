@@ -907,3 +907,14 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .todo-list li .row-edit { opacity: 0; }
 .todo-list li:hover .row-edit, .todo-list li .row-edit:focus-visible { opacity: .7; }
 @media (hover: none) { .todo-list li .row-edit { opacity: .7; } }
+
+/* 홈 탭·칸 끌기 */
+.panel-frame > .panel-grip { position: absolute; top: -9px; left: 12px; z-index: 2; height: 18px; line-height: 16px; padding: 0 7px; font-size: 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--sub); cursor: grab; opacity: 0; pointer-events: none; transition: opacity .12s; touch-action: none; user-select: none; }
+.panel-frame:hover > .panel-grip { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .panel-frame > .panel-grip { opacity: 1; pointer-events: auto; } }
+.home-tabs [role='tab'] { touch-action: none; }
+.home-tabs [role='tab'].dragging, .panel-slot.dragging { opacity: .45; }
+.home-tabs [role='tab'].drop-here { box-shadow: inset 2px 0 0 var(--accent); }
+.home-tabs.drop-here { box-shadow: inset -2px 0 0 var(--accent); }
+.panel-slot.drop-here { box-shadow: 0 -3px 0 var(--accent); border-radius: 8px; }
+.home-side.drop-here { box-shadow: inset 0 -3px 0 var(--accent); }
