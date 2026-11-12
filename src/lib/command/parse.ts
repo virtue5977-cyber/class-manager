@@ -122,7 +122,7 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
       continue
     }
     // 날짜·시각 말은 앞쪽(사유·내용이 시작되기 전)에서만 읽는다. 할 일·일정은 맨 끝의 날짜 말도 마감일·날짜로.
-    const dt = parseDateWords(words, i, ctx.today, p.cmd === 'attendance' || p.cmd === 'counsel' ? 'past' : 'future')
+    const dt = parseDateWords(words, i, ctx.today, p.cmd === 'attendance' || p.cmd === 'counsel' || p.cmd === 'observe' ? 'past' : 'future')
     const isTodo = p.cmd === 'todo' || (p.cmd === 'event' && p.sub === '할일')
     const atEnd = i + dt.used === toks.length
     if (dt.used && (!restWords.length || ((isTodo || p.cmd === 'event') && atEnd))) {

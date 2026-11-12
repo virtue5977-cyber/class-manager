@@ -984,3 +984,13 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .notice-links { display: inline-flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .notice-link { white-space: nowrap; }
 .nb .mention-list { left: 36px; }
+
+.student-logs { margin-top: 12px; }
+.student-log-list li a { gap: 8px; padding: 3px 0; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tag.kind-관찰 { background: rgba(30, 132, 73, .12); color: #1e8449; }
+.tag.kind-상담 { background: rgba(31, 97, 141, .12); color: #1f618d; }
+.all-logs-table tr.clickable { cursor: pointer; }
+.all-logs-table tr.clickable:hover { background: var(--hover, rgba(127, 127, 127, .08)); }
+.back-all { align-self: flex-start; }
+.nowrap { white-space: nowrap; }

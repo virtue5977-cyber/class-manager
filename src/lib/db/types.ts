@@ -98,6 +98,8 @@ export interface CounselingLogRec extends BaseRecord {
   method?: string
   topic?: string
   time?: string
+  /** 기록 종류(없으면 상담) */
+  kind?: '상담' | '관찰'
 }
 
 export interface Seat {

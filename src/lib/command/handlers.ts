@@ -89,6 +89,19 @@ export const HANDLERS: Record<string, Handler> = {
       }
     },
   },
+  observe: {
+    needs(p) {
+      const n = needStudent(p)
+      if (n) return n
+      if (!p.rest) return { message: '관찰한 내용을 쓰세요. 예: /관찰 @3 모둠 활동에서 친구를 도움' }
+      return null
+    },
+    async run(p, _ctx, env) {
+      const s = oneStudent(p)!
+      const rec = await saveLog(env.db, { student_id: s.id, date: p.date, place: '', content: p.rest, time: p.time ?? '', kind: '관찰' })
+      return { summary: `${who(s)} 관찰 기록 저장 · ${shortDate(p.date)}`, links: [{ label: '누가기록', to: `/counseling?sid=${s.id}&date=${p.date}` }], undo: () => deleteLog(env.db, rec.id) }
+    },
+  },
   counsel: {
     needs(p) {
       const n = needStudent(p)
@@ -99,7 +112,7 @@ export const HANDLERS: Record<string, Handler> = {
     async run(p, _ctx, env) {
       const s = oneStudent(p)!
       const rec = await saveLog(env.db, { student_id: s.id, date: p.date, place: '', content: p.rest, time: p.time ?? '' })
-      return { summary: `${who(s)} 상담 기록 저장 · ${shortDate(p.date)}`, links: [{ label: '상담일지', to: `/counseling?sid=${s.id}&date=${p.date}` }], undo: () => deleteLog(env.db, rec.id) }
+      return { summary: `${who(s)} 상담 기록 저장 · ${shortDate(p.date)}`, links: [{ label: '누가기록', to: `/counseling?sid=${s.id}&date=${p.date}` }], undo: () => deleteLog(env.db, rec.id) }
     },
   },
   info: {
@@ -109,7 +122,7 @@ export const HANDLERS: Record<string, Handler> = {
       const atts = (await listAttendanceByStudent(env.db, s.id)).filter((a) => !a.deleted).slice(-5).reverse()
       const logs = (await listLogsByStudent(env.db, s.id)).slice(-3).reverse()
       const open = (await listReportsByStudent(env.db, s.id)).filter((r) => !r.submitted).length
-      return { summary: `${who(s)} 정보`, links: [{ label: '명단', to: '/class/roster' }, { label: '상담일지', to: `/counseling?sid=${s.id}` }], card: { kind: 'student', data: { student: s, atts, logs, open } } }
+      return { summary: `${who(s)} 정보`, links: [{ label: '명단', to: '/class/roster' }, { label: '누가기록', to: `/counseling?sid=${s.id}` }], card: { kind: 'student', data: { student: s, atts, logs, open } } }
     },
   },
   event: {
@@ -210,6 +223,6 @@ export function exportFormatOf(text: string): 'hwpx' | 'xlsx' | 'pdf' | 'print' 
 }
 
 export const EXPORT_ROUTES: Record<string, string> = {
-  출결: '/attendance/stats', 신고서: '/attendance/reports', 통계: '/attendance/stats', 상담일지: '/counseling',
+  출결: '/attendance/stats', 신고서: '/attendance/reports', 통계: '/attendance/stats', 상담일지: '/counseling', 누가기록: '/counseling',
   명렬표: '/class/sheet', 자리배치: '/class/seating', 청소배치: '/class/cleaning', 달력: '/calendar',
 }

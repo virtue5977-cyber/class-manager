@@ -50,13 +50,13 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
     if (p.students.length !== 1) return { summary: '학생을 @로 한 명 고르세요.', links: [], pending: true }
     const st = p.students[0]
     const logs = (await listLogsByStudent(env.db, st.id)).filter((l) => l.nuga_status === '미정리')
-    if (!logs.length) return { summary: `${st.number}번 ${st.name}: 정리할 기록이 없습니다.`, links: [{ label: '상담일지', to: `/counseling?sid=${st.id}` }] }
+    if (!logs.length) return { summary: `${st.number}번 ${st.name}: 정리할 기록이 없습니다.`, links: [{ label: '누가기록', to: `/counseling?sid=${st.id}` }] }
     const before = logs.map((l) => ({ id: l.id, nuga_text: l.nuga_text, nuga_status: l.nuga_status }))
     const res = await runNuga(env.db, env.ai!, st, ctx.students, logs)
     const ok = res.filter((r) => r.text).length
     return {
       summary: `${st.number}번 ${st.name} 누가기록 ${ok}건 정리${res.some((r) => r.warnings.length) ? ' · 확인할 점 있음' : ''}${hint}`,
-      links: [{ label: '상담일지', to: `/counseling?sid=${st.id}` }],
+      links: [{ label: '누가기록', to: `/counseling?sid=${st.id}` }],
       undo: async () => {
         for (const b of before) await updateNuga(env.db, b.id, { nuga_text: b.nuga_text, nuga_status: b.nuga_status })
       },

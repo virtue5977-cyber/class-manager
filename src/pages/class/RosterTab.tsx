@@ -13,6 +13,7 @@ import RosterFieldsEditor from './RosterFieldsEditor'
 import { readFirstSheet } from '../../lib/xlsx/read'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import StudentDetail from './StudentDetail'
+import StudentLogs from './StudentLogs'
 
 export default function RosterTab({ classId, classLabel = '' }: { classId: string; classLabel?: string }) {
   const db = useDb()
@@ -197,7 +198,10 @@ export default function RosterTab({ classId, classLabel = '' }: { classId: strin
             {selected === 'new' ? (
               <StudentDetail key="new" classId={classId} fields={fields} onDone={() => { setSelected(null); reload() }} />
             ) : current ? (
-              <StudentDetail key={current.id + current.updated_at} classId={classId} fields={fields} student={current} closable={false} onDone={() => reload()} />
+              <>
+                <StudentDetail key={current.id + current.updated_at} classId={classId} fields={fields} student={current} closable={false} onDone={() => reload()} />
+                <StudentLogs studentId={current.id} />
+              </>
             ) : (
               <div className="roster-overview">
                 <table className="grid roster-all" aria-label="학생 전체">

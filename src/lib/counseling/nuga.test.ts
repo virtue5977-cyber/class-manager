@@ -35,7 +35,7 @@ test('runNuga: 이름을 가려 보내고, 되돌려 저장, 상태 정리됨, �
   expect(r.warnings.join('|')).toMatch(/본인 이름.*\|.*진단 용어/)
   const [saved] = await listLogsByStudent(db, me.id)
   expect(saved).toMatchObject({ nuga_text: r.text, nuga_status: '정리됨', content: '박민수랑 말다툼. 김지훈 우울해 보임' })
-  expect(nugaCopyText(saved)).toBe('2026.11.05.(목) | 교실\n박민수와 말다툼함. 김지훈 우울해 보임')
+  expect(nugaCopyText(saved)).toBe('2026.11.05.(목) | 교실 | 학생·대면\n박민수와 말다툼함. 김지훈 우울해 보임')
   void friend
 })
 

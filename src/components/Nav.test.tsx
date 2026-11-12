@@ -45,7 +45,7 @@ test('맨 위에 Watson·학교명·학년도 반, 맨 아래 버전이 있고 �
   expect(screen.queryByRole('button', { name: /이름 보임|이름 가림/ })).not.toBeInTheDocument()
 })
 
-test('미정리 상담이 있으면 상담일지 옆에 숫자가 붙는다', async () => {
+test('미정리 상담이 있으면 누가기록 옆에 숫자가 붙는다', async () => {
   const db = createDb('test-' + crypto.randomUUID())
   const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
   await setCurrentClassId(db, c.id)
@@ -58,5 +58,5 @@ test('미정리 상담이 있으면 상담일지 옆에 숫자가 붙는다', as
       </AppProviders>
     </MemoryRouter>,
   )
-  expect(await screen.findByRole('link', { name: '상담일지, 미정리 1건' })).toBeInTheDocument()
+  expect(await screen.findByRole('link', { name: '누가기록, 미정리 1건' })).toBeInTheDocument()
 })

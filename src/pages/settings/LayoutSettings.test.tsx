@@ -20,14 +20,14 @@ test('메뉴 기본 순서는 홈·달력·학급·출결·상담일지·노트�
   )
   const nav = screen.getByRole('navigation', { name: '메뉴' })
   const names = () => within(nav).getAllByRole('link').map((a) => a.textContent)
-  expect(names()).toEqual(['홈', '달력', '학급', '출결', '상담일지', '노트함'])
+  expect(names()).toEqual(['홈', '달력', '학급', '출결', '누가기록', '노트함'])
   const card = screen.getByRole('region', { name: '메뉴와 홈 배치' })
   await user.click(within(card).getByRole('button', { name: '노트함 위로' }))
-  await user.click(within(card).getByRole('checkbox', { name: '상담일지 보이기' }))
+  await user.click(within(card).getByRole('checkbox', { name: '누가기록 보이기' }))
   expect(names()).toEqual(['홈', '달력', '학급', '출결', '노트함'])
   expect(within(card).getByRole('checkbox', { name: '홈 보이기' })).toBeDisabled()
   await user.click(within(card).getByRole('button', { name: '메뉴·배치 기본으로' }))
-  expect(names()).toEqual(['홈', '달력', '학급', '출결', '상담일지', '노트함'])
+  expect(names()).toEqual(['홈', '달력', '학급', '출결', '누가기록', '노트함'])
 })
 
 test('홈 칸 자리: 오른쪽 / 왼쪽 탭 / 숨김을 고르면 저장된다', async () => {

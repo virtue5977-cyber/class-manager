@@ -12,7 +12,7 @@ import { isHideNames } from '../../components/HideNames'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
-import { deleteLog, listLogsByStudent, listLogsByStudents, logTags, METHODS, nugaCopyText, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
+import { deleteLog, KINDS, kindOf, listAllLogs, listLogsByStudent, listLogsByStudents, logTags, METHODS, nugaCopyText, nugaHead, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
 import { runNuga } from '../../lib/counseling/nuga'
 import { getSettings } from '../../lib/settings'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
@@ -79,7 +79,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
     reload()
   }, [reload])
 
-  if (classes && classes.length === 0) return <NoClass title="상담일지" />
+  if (classes && classes.length === 0) return <NoClass title="누가기록" />
 
   async function act(fn: () => Promise<string[] | void>) {
     setMessages([])
@@ -108,13 +108,13 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   }
 
   /** 파일 이름: 이름 가림 중이면 번호만(저장 창에 이름이 비치지 않게). */
-  const fileStem = () => (student ? (isHideNames() ? `${student.number}번_상담일지` : `${student.number}번_${student.name}_상담일지`) : '상담일지')
+  const fileStem = () => (student ? (isHideNames() ? `${student.number}번_누가기록` : `${student.number}번_${student.name}_누가기록`) : '누가기록')
   async function exportLogs(kind: 'hwpx' | 'xlsx') {
     if (!student) return
-    const header = ['날짜', '장소', '대상·방법·분야', '누가기록(정리본 또는 원문)']
-    const rows = logs.map((l) => [nugaHeader(l.date, '').replace(/\s\|.*$/, ''), l.place, [l.target, l.method, l.topic].filter(Boolean).join(' · '), l.nuga_text || l.content])
-    const title = `${student.number}번 ${student.name} 상담일지`
-    const bytes = kind === 'hwpx' ? await buildTableHwpx({ title, header, rows, colRatios: [3, 3, 3, 10], fontSizePt: 10 }) : await writeSimpleXlsx('상담일지', [header, ...rows])
+    const header = ['날짜', '종류', '장소', '대상·방법·분야', '누가기록(정리본 또는 원문)']
+    const rows = logs.map((l) => [[nugaHeader(l.date, ''), l.time].filter(Boolean).join(' '), kindOf(l), l.place, [l.target, l.method, l.topic].filter(Boolean).join(' · '), l.nuga_text || l.content])
+    const title = `${student.number}번 ${student.name} 누가기록`
+    const bytes = kind === 'hwpx' ? await buildTableHwpx({ title, header, rows, colRatios: [3, 2, 3, 3, 10], fontSizePt: 10 }) : await writeSimpleXlsx('누가기록', [header, ...rows])
     const name = `${fileStem()}.${kind}`
     fs.downloadFile(name, bytes)
     setMessages([`${name} 파일을 만들었습니다.`])
@@ -127,7 +127,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
 
   return (
     <section className="stack">
-      <PageHead title="상담일지">
+      <PageHead title="누가기록">
         {classes && <ClassSelect classes={classes} classId={classId} onChange={(id) => { setSelected(undefined); choose(id) }} />}
         <form
           className="row"
@@ -198,9 +198,10 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
         </ul>
         </div>
         <div className="stack wide">
-          {!student && <p className="muted">학생을 고르세요.</p>}
+          {!student && classId && <AllLogs students={students} today={today} onOpen={(sid) => { setSelected(sid); setMessages([]) }} />}
           {student && (
             <>
+              <button type="button" className="link back-all" onClick={() => setSelected(undefined)}>← 전체 기록</button>
               <div className="page-head">
                 <div className="pii">
                   <h3 style={{ fontSize: 18, margin: 0 }}>{`${student.number}번 ${student.name}`}</h3>
@@ -286,8 +287,8 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   )
 }
 
-export type LogFields = { date: string; place: string; content: string; target: string; method: string; topic: string; time: string }
-export const blankFields = (date: string): LogFields => ({ date, place: '', content: '', target: '학생', method: '대면', topic: '', time: '' })
+export type LogFields = { date: string; place: string; content: string; target: string; method: string; topic: string; time: string; kind?: '상담' | '관찰' }
+export const blankFields = (date: string): LogFields => ({ date, place: '', content: '', target: '학생', method: '대면', topic: '', time: '', kind: '상담' })
 
 function Choice({ label, options, value, onChange, allowEmpty }: { label: string; options: readonly string[]; value: string; onChange: (v: string) => void; allowEmpty?: boolean }) {
   return (
@@ -327,9 +328,14 @@ export function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCanc
           <input value={f.place} onChange={(e) => setF({ ...f, place: e.target.value })} placeholder="예: 점심시간 교실" />
         </label>
       </div>
-      <Choice label="대상" options={TARGETS} value={f.target} onChange={(v) => setF({ ...f, target: v })} />
-      <Choice label="방법" options={METHODS} value={f.method} onChange={(v) => setF({ ...f, method: v })} />
-      <Choice label="분야" options={TOPICS} value={f.topic} onChange={(v) => setF({ ...f, topic: v })} allowEmpty />
+      <Choice label="종류" options={KINDS} value={f.kind ?? '상담'} onChange={(v) => setF({ ...f, kind: v as '상담' | '관찰' })} />
+      {(f.kind ?? '상담') === '상담' && (
+        <>
+          <Choice label="대상" options={TARGETS} value={f.target || '학생'} onChange={(v) => setF({ ...f, target: v })} />
+          <Choice label="방법" options={METHODS} value={f.method || '대면'} onChange={(v) => setF({ ...f, method: v })} />
+          <Choice label="분야" options={TOPICS} value={f.topic} onChange={(v) => setF({ ...f, topic: v })} allowEmpty />
+        </>
+      )}
       <AudioDrop onText={(t) => setF((cur) => ({ ...cur, content: appendTranscript(cur.content, t) }))} />
       <label className="wide">
         내용(개조식 메모나 녹음 글)
@@ -379,16 +385,17 @@ function LogCard(p: {
   const hasNuga = !!l.nuga_text || writing
   // AI 정리 등으로 저장값이 바뀌면 칸도 따라간다(카드를 다시 만들지 않아 포커스·클릭이 끊기지 않음).
   useEffect(() => setNuga(l.nuga_text), [l.nuga_text])
-  const head = nugaHeader(l.date, l.place)
+  const head = nugaHead(l)
   return (
     <article className={`log${p.flash ? ' flash' : ''}`} aria-label={`${head} 기록`}>
       <div className="row wide">
+        <span className={`tag kind-${kindOf(l)}`}>{kindOf(l)}</span>
         <strong>{head}</strong>
         {logTags(l) && <span className="muted">{logTags(l)}</span>}
         <span className={`tag status-${l.nuga_status === '나이스 입력 완료' ? '나이스' : l.nuga_status}`}>{l.nuga_status}</span>
       </div>
       {p.editing ? (
-        <LogFieldsForm initial={{ ...blankFields(l.date), place: l.place, content: l.content, target: l.target || '학생', method: l.method || '대면', topic: l.topic ?? '', time: l.time ?? '' }} submitLabel="고친 내용 저장" onSubmit={p.onSaveContent} onCancel={p.onCancelEdit} />
+        <LogFieldsForm initial={{ ...blankFields(l.date), place: l.place, content: l.content, target: l.target || '학생', method: l.method || '대면', topic: l.topic ?? '', time: l.time ?? '', kind: kindOf(l) }} submitLabel="고친 내용 저장" onSubmit={p.onSaveContent} onCancel={p.onCancelEdit} />
       ) : (
         <p className="pre pii">{l.content}</p>
       )}
@@ -437,5 +444,97 @@ function LogCard(p: {
         </button>
       </div>
     </article>
+  )
+}
+
+type KindFilter = '전체' | '상담' | '관찰'
+type StatusFilter = '전체' | '미정리' | '정리됨' | '나이스 입력 완료'
+
+/** 기본 화면: 학급 전체 누가기록(최근 먼저). 종류·학생·기간·정리 상태로 거른다. 줄을 누르면 그 학생 화면. */
+function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: string; onOpen: (sid: string) => void }) {
+  const db = useDb()
+  const ids = students.map((s) => s.id)
+  const all = useLive<CounselingLogRec[]>(() => listAllLogs(db, ids), [db, ids.join(',')], [])
+  const [kind, setKind] = useState<KindFilter>('전체')
+  const [sid, setSid] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [status, setStatus] = useState<StatusFilter>('전체')
+  const byId = new Map(students.map((s) => [s.id, s]))
+  const shown = all.filter((l) => (kind === '전체' || kindOf(l) === kind) && (!sid || l.student_id === sid) && (!from || l.date >= from) && (!to || l.date <= to) && (status === '전체' || l.nuga_status === status))
+  void today
+  return (
+    <section className="stack wide all-logs" aria-label="전체 누가기록">
+      <div className="row log-toolbar">
+        <label className="inline">
+          종류
+          <select value={kind} onChange={(e) => setKind(e.target.value as KindFilter)}>
+            <option>전체</option>
+            <option>상담</option>
+            <option>관찰</option>
+          </select>
+        </label>
+        <label className="inline">
+          학생
+          <select value={sid} onChange={(e) => setSid(e.target.value)}>
+            <option value="">전체</option>
+            {students.map((s) => (
+              <option key={s.id} value={s.id}>{`${s.number}번 ${s.name}`}</option>
+            ))}
+          </select>
+        </label>
+        <label className="inline">
+          기간
+          <input type="date" aria-label="시작" value={from} onChange={(e) => setFrom(e.target.value)} />
+          ~
+          <input type="date" aria-label="끝" value={to} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <label className="inline">
+          상태
+          <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
+            <option>전체</option>
+            <option>미정리</option>
+            <option>정리됨</option>
+            <option>나이스 입력 완료</option>
+          </select>
+        </label>
+        <span className="muted">{`${shown.length}건`}</span>
+      </div>
+      {shown.length === 0 ? (
+        <p className="muted">{all.length ? '해당하는 기록이 없습니다.' : '아직 기록이 없습니다. 왼쪽에서 학생을 골라 새 기록을 쓰거나 /상담 · /관찰 명령을 쓰세요.'}</p>
+      ) : (
+        <table className="grid all-logs-table">
+          <thead>
+            <tr>
+              <th>날짜</th>
+              <th>종류</th>
+              <th>학생</th>
+              <th>내용</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((l) => {
+              const s = byId.get(l.student_id)
+              return (
+                <tr key={l.id} className="clickable" onClick={() => onOpen(l.student_id)}>
+                  <td className="nowrap">{nugaHeader(l.date, '')}</td>
+                  <td>
+                    <span className={`tag kind-${kindOf(l)}`}>{kindOf(l)}</span>
+                  </td>
+                  <td className="pii nowrap">
+                    <button type="button" className="link" onClick={(e) => (e.stopPropagation(), onOpen(l.student_id))}>{s ? `${s.number}번 ${s.name}` : '-'}</button>
+                  </td>
+                  <td className="pii">{(l.nuga_text || l.content).split('\n')[0].slice(0, 60)}</td>
+                  <td className="nowrap">
+                    <span className={`tag status-${l.nuga_status === '나이스 입력 완료' ? '나이스' : l.nuga_status}`}>{l.nuga_status}</span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }
