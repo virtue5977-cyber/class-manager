@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
 import { AppProviders } from '../../app/context'
-import { createNote } from '../../lib/notes/notes'
+import { createNote, saveNoteContent } from '../../lib/notes/notes'
 import { addTodo } from '../../lib/todos/todos'
 import { noticesOn } from '../../lib/notices/notices'
 import NotesPage from './NotesPage'
@@ -379,4 +379,44 @@ test('노트 글에서 @를 치면 다른 노트 후보, 고르면 링크로 저
   await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ text: '참고 @다른 노트 끝', links: [{ from: 3, to: 9, note: other.id }] }), { timeout: 3000 })
   const link = blocks()[0].querySelector('.nl') as HTMLElement
   expect(link.textContent).toBe('@다른 노트')
+})
+
+test('여러 줄 고르기: 아래 줄에서 위 줄로(거꾸로) 끌면 줄째 골라지고, Delete로 지우고 Esc로 풀린다', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await saveNoteContent(db, n.id, { title: '회의록', blocks: [{ id: 'a', type: 'p', text: '하나' }, { id: 'b', type: 'p', text: '둘' }, { id: 'c', type: 'p', text: '셋' }, { id: 'd', type: 'p', text: '넷' }] })
+  await waitFor(() => expect(blocks().map((x) => x.textContent)).toEqual(['하나', '둘', '셋', '넷']))
+  const rows = () => Array.from(document.querySelectorAll<HTMLElement>('.nb'))
+  const orig = document.elementFromPoint
+  document.elementFromPoint = () => rows()[1]
+  fireEvent.pointerDown(blocks()[3], { button: 0, clientX: 10, clientY: 100 })
+  fireEvent.pointerMove(window, { clientX: 10, clientY: 20 })
+  fireEvent.pointerUp(window, { clientX: 10, clientY: 20 })
+  document.elementFromPoint = orig
+  expect(rows().map((r) => r.classList.contains('nb-selected'))).toEqual([false, true, true, true])
+  await user.keyboard('{Escape}')
+  expect(document.querySelectorAll('.nb-selected')).toHaveLength(0)
+  // 다시 고르고 Delete
+  document.elementFromPoint = () => rows()[2]
+  fireEvent.pointerDown(blocks()[0], { button: 0, clientX: 10, clientY: 10 })
+  fireEvent.pointerMove(window, { clientX: 10, clientY: 80 })
+  fireEvent.pointerUp(window, { clientX: 10, clientY: 80 })
+  document.elementFromPoint = orig
+  fireEvent.keyDown(document, { key: 'Delete' })
+  await waitFor(() => expect(blocks().map((x) => x.textContent)).toEqual(['넷']))
+})
+
+test('/ 메뉴: 단축키를 오른쪽에 보이고, 글 끝에서 띄어쓰기 뒤 /도 열린다(앞 글은 남김)', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('/')
+  const menu = await screen.findByRole('listbox', { name: '블록 고르기' })
+  expect(within(menu).getByRole('option', { name: '제목 1' })).toHaveTextContent('Ctrl+2')
+  await user.keyboard('{Escape}{Backspace}체육복 지참 /체')
+  const m2 = await screen.findByRole('listbox', { name: '블록 고르기' })
+  await user.click(within(m2).getByRole('option', { name: '체크 목록' }))
+  await waitFor(() => expect(blocks()[0]).toHaveTextContent(/^체육복 지참$/))
+  expect(screen.getByRole('checkbox', { name: '체크' })).toBeInTheDocument()
 })

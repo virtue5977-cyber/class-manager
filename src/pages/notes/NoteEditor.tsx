@@ -75,6 +75,77 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const [fileInfo, setFileInfo] = useState<Record<string, { name: string; size: number }>>({})
   const [folderList, setFolderList] = useState<Record<string, { name: string; dir: boolean }[]>>({})
   const refs = useRef(new Map<string, LineHandle>())
+  /** 여러 줄 고르기(줄째): 한 줄에서 끌기 시작해 다른 줄로 가면(위·아래 모두) */
+  const [bsel, setBsel] = useState<{ a: number; h: number }>()
+  const blocksBox = useRef<HTMLDivElement>(null)
+  const inSel = (i: number) => !!bsel && i >= Math.min(bsel.a, bsel.h) && i <= Math.max(bsel.a, bsel.h)
+  function startLineSelect(e: React.PointerEvent) {
+    if (e.button > 0 || e.shiftKey) return
+    const row = (e.target as Element).closest('.nb')
+    if (!row || !(e.target as Element).closest('[contenteditable]')) return
+    const all = () => Array.from(blocksBox.current?.querySelectorAll('.nb') ?? [])
+    const a = all().indexOf(row)
+    if (a < 0) return
+    setBsel(undefined)
+    let on = false
+    const move = (ev: PointerEvent) => {
+      const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.nb')
+      const h = over ? all().indexOf(over) : -1
+        if (h < 0 || (!on && h === a)) return
+      on = true
+      // 글자 고르기 대신 줄째 고르기
+      window.getSelection?.()?.removeAllRanges()
+      ;(document.activeElement as HTMLElement | null)?.blur?.()
+      setPicked(undefined)
+      setBsel({ a, h })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+  // 줄째 고른 동안: Esc 풀기, Delete·Backspace 지우기, Ctrl+C·X 복사(서식째)·잘라내기, 다른 곳 누르면 풀기
+  useEffect(() => {
+    if (!bsel) return
+    const lo = Math.min(bsel.a, bsel.h)
+    const hi = Math.max(bsel.a, bsel.h)
+    const chosen = () => blocks.slice(lo, hi + 1)
+    const removeChosen = () => {
+      const ids = new Set(chosen().map((b) => b.id))
+      setBlocks((bs) => {
+        const rest = bs.filter((b) => !ids.has(b.id))
+        return rest.length ? rest : [{ id: newBlockId(), type: 'p', text: '' }]
+      })
+      setBsel(undefined)
+    }
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (e.isComposing) return
+      const mod = e.ctrlKey || e.metaKey
+      if (e.key === 'Escape') return (e.preventDefault(), setBsel(undefined))
+      if (e.key === 'Delete' || e.key === 'Backspace') return (e.preventDefault(), removeChosen())
+      if (mod && /^[cx]$/i.test(e.key)) {
+        e.preventDefault()
+        const part = { title: '', blocks: chosen() }
+        void copyRich(noteToHtml(part), noteToPlain(part)).then(() => setMsg(`${hi - lo + 1}줄을 복사했습니다.`))
+        if (/x/i.test(e.key)) removeChosen()
+        return
+      }
+      if (!mod && !e.altKey && e.key.length === 1) setBsel(undefined)
+    }
+    const down = (e: MouseEvent) => {
+      if (!(e.target as Element | null)?.closest?.('.nb-selected')) setBsel(undefined)
+    }
+    document.addEventListener('keydown', key)
+    document.addEventListener('mousedown', down)
+    return () => {
+      document.removeEventListener('keydown', key)
+      document.removeEventListener('mousedown', down)
+    }
+  }, [bsel, blocks])
   /** 글자를 고른 줄(서식 막대) */
   const [picked, setPicked] = useState<{ id: string; start: number; end: number; top: number; left: number }>()
   const focusNext = useRef<{ id: string; caret: number } | null>(null)
@@ -164,7 +235,17 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const update = (id: string, patch: Partial<NoteBlock>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...patch } : b)))
   const [slashOff, setSlashOff] = useState<string>()
   /** 블록 글이 '/…'(12자까지, 띄어쓰기 포함)이면 블록 메뉴 거르기 글. Esc로 닫은 블록은 '/'를 지울 때까지 닫힘. */
-  const slashOf = (b: NoteBlock) => (slashOff === b.id ? null : (/^\/([^\n]{0,12})$/.exec(b.text ?? '')?.[1] ?? null))
+  const slashOf = (b: NoteBlock) => {
+    if (slashOff === b.id) return null
+    const t = b.text ?? ''
+    // 줄 전체가 '/…'이거나, 글 끝에서 띄어쓰기 뒤 '/…'(띄어쓰기 없는 12자까지)
+    return /^\/([^\n]{0,12})$/.exec(t)?.[1] ?? /\s\/([^\s/]{0,12})$/.exec(t)?.[1] ?? null
+  }
+  /** '/…'를 뺀 앞 글(줄 중간에서 연 경우) */
+  const beforeSlash = (b: NoteBlock) => {
+    const t = b.text ?? ''
+    return /^\/[^\n]{0,12}$/.test(t) ? '' : t.replace(/\s\/[^\s/]{0,12}$/, '')
+  }
 
   async function addFiles(files: File[], afterId?: string) {
     setMsg(undefined)
@@ -211,6 +292,23 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
 
   async function chooseSlash(b: NoteBlock, type: NoteBlockType) {
     setSlashSel(0)
+    // 줄 중간에서 연 경우: 앞 글은 남긴다. 글 블록이면 모양만 바꾸고, 표·구분선·파일·폴더는 다음 줄에 새로.
+    const keep = beforeSlash(b)
+    if (keep) {
+      const cut = <T extends { from: number; to: number }>(xs?: T[]) => (xs ?? []).filter((x) => x.from < keep.length).map((x) => ({ ...x, to: Math.min(x.to, keep.length) }))
+      const kept = { text: keep, marks: cut(b.marks).length ? cut(b.marks) : undefined, links: cut(b.links).length ? cut(b.links) : undefined }
+      if (['p', 'h1', 'h2', 'check', 'bullet', 'number'].includes(type)) {
+        setBlocks((bs) => setType(bs.map((x) => (x.id === b.id ? { ...x, ...kept } : x)), b.id, type).map((x) => (x.id === b.id ? { ...x, ...kept } : x)))
+        focusNext.current = { id: b.id, caret: keep.length }
+        return
+      }
+      const nb: NoteBlock = { id: newBlockId(), type: 'p', text: '' }
+      setBlocks((bs) => {
+        const i = bs.findIndex((x) => x.id === b.id)
+        return [...bs.slice(0, i), { ...bs[i], ...kept }, nb, ...bs.slice(i + 1)]
+      })
+      return chooseSlash(nb, type)
+    }
     if (type === 'file') {
       const f = await fs.pickFileToRead('', { maxBytes: MAX_FILE })
       update(b.id, { text: '' })
@@ -508,7 +606,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           <button type="button" className="link" onClick={() => setSendFor(undefined)}>취소</button>
         </div>
       )}
-      <div className="note-blocks">
+      <div className="note-blocks" ref={blocksBox} onPointerDown={startLineSelect}>
         {blocks.map((b, i) => {
           const lv = b.indent ?? 0
           const q = slashOf(b)
@@ -516,7 +614,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           return (
             <div
               key={b.id}
-              className={`nb nb-${b.type} nb-l${lv}${dragId === b.id ? ' dragging' : ''}`}
+              className={`nb nb-${b.type} nb-l${lv}${dragId === b.id ? ' dragging' : ''}${inSel(i) ? ' nb-selected' : ''}`}
               style={lv ? { paddingLeft: `${lv * 26}px` } : undefined}
               onDragOver={(e) => dragId && e.preventDefault()}
               onDrop={(e) => {
@@ -587,8 +685,9 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                           <span className="slash-ico" aria-hidden="true">{it.icon}</span>
                           <span className="slash-txt">
                             <b>{it.label}</b>
-                            <small>{it.hint}</small>
+                            <small>{it.hint.split(' · ').filter((h) => !/^Ctrl/.test(h)).join(' · ')}</small>
                           </span>
+                          {/Ctrl\+[^ ·]+/.exec(it.hint) && <kbd className="slash-key">{/Ctrl\+[^ ·]+/.exec(it.hint)![0]}</kbd>}
                         </li>
                       ))}
                       <li className="slash-foot" aria-hidden="true">↑↓ 고르기 · Enter 넣기 · Esc 닫기</li>

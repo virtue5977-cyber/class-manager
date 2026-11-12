@@ -1047,3 +1047,6 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .notice-badge { font-size: 10.5px; padding: 0 4px; line-height: 16px; border-radius: 4px; flex: none; }
 .confirm-inline { flex-basis: 100%; }
 .confirm-even button { min-width: 6em; height: 26px; padding: 0 10px; font-size: 13px; }
+.nb.nb-selected { background: var(--accent-soft); border-radius: 4px; }
+.nb.nb-selected ::selection { background: transparent; }
+.nb-slash .slash-key { margin-left: auto; font: 11px/1 var(--mono, ui-monospace, monospace); color: var(--sub); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; background: var(--bg, transparent); white-space: nowrap; }
