@@ -107,7 +107,8 @@ const RichLine = forwardRef<LineHandle, Props>(function RichLine(p, ref) {
     const t = readText(d)
     if (t === cur.text) return
     const sel = getSel(d)
-    cur.onChange({ text: t, marks: shiftMarks(cur.marks, cur.text, t), links: shiftLinks(cur.links, cur.text, t) }, sel?.end ?? t.length)
+    const c = sel?.end
+    cur.onChange({ text: t, marks: shiftMarks(cur.marks, cur.text, t, c), links: shiftLinks(cur.links, cur.text, t, c) }, c ?? t.length)
   }
   /** 고른 자리에 글 넣기(붙여넣기·Shift+Enter) */
   function insert(s: string) {
@@ -117,7 +118,8 @@ const RichLine = forwardRef<LineHandle, Props>(function RichLine(p, ref) {
     const sel = getSel(d) ?? { start: cur.text.length, end: cur.text.length }
     const t = cur.text.slice(0, sel.start) + s + cur.text.slice(sel.end)
     want.current = { start: sel.start + s.length, end: sel.start + s.length }
-    cur.onChange({ text: t, marks: shiftMarks(cur.marks, cur.text, t), links: shiftLinks(cur.links, cur.text, t) }, sel.start + s.length)
+    const c = sel.start + s.length
+    cur.onChange({ text: t, marks: shiftMarks(cur.marks, cur.text, t, c), links: shiftLinks(cur.links, cur.text, t, c) }, c)
   }
 
   return (

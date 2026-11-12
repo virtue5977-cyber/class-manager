@@ -99,3 +99,21 @@ test('@노트 링크: 전달사항 parts ↔ 짝 노트 줄 links', async () => 
   await saveNoteContent(db, n.id, { title: n.title, blocks: [{ ...b, text: '@회의록 보기', links: [{ from: 0, to: 4, note: ref.id }] }] })
   expect((await noticesOn(db, D))[0].parts).toEqual([{ note: ref.id }, ' 보기'])
 })
+
+test('짝 노트 줄이던 전달사항을 여러 날로 늘리거나 다른 날로 옮겨도 노트를 고칠 때 지워지지 않는다', async () => {
+  const db = createDb('t-' + crypto.randomUUID())
+  const a = await addNotice(db, { text: '여러 날로', start_date: D })
+  const b = await addNotice(db, { text: '다음 날로', start_date: D })
+  const n = await openNoticeNote(db, D)
+  await updateNotice(db, a.id, { end_date: '2026-11-15' })
+  await updateNotice(db, b.id, { start_date: '2026-11-14', end_date: '2026-11-14' })
+  const next = await openNoticeNote(db, '2026-11-14')
+  const cur = (await db.notes.get(n.id))!
+  await saveNoteContent(db, n.id, { title: cur.title, blocks: [...cur.blocks, { id: 'z', type: 'p', text: '새 줄' }] })
+  expect(await texts(db)).toEqual(['여러 날로', '새 줄'])
+  expect(await texts(db, '2026-11-14')).toEqual(['여러 날로', '다음 날로'])
+  expect((await lines(db, next.id)).map((l) => l[1])).toEqual(['다음 날로'])
+  const nb = (await db.notes.get(next.id))!
+  await saveNoteContent(db, next.id, { title: nb.title, blocks: [...nb.blocks, { id: 'y', type: 'p', text: '또' }] })
+  expect(await texts(db, '2026-11-14')).toEqual(['여러 날로', '다음 날로', '또'])
+})

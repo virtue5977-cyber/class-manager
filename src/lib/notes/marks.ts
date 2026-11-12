@@ -30,11 +30,19 @@ export const HIGHLIGHTS = ['#fff59d', '#c8e6c9', '#bbdefb', '#f8bbd0', '#ffe0b2'
 const KEYS = ['b', 'u', 'i', 's', 'color', 'bg', 'font', 'size'] as const
 type Key = (typeof KEYS)[number]
 
+const HEX = /^#[0-9a-fA-F]{3,8}$/
+/** 쓸 수 있는 값만 남긴다(백업·동기화로 들어온 이상한 값이 HTML·CSS에 끼어들지 못하게) */
+const okValue = (k: Key, v: unknown): boolean =>
+  k === 'color' || k === 'bg' ? typeof v === 'string' && HEX.test(v)
+  : k === 'font' ? (FONTS as readonly unknown[]).includes(v)
+  : k === 'size' ? v === 'sm' || v === 'lg'
+  : v === true
 const clean = (s: Style): Style => {
   const o: Style = {}
-  for (const k of KEYS) if (s[k]) (o as Record<string, unknown>)[k] = s[k]
+  for (const k of KEYS) if (s[k] && okValue(k, s[k])) (o as Record<string, unknown>)[k] = s[k]
   return o
 }
+const LINK_ID = /^[\w-]{1,64}$/
 const same = (a: Style, b: Style) => KEYS.every((k) => (a[k] || undefined) === (b[k] || undefined))
 const empty = (s: Style) => KEYS.every((k) => !s[k])
 
@@ -84,20 +92,24 @@ export function styleAt(marks: Mark[] | undefined, len: number, from: number, to
   return out
 }
 
-/** 앞뒤 같은 부분으로 바뀐 구간 찾기: 옛 [p, oldEnd) → 새 [p, newEnd) */
-export function diffRange(oldText: string, newText: string): { p: number; oldEnd: number; newEnd: number } {
+/**
+ * 앞뒤 같은 부분으로 바뀐 구간 찾기: 옛 [p, oldEnd) → 새 [p, newEnd).
+ * caret(바꾼 뒤 커서 자리)을 주면 같은 글자가 이어져도(가가, !!, 띄어쓰기 둘) 커서 자리에서 바뀐 것으로 본다.
+ */
+export function diffRange(oldText: string, newText: string, caret?: number): { p: number; oldEnd: number; newEnd: number } {
   let p = 0
   const max = Math.min(oldText.length, newText.length)
-  while (p < max && oldText[p] === newText[p]) p++
+  const limit = caret === undefined ? max : Math.max(0, Math.min(max, caret - Math.max(0, newText.length - oldText.length)))
+  while (p < limit && oldText[p] === newText[p]) p++
   let q = 0
   while (q < max - p && oldText[oldText.length - 1 - q] === newText[newText.length - 1 - q]) q++
   return { p, oldEnd: oldText.length - q, newEnd: newText.length - q }
 }
 
 /** 글이 바뀌면 서식 위치를 옮긴다. 새로 들어온 글자는 바뀐 자리의 첫 글자(바꿔 쓰기) 또는 바로 앞 글자(넣기)의 서식을 이어받는다. */
-export function shiftMarks(marks: Mark[] | undefined, oldText: string, newText: string): Mark[] {
+export function shiftMarks(marks: Mark[] | undefined, oldText: string, newText: string, caret?: number): Mark[] {
   if (!marks?.length || oldText === newText) return marks ?? []
-  const { p, oldEnd, newEnd } = diffRange(oldText, newText)
+  const { p, oldEnd, newEnd } = diffRange(oldText, newText, caret)
   const chars = toChars(marks, oldText.length)
   const inherit = oldEnd > p ? chars[p] : p > 0 ? chars[p - 1] : chars[0] ?? {}
   const added = Array.from({ length: newEnd - p }, () => ({ ...inherit }))
@@ -105,9 +117,9 @@ export function shiftMarks(marks: Mark[] | undefined, oldText: string, newText: 
 }
 
 /** 글이 바뀌면 링크 위치를 옮긴다. 링크 안 글이 바뀐 링크는 없앤다(링크 끝에 이어 쓴 글은 링크가 아니다). */
-export function shiftLinks(links: NoteLink[] | undefined, oldText: string, newText: string): NoteLink[] {
+export function shiftLinks(links: NoteLink[] | undefined, oldText: string, newText: string, caret?: number): NoteLink[] {
   if (!links?.length || oldText === newText) return links ?? []
-  const { p, oldEnd, newEnd } = diffRange(oldText, newText)
+  const { p, oldEnd, newEnd } = diffRange(oldText, newText, caret)
   const d = newEnd - oldEnd
   return links.flatMap((l) => (l.to <= p ? [l] : l.from >= oldEnd ? [{ ...l, from: l.from + d, to: l.to + d }] : []))
 }
@@ -145,7 +157,7 @@ export interface Segment {
 export function segments(text: string, marks?: Mark[], links?: NoteLink[]): Segment[] {
   const chars = toChars(marks, text.length)
   const linkAt: (string | undefined)[] = Array.from({ length: text.length }, () => undefined)
-  for (const l of links ?? []) for (let i = Math.max(0, l.from); i < Math.min(text.length, l.to); i++) linkAt[i] = l.note
+  for (const l of (links ?? []).filter((x) => LINK_ID.test(x.note))) for (let i = Math.max(0, l.from); i < Math.min(text.length, l.to); i++) linkAt[i] = l.note
   const out: Segment[] = []
   for (let i = 0; i < text.length; i++) {
     const last = out[out.length - 1]

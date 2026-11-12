@@ -26,6 +26,11 @@ export async function noticeNoteOf(db: AppDB, date: string): Promise<NoteRec | u
 }
 
 const oneDay = (n: NoticeItemRec, date: string) => n.start_date === date && n.end_date === date
+/** 짝 노트와의 연결만 푼 전달사항 */
+const unlinked = (n: NoticeItemRec): NoticeItemRec => {
+  const { note_id: _n, block_id: _b, ...rest } = n
+  return rest as NoticeItemRec
+}
 
 /** 노트 줄의 링크 → 전달사항 parts(링크가 없으면 undefined) */
 export function partsOfBlock(b: NoteBlock): TodoPart[] | undefined {
@@ -53,7 +58,12 @@ export async function syncNoteToNotices(db: AppDB, noteId: string): Promise<void
     const mine = all.filter((n) => !n.deleted && n.note_id === noteId)
     const lines = note.blocks.filter(isNoticeLine)
     const keep = new Set(lines.map((b) => b.id))
-    for (const n of mine) if (!n.block_id || !keep.has(n.block_id)) await save(db.notice_items, { ...n, deleted: true, text: '' })
+    for (const n of mine) {
+      if (n.block_id && keep.has(n.block_id)) continue
+      // 그날 하루짜리만 지운다. 여러 날·다른 날로 옮긴 것은 짝만 푼다.
+      if (oneDay(n, date)) await save(db.notice_items, { ...n, deleted: true, text: '' })
+      else await save(db.notice_items, unlinked(n))
+    }
     const orders = mine.filter((n) => n.block_id && keep.has(n.block_id)).map((n) => n.order).sort((a, b) => a - b)
     let next = all.reduce((m, n) => Math.max(m, n.order), -1) + 1
     for (const b of lines) {
@@ -82,7 +92,11 @@ export async function syncNoticesToNote(db: AppDB, date: string): Promise<void> 
     const live = items.filter((n) => !n.deleted && oneDay(n, date)).sort((a, b) => a.order - b.order)
     const gone = new Set(items.filter((n) => n.deleted && n.block_id && !live.some((l) => l.block_id === n.block_id)).map((n) => n.block_id!))
     // 날짜를 옮긴(하루짜리가 아니게 된) 항목의 줄도 노트에서 뺀다
-    for (const n of items) if (!n.deleted && n.note_id === note.id && n.block_id && !oneDay(n, date)) gone.add(n.block_id)
+    for (const n of items)
+      if (!n.deleted && n.note_id === note.id && !oneDay(n, date)) {
+        if (n.block_id) gone.add(n.block_id)
+        await save(db.notice_items, unlinked(n))
+      }
     let blocks = note.blocks.filter((b) => !gone.has(b.id))
     const byId = new Map(blocks.map((b) => [b.id, b]))
     // 고치기·체크·@노트 링크

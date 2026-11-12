@@ -50,3 +50,23 @@ test('segments: 서식·링크가 같은 글자끼리 조각', () => {
     { text: '라', from: 3, style: {}, link: 'n' },
   ])
 })
+
+test('같은 글자가 이어져도 커서 자리로 서식을 옮긴다(가가·띄어쓰기 둘·붙여넣기)', () => {
+  const b = [{ from: 0, to: 1, b: true }]
+  // 굵은 첫 '가'를 지우면(커서 0) 남은 '가'는 보통
+  expect(shiftMarks(b, '가가', '가', 0)).toEqual([])
+  // 굵은 '가' 바로 뒤에 '가'를 치면(커서 2) 앞 글자 서식을 잇는다
+  expect(shiftMarks(b, '가가', '가가가', 2)).toEqual([{ from: 0, to: 2, b: true }])
+  // 굵은 띄어쓰기(1)를 지우면 다른 띄어쓰기는 보통
+  expect(shiftMarks([{ from: 1, to: 2, b: true }], 'a  b', 'a b', 1)).toEqual([])
+  // 'ab' 뒤에 'ab'를 붙여 넣으면(커서 4) 새 글은 앞 글자 서식, 원래 글은 그대로
+  expect(shiftMarks([{ from: 0, to: 1, u: true }], 'ab', 'abab', 4)).toEqual([{ from: 0, to: 1, u: true }])
+  expect(shiftLinks([{ from: 0, to: 2, note: 'n' }], 'ab', 'abab', 4)).toEqual([{ from: 0, to: 2, note: 'n' }])
+})
+
+test('이상한 서식 값·링크 id는 버린다(HTML에 끼어들지 못하게)', () => {
+  const bad = [{ from: 0, to: 2, font: `x' onmouseover="alert(1)`, color: 'red" onclick="x', bg: '#fff59d', size: 'huge', b: 'yes' } as unknown as Mark]
+  const seg = segments('가나', bad, [{ from: 0, to: 2, note: 'a" onclick="x' }])
+  expect(seg).toEqual([{ text: '가나', from: 0, style: { bg: '#fff59d' } }])
+  expect(segments('가', [{ from: 0, to: 1, font: '궁서', color: '#c0392b', size: 'lg', b: true }])[0].style).toEqual({ b: true, color: '#c0392b', font: '궁서', size: 'lg' })
+})
