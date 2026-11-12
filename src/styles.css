@@ -952,7 +952,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 
 /* 0.13 대답 기다림 */
 .typing { align-self: flex-start; display: inline-flex; gap: 5px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px 12px 12px 2px; margin-top: 4px; }
-.typing .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .35; animation: typing-dot 1.2s infinite ease-in-out; }
+.typing .dot { width: 7px; height: 7px; border-radius: 50%; margin: 0; background: var(--sub); opacity: .35; animation: typing-dot 1.2s infinite ease-in-out; }
 .typing .dot:nth-child(2) { animation-delay: .2s; }
 .typing .dot:nth-child(3) { animation-delay: .4s; }
 @keyframes typing-dot { 0%, 80%, 100% { opacity: .35; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
