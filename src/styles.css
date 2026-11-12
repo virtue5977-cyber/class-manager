@@ -1066,3 +1066,8 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .nb-roster-table caption { text-align: left; caption-side: top; }
 .nb-roster-sm .nb-roster-table { display: block; }
 .nb-roster-sm .nb-roster-table caption { display: block; }
+
+/* 0.15 문단 정렬·줄 간격(글자 1pt = --pt) */
+.note-editor { --pt: 1.5px; }
+.nb.al-left .nb-text { text-align: left; } .nb.al-center .nb-text { text-align: center; } .nb.al-right .nb-text { text-align: right; } .nb.al-justify .nb-text { text-align: justify; }
+.nb.ln-130 .nb-text { line-height: 1.3; } .nb.ln-200 .nb-text { line-height: 2; }

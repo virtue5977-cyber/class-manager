@@ -289,6 +289,10 @@ export interface NoteBlock {
   path?: string
   /** 개요 깊이 0~4 */
   indent?: number
+  /** 문단 정렬(없으면 양쪽) */
+  align?: 'left' | 'center' | 'right' | 'justify'
+  /** 줄 간격 %(없으면 160) */
+  line?: 130 | 160 | 200
   /** 학생 체크 표(roster): 만든 때의 학생(번호 이름)과 체크. text는 표 제목 */
   rows?: { sid: string; label: string; checked: boolean }[]
   /** 학생 체크 표 크기(작게 = 여러 칸 격자, 기본 보통) */

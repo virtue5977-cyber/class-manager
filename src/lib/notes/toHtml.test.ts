@@ -35,3 +35,10 @@ test('글 안 줄바꿈과 꺾쇠는 안전하게', () => {
 test('서식 없는 글', () => {
   expect(noteToPlain({ title: '회의', blocks: blocks.slice(2, 7) })).toBe('회의\n1. 첫째\n  가. 둘째\n• 점\n☑ 동의서\n☐ 회신')
 })
+
+test('정렬·줄 간격·pt가 한글용 HTML에', () => {
+  const h = noteToHtml({ title: '', blocks: [{ id: 'a', type: 'p', text: '가운데 큰', align: 'center', line: 200, marks: [{ from: 4, to: 5, pt: 14 }] }] })
+  expect(h).toContain('text-align:center')
+  expect(h).toContain('line-height:200%')
+  expect(h).toContain('font-size:14pt')
+})

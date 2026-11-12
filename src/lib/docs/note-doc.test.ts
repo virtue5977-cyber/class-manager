@@ -30,3 +30,12 @@ test('노트 hwpx: XML이 바르고, 서식이 글자 모양으로, 새 글꼴·
   const cnt = Number(/<hh:charProperties itemCnt="(\d+)"/.exec(h)![1])
   expect(h.match(/<hh:charPr id=/g)).toHaveLength(cnt)
 })
+
+test('노트 hwpx: 정렬·줄 간격은 문단 모양, pt는 글자 크기로', async () => {
+  const f = await unzipText(await buildNoteHwpx({ title: '', blocks: [{ id: 'a', type: 'p', text: '가운데', align: 'center', line: 200 }, { id: 'b', type: 'p', text: '큰 글', marks: [{ from: 0, to: 1, pt: 14 }] }, { id: 'c', type: 'p', text: '오른쪽', align: 'right', indent: 1 }] }))
+  const h = f['Contents/header.xml']
+  expect(xmlErrors(h)).toEqual([])
+  expect(h).toMatch(/<hh:align horizontal="CENTER"[^>]*\/>[\s\S]*?<hh:lineSpacing type="PERCENT" value="200"/)
+  expect(h).toMatch(/<hh:align horizontal="RIGHT"/)
+  expect(h).toContain('height="1400"')
+})

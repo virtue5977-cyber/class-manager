@@ -4,7 +4,7 @@ import { buildHwpx, BASE_CHARPR_COUNT, BASE_HEADER_XML } from '../hwpx/package'
 import { escapeXml } from '../hwpx/xml'
 import { tableXml, PARA_JUSTIFY } from '../hwpx/xml'
 import { outlineMarks } from '../notes/blocks'
-import { segments, type Style } from '../notes/marks'
+import { ptOf, segments, type Style } from '../notes/marks'
 import { A4_PORTRAIT_BODY_WIDTH } from './roster-doc'
 import { tableColWidths } from './table-doc'
 
@@ -24,7 +24,7 @@ interface CpSpec extends Style {
 class Registry {
   fonts: string[] = []
   cps: CpSpec[] = []
-  paras: number[] = []
+  paras: string[] = []
   font(name?: string): number {
     if (!name) return MALGUN
     const i = BASE_FONTS.indexOf(name)
@@ -40,11 +40,12 @@ class Registry {
     this.font(s.font)
     return BASE_CHARPR_COUNT + i
   }
-  /** 왼쪽 여백(pt)별 문단 모양(줄 간격 160%) */
-  para(leftPt: number): number {
-    if (!leftPt) return PARA_JUSTIFY
-    let i = this.paras.indexOf(leftPt)
-    if (i < 0) i = this.paras.push(leftPt) - 1
+  /** 왼쪽 여백(pt)·정렬·줄 간격별 문단 모양 */
+  para(leftPt: number, align: NoteBlock['align'] = 'justify', line = 160): number {
+    if (!leftPt && align === 'justify' && line === 160) return PARA_JUSTIFY
+    const key = `${leftPt}|${align}|${line}`
+    let i = this.paras.indexOf(key)
+    if (i < 0) i = this.paras.push(key) - 1
     return PARA_COUNT + i
   }
   charPrXml(): string[] {
@@ -67,9 +68,12 @@ class Registry {
       })
     }
     if (this.paras.length) {
-      const add = this.paras.map((pt, k) => {
-        const v = Math.round(pt * 100)
+      const add = this.paras.map((key, k) => {
+        const [left, align, line] = key.split('|')
+        const v = Math.round(Number(left) * 100)
         return BASE_PARA.replace(/<hh:paraPr id="13"/, `<hh:paraPr id="${PARA_COUNT + k}"`)
+          .replace(/<hh:align horizontal="[A-Z]+"/, `<hh:align horizontal="${align.toUpperCase()}"`)
+          .replace(/<hh:lineSpacing type="PERCENT" value="160"/g, `<hh:lineSpacing type="PERCENT" value="${line}"`)
           .replace(/(<hp:case[\s\S]*?)<hc:left value="0"/, `$1<hc:left value="${v}"`)
           .replace(/(<hp:default[\s\S]*?)<hc:left value="0"/, `$1<hc:left value="${v * 2}"`)
       })
@@ -84,7 +88,12 @@ const tx = (t: string) => `<hp:t>${t.split('\n').map(escapeXml).join('<hp:lineBr
 function runs(reg: Registry, text: string, b: NoteBlock, pt: number, base: Style = {}): string {
   const segs = segments(text, b.marks, b.links)
   if (!segs.length) return `<hp:run charPrIDRef="${reg.cp({ pt, ...base })}"/>`
-  return segs.map((s) => `<hp:run charPrIDRef="${reg.cp({ ...base, ...s.style, pt: s.style.size ? pt * (s.style.size === 'sm' ? 0.85 : 1.25) : pt })}">${tx(s.text)}</hp:run>`).join('')
+  return segs.map((s) => {
+    const { size: _s, pt: _p, ...look } = s.style
+    void _s
+    void _p
+    return `<hp:run charPrIDRef="${reg.cp({ ...base, ...look, pt: ptOf(s.style, pt) })}">${tx(s.text)}</hp:run>`
+  }).join('')
 }
 const para = (paraPr: number, inner: string) => `<hp:p id="0" paraPrIDRef="${paraPr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${inner}</hp:p>`
 
@@ -96,23 +105,24 @@ export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, fil
   note.blocks.forEach((b, i) => {
     const ind = b.indent ?? 0
     const text = b.text ?? ''
+    const P = (left: number) => reg.para(left, b.align, b.line)
     const lead = (s: string) => `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT })}">${tx(s + ' ')}</hp:run>`
     switch (b.type) {
       case 'h1':
-        return body.push(para(reg.para(ind * 20), runs(reg, text, b, 16, { b: true })))
+        return body.push(para(P(ind * 20), runs(reg, text, b, 16, { b: true })))
       case 'h2':
-        return body.push(para(reg.para(ind * 20), runs(reg, text, b, 13, { b: true })))
+        return body.push(para(P(ind * 20), runs(reg, text, b, 13, { b: true })))
       case 'bullet':
       case 'number':
-        return body.push(para(reg.para((ind + 1) * 20), lead(marks[i]) + runs(reg, text, b, BASE_PT)))
+        return body.push(para(P((ind + 1) * 20), lead(marks[i]) + runs(reg, text, b, BASE_PT)))
       case 'check':
-        return body.push(para(reg.para(ind * 20), lead(b.checked ? '☑' : '☐') + runs(reg, text, b, BASE_PT, b.checked ? { s: true } : {})))
+        return body.push(para(P(ind * 20), lead(b.checked ? '☑' : '☐') + runs(reg, text, b, BASE_PT, b.checked ? { s: true } : {})))
       case 'divider':
         return body.push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT, color: '#888888' })}">${tx('―'.repeat(30))}</hp:run>`))
       case 'file':
-        return body.push(para(reg.para(ind * 20), lead(`[첨부] ${files.get(b.file_id ?? '') ?? '파일'}`)))
+        return body.push(para(P(ind * 20), lead(`[첨부] ${files.get(b.file_id ?? '') ?? '파일'}`)))
       case 'folder':
-        return body.push(para(reg.para(ind * 20), lead(`[폴더] ${b.path ?? ''}`)))
+        return body.push(para(P(ind * 20), lead(`[폴더] ${b.path ?? ''}`)))
       case 'roster': {
         if (text) body.push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT, b: true })}">${tx(text)}</hp:run>`))
         const cp = reg.cp({ pt: BASE_PT })
@@ -128,7 +138,7 @@ export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, fil
         return
       }
       default:
-        return body.push(para(reg.para(ind * 20), runs(reg, text, b, BASE_PT)))
+        return body.push(para(P(ind * 20), runs(reg, text, b, BASE_PT)))
     }
   })
   const previewText = [note.title, ...note.blocks.map((b) => b.text ?? '')].join('\n').slice(0, 2000)

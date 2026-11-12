@@ -70,3 +70,14 @@ test('이상한 서식 값·링크 id는 버린다(HTML에 끼어들지 못하�
   expect(seg).toEqual([{ text: '가나', from: 0, style: { bg: '#fff59d' } }])
   expect(segments('가', [{ from: 0, to: 1, font: '궁서', color: '#c0392b', size: 'lg', b: true }])[0].style).toEqual({ b: true, color: '#c0392b', font: '궁서', size: 'lg' })
 })
+
+test('글자 크기 pt: 8~32만, 값 바꾸기, 예전 size(sm·lg)는 pt로 읽기', async () => {
+  const { ptOf } = await import('./marks')
+  expect(applyStyle([], 4, 0, 2, 'pt', 14)).toEqual([{ from: 0, to: 2, pt: 14 }])
+  expect(applyStyle([{ from: 0, to: 2, pt: 14 }], 4, 0, 2, 'pt', 14)).toEqual([])
+  expect(segments('가나', [{ from: 0, to: 2, pt: 99 } as Mark])[0].style).toEqual({})
+  expect(ptOf({ pt: 12 }, 10)).toBe(12)
+  expect(ptOf({ size: 'sm' }, 10)).toBe(8.5)
+  expect(ptOf({ size: 'lg' }, 16)).toBe(20)
+  expect(ptOf({}, 13)).toBe(13)
+})

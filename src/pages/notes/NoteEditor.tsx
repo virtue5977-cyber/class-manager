@@ -624,7 +624,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           return (
             <div
               key={b.id}
-              className={`nb nb-${b.type} nb-l${lv}${dragId === b.id ? ' dragging' : ''}${inSel(i) ? ' nb-selected' : ''}`}
+              className={`nb nb-${b.type} nb-l${lv}${b.align ? ` al-${b.align}` : ''}${b.line ? ` ln-${b.line}` : ''}${dragId === b.id ? ' dragging' : ''}${inSel(i) ? ' nb-selected' : ''}`}
               style={lv ? { paddingLeft: `${lv * 26}px` } : undefined}
               onDragOver={(e) => dragId && e.preventDefault()}
               onDrop={(e) => {
