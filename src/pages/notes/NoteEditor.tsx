@@ -712,28 +712,43 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
 function RosterTable({ b, onChange }: { b: NoteBlock; onChange: (p: Partial<NoteBlock>) => void }) {
   const rows = b.rows ?? []
   const done = rows.filter((r) => r.checked).length
+  const size = b.size ?? 'md'
   const set = (fn: (r: NonNullable<NoteBlock['rows']>[number]) => boolean) => onChange({ rows: rows.map((r) => ({ ...r, checked: fn(r) })) })
+  const shown = b.hide_done ? rows.filter((r) => !r.checked) : rows
   return (
-    <div className="nb-roster">
+    <div className={`nb-roster nb-roster-${size}${b.collapsed ? ' collapsed' : ''}`}>
       <table className="grid nb-roster-table" aria-label="학생 체크 표">
         <caption>
-          <div className="row nb-roster-head">
-            <input aria-label="표 제목" placeholder="표 제목(예: 동의서 제출)" value={b.text ?? ''} onChange={(e) => onChange({ text: e.target.value })} />
-            <span className="muted">{`${done} / ${rows.length}`}</span>
-            <button type="button" className="link" onClick={() => set(() => true)}>모두 체크</button>
-            <button type="button" className="link" onClick={() => set(() => false)}>모두 해제</button>
-          </div>
-        </caption>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.sid} className={r.checked ? 'on' : undefined}>
-              <td className="pii">{r.label}</td>
-              <td>
-                <input type="checkbox" aria-label={`${r.label} 체크`} checked={r.checked} onChange={(e) => set((x) => (x.sid === r.sid ? e.target.checked : x.checked))} />
-              </td>
-            </tr>
+      <div className="row nb-roster-head">
+        <input aria-label="표 제목" placeholder="표 제목(예: 동의서 제출)" value={b.text ?? ''} onChange={(e) => onChange({ text: e.target.value })} />
+        <span className="muted">{`${done} / ${rows.length}`}</span>
+        <button type="button" className="link" onClick={() => set(() => true)}>모두 체크</button>
+        <button type="button" className="link" onClick={() => set(() => false)}>모두 해제</button>
+        <button type="button" className="link" onClick={() => onChange({ hide_done: !b.hide_done })}>
+          {b.hide_done ? `체크한 학생 보이기(${done})` : '체크한 학생 숨기기'}
+        </button>
+        <span className="seg-mini" role="radiogroup" aria-label="표 크기">
+          {(['sm', 'md', 'lg'] as const).map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={size === k} className={size === k ? 'on' : undefined} onClick={() => onChange({ size: k })}>
+              {k === 'sm' ? '작게' : k === 'md' ? '보통' : '크게'}
+            </button>
           ))}
-        </tbody>
+        </span>
+        <button type="button" className="link" onClick={() => onChange({ collapsed: !b.collapsed })}>{b.collapsed ? '표 펴기' : '표 접기'}</button>
+      </div>
+        </caption>
+      {!b.collapsed && (
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.sid} className={r.checked ? 'on' : undefined}>
+                <td className="pii">{r.label}</td>
+                <td>
+                  <input type="checkbox" aria-label={`${r.label} 체크`} checked={r.checked} onChange={(e) => set((x) => (x.sid === r.sid ? e.target.checked : x.checked))} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+      )}
       </table>
     </div>
   )

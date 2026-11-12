@@ -291,6 +291,12 @@ export interface NoteBlock {
   indent?: number
   /** 학생 체크 표(roster): 만든 때의 학생(번호 이름)과 체크. text는 표 제목 */
   rows?: { sid: string; label: string; checked: boolean }[]
+  /** 학생 체크 표 크기(작게 = 여러 칸 격자, 기본 보통) */
+  size?: 'sm' | 'md' | 'lg'
+  /** 체크한 학생 숨기기 */
+  hide_done?: boolean
+  /** 표 접기 */
+  collapsed?: boolean
   /** 글자 서식(text 안 위치 [from,to)). 없으면 서식 없음 */
   marks?: import('../notes/marks').Mark[]
   /** @노트 링크(text 안 위치) */
