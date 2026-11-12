@@ -1,9 +1,9 @@
 {
-  "version": "0.13.0",
+  "version": "0.14.0",
   "shell": 1,
-  "bundle": "bundle-0.13.0.zip",
-  "sha256": "6244bb792967738c3b28aef42460e66ab91131fecbb59e9f12c45c3041162bbc",
-  "sig": "HYPOkIDwn+dqG1TLfN5prm1k44GY5xIr2bvVH43nALsTKPf+yxsUrp7Irrja/2KBgLMdFCXvCfvrQSnzN+psBA==",
-  "note": "0.13.0: 채팅 바로 올라가기·● ● ●, 노트 서식(굵게·밑줄·기울임·색·형광펜·한글 글꼴·크기)·긴 줄 줄바꿈·한글로 복사, 노트 단축키 Ctrl+1~6, 하루 전달사항 = 노트 한 장, @노트 링크, 누가기록(상담·관찰, 전체 목록, /관찰), 명단 상세에 기록, 바탕화면 바로가기·자동 실행 도우미",
+  "bundle": "bundle-0.14.0.zip",
+  "sha256": "02ad5692b99343b6b38243ff63150496a6794a31239e1ccbbfcfdb3863df9f0f",
+  "sig": "/SoAdov07q+1FyVOsoIkzOauDlD4EA3kC1iNH1bZNxaiSld0wHw5rRdtoCjEJShZIDP5Iro/F1Tcb+Z0jCpoCA==",
+  "note": "0.14.0: /설명서, !상담, ! 뒤 @학생, AI가 출결 통계에서 누구인지 대답, 달력 일정 누르면 고치기·지우기·장소·개인/업무 색, 전달사항 끌어 순서·날짜별 목록, 홈 노트함에서 전달사항 지정, 누가기록 내보내기·관찰 분야·미정리 알림 끄기, 결석 기간, 노트 여러 줄 고르기·명렬표 크기·숨기기",
   "date": "2026-11-12"
 }
