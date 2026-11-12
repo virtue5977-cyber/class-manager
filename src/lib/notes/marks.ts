@@ -91,6 +91,19 @@ export function applyStyle(marks: Mark[] | undefined, len: number, from: number,
   return fromChars(chars)
 }
 
+/** [from,to)의 한 서식을 값으로 정한다(undefined·false면 없앤다). 켜고 끄기가 아닌 '그 값으로'. */
+export function forceStyle(marks: Mark[] | undefined, len: number, from: number, to: number, key: Key, value: string | number | boolean | undefined): Mark[] {
+  const chars = toChars(marks, len)
+  for (let i = Math.max(0, from); i < Math.min(len, to); i++) {
+    const c = { ...chars[i] } as Record<string, unknown>
+    if (value === undefined || value === false) delete c[key]
+    else c[key] = value
+    if (key === 'pt') delete c.size
+    chars[i] = c as Style
+  }
+  return fromChars(chars)
+}
+
 /** 그 자리 글자 서식(모은 서식 막대 표시용): 범위 안 모든 글자에 공통인 것 */
 export function styleAt(marks: Mark[] | undefined, len: number, from: number, to: number): Style {
   const chars = toChars(marks, len)

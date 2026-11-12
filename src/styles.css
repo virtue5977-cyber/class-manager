@@ -1071,3 +1071,35 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .note-editor { --pt: 1.5px; }
 .nb.al-left .nb-text { text-align: left; } .nb.al-center .nb-text { text-align: center; } .nb.al-right .nb-text { text-align: right; } .nb.al-justify .nb-text { text-align: justify; }
 .nb.ln-130 .nb-text { line-height: 1.3; } .nb.ln-200 .nb-text { line-height: 2; }
+
+/* 0.15 노트 도구 막대(한글처럼 두 줄) */
+.note-toolbar { position: sticky; top: 0; z-index: 15; display: flex; flex-direction: column; gap: 2px; margin: 2px -20px 6px; padding: 4px 16px; background: var(--panel); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.tb-row { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-height: 32px; }
+.tb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 30px; height: 30px; padding: 0 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); font-size: 14px; cursor: pointer; }
+.tb-btn:hover { background: var(--hover); }
+.tb-btn.on { background: var(--accent-soft); border-color: var(--accent-soft-line); color: var(--accent-soft-ink); }
+.tb-labeled span { font-size: 12.5px; color: var(--sub); }
+.tb-sep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; }
+.tb-grow { flex: 1; }
+.note-toolbar select { height: 30px; font-size: 13px; padding: 0 6px; }
+.tb-font { min-width: 120px; justify-content: space-between; border-color: var(--line-input); font-size: 13px; }
+.tb-pt { display: inline-flex; align-items: center; border: 1px solid var(--line-input); border-radius: 6px; height: 30px; overflow: hidden; margin-left: 4px; }
+.tb-pt input { width: 44px; border: 0; height: 28px; text-align: right; padding: 0 2px; font-size: 13px; box-shadow: none; }
+.tb-pt-unit { font-size: 12px; color: var(--sub); padding: 0 4px; }
+.tb-pt-step { display: flex; flex-direction: column; border-left: 1px solid var(--line-input); }
+.tb-pt-step button { border: 0; border-radius: 0; height: 14px; width: 18px; padding: 0; font-size: 8px; line-height: 1; background: transparent; }
+.tb-pt-step button:hover { background: var(--hover); }
+.tb-color { border-bottom: 3px solid; line-height: 1; padding: 0 2px; }
+.tb-hl { padding: 0 3px; color: #222; }
+.tb-pop { position: relative; display: inline-flex; }
+.tb-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; display: flex; flex-direction: column; min-width: 140px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .14); }
+.tb-menu > button { text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: 6px; font-size: 14px; }
+.tb-menu > button:hover, .tb-menu > button.on { background: var(--accent-soft); }
+.tb-swatches { flex-direction: row; flex-wrap: wrap; gap: 4px; min-width: 0; width: 132px; }
+.tb-swatches > button { width: 24px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+.tb-swatches > button.on { outline: 2px solid var(--accent); }
+.tb-grid { min-width: 0; gap: 6px; align-items: center; }
+.tb-grid-cells { display: grid; grid-template-columns: repeat(8, 16px); gap: 2px; }
+.tb-grid-cells > button { width: 16px; height: 16px; padding: 0; border: 1px solid var(--line-input); border-radius: 2px; background: var(--panel); }
+.tb-grid-cells > button.on { background: var(--accent-soft); border-color: var(--accent); }
+@media (max-width: 900px) { .tb-labeled span { display: none; } }

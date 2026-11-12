@@ -279,7 +279,7 @@ export interface NoticeItemRec extends BaseRecord {
   parts?: TodoPart[]
 }
 
-export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder' | 'roster'
+export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder' | 'roster' | 'table' | 'image' | 'pagebreak'
 export interface NoteBlock {
   id: string
   type: NoteBlockType
