@@ -571,7 +571,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           <button type="button" className="link" title="서식을 살려 복사합니다. 한글·워드에 붙여 넣으세요." onClick={copyForHwp}>한글로 복사</button>
           {live?.notice_date ? (
             <>
-              <span className="badge notice-badge" title="이날 전달사항과 이어진 노트입니다. 글 줄 하나가 전달사항 한 항목입니다.">{`[전달사항] ${+live.notice_date.slice(5, 7)}/${+live.notice_date.slice(8)}`}</span>
+              <span className="badge notice-badge" title="이날 전달사항과 이어진 노트입니다. 글 줄 하나가 전달사항 한 항목입니다.">{`[전달 ${+live.notice_date.slice(5, 7)}/${+live.notice_date.slice(8)}]`}</span>
               <button type="button" className="link" onClick={() => void unlinkNoticeNote(db, note.id).then(() => setMsg('전달사항과 연결을 끊었습니다. 전달사항은 그대로 남습니다.'))}>연결 끊기</button>
             </>
           ) : (
