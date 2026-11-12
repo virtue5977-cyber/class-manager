@@ -103,3 +103,27 @@ test('나누기·합치기·종류 바꾸기에 서식과 링크가 따라간다
   expect(m.blocks[0]).toMatchObject({ text: '가나다라', marks: [{ b: true, from: 1, to: 3 }], links: [{ from: 3, to: 4, note: 'n' }] })
   expect(setType([b], 'a', 'h1')[0]).toMatchObject({ type: 'h1', marks: b.marks, links: b.links })
 })
+
+test('Backspace 줄 합치기: 위가 쪽 나누기면 쪽 나눔을 지우고, 표·그림·명렬표면 아무것도 안 함(글이 숨지 않게)', () => {
+  const pb = mergeUp([B('a', '앞'), { id: 'pb', type: 'pagebreak' }, B('b', '뒤')], 'b')
+  expect(pb.blocks.map((x) => x.id)).toEqual(['a', 'b'])
+  expect(pb.focusId).toBe('b')
+  for (const t of ['table', 'image', 'roster'] as const) {
+    const blocks = [{ id: 'x', type: t }, B('b', '뒤')]
+    expect(mergeUp(blocks, 'b').blocks).toEqual(blocks)
+  }
+})
+
+test('지금 줄 다음에 블록 넣기: 빈 줄이면 그 자리에, 이미 바뀐 줄 목록에서 다시 계산(여러 장 넣어도 겹치지 않음)', async () => {
+  const { insertBlockAfter } = await import('./blocks')
+  let bs = [B('a', 'A'), B('e', ''), B('c', 'C')]
+  bs = insertBlockAfter(bs, 'e', { id: 'i1', type: 'image' }).blocks
+  expect(bs.map((x) => x.id)).toEqual(['a', 'i1', 'c'])
+  // 두 번째 그림: 'e'는 이미 없음 → 맨 뒤에(겹치지 않게), 끝에 빈 줄
+  const r = insertBlockAfter(bs, 'e', { id: 'i2', type: 'image' })
+  expect(r.blocks.map((x) => x.id).slice(0, 4)).toEqual(['a', 'i1', 'c', 'i2'])
+  expect(r.blocks[4]).toMatchObject({ type: 'p', text: '' })
+  expect(new Set(r.blocks.map((x) => x.id)).size).toBe(r.blocks.length)
+  // 글이 있는 줄 다음
+  expect(insertBlockAfter([B('a', 'A'), B('c', 'C')], 'a', { id: 'pb', type: 'pagebreak' }).blocks.map((x) => x.id)).toEqual(['a', 'pb', 'c'])
+})

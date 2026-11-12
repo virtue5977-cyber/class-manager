@@ -43,11 +43,11 @@ export function PageMenu({ page, onChange }: { page: NotePage; onChange: (p: Not
           </label>
           <label className="wide">
             머리말
-            <input aria-label="머리말" placeholder="예: 1학년 5반 {날짜}" defaultValue={page.header ?? ''} onBlur={(e) => e.target.value !== (page.header ?? '') && onChange({ ...page, header: e.target.value || undefined })} />
+            <input aria-label="머리말" placeholder="예: 1학년 5반 {날짜}" value={page.header ?? ''} onChange={(e) => onChange({ ...page, header: e.target.value || undefined })} />
           </label>
           <label className="wide">
             꼬리말
-            <input aria-label="꼬리말" placeholder="예: - {쪽} -" defaultValue={page.footer ?? ''} onBlur={(e) => e.target.value !== (page.footer ?? '') && onChange({ ...page, footer: e.target.value || undefined })} />
+            <input aria-label="꼬리말" placeholder="예: - {쪽} -" value={page.footer ?? ''} onChange={(e) => onChange({ ...page, footer: e.target.value || undefined })} />
           </label>
           <span className="muted small">{'{쪽} {전체쪽} {날짜}를 쓰면 바뀌어 나옵니다.'}</span>
         </span>

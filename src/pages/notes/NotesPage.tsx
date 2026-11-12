@@ -138,7 +138,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
     const name = `${(n.title || '노트').replace(/[\\/:*?"<>|\s]+/g, '_')}.${kind}`
     if (kind === 'xlsx') {
       const rows = n.blocks.flatMap((b) =>
-        b.type === 'roster' ? [['', b.text || '학생 체크 표'], ...(b.rows ?? []).map((r) => [r.checked ? '☑' : '☐', r.label])] : ['check', 'bullet', 'number', 'p'].includes(b.type) && (b.text ?? '').trim() ? [[b.type === 'check' ? (b.checked ? '☑' : '☐') : '', b.text ?? '']] : [],
+        b.type === 'roster' ? [['', b.text || '학생 체크 표'], ...(b.rows ?? []).map((r) => [r.checked ? '☑' : '☐', r.label])] : b.type === 'table' ? (b.cells ?? []).map((r) => ['', r.join(' | ')]) : b.type === 'image' ? [['', `[그림] ${b.caption ?? ''}`.trim()]] : ['check', 'bullet', 'number', 'p'].includes(b.type) && (b.text ?? '').trim() ? [[b.type === 'check' ? (b.checked ? '☑' : '☐') : '', b.text ?? '']] : [],
       )
       fs.downloadFile(name, await writeSimpleXlsx('노트', [['체크', '내용'], ...rows]))
     } else {

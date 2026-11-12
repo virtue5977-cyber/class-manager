@@ -96,7 +96,7 @@ export async function readFile(db: AppDB, fileId: string): Promise<{ name: strin
 }
 
 /** 노트 본문 글(검색·내보내기용) */
-export const noteText = (n: NoteRec) => [n.title, ...n.blocks.map((b) => [b.text ?? '', ...(b.rows ?? []).map((r) => r.label)].join(' '))].join('\n')
+export const noteText = (n: NoteRec) => [n.title, ...n.blocks.map((b) => [b.text ?? '', b.caption ?? '', ...(b.rows ?? []).map((r) => r.label), ...(b.cells ?? []).map((r) => r.join(' '))].join(' '))].join('\n')
 
 /** 노트 쪽 설정(쪽 보기·여백·격자·확대·머리말·꼬리말) 저장 */
 export async function setNotePage(db: AppDB, id: string, page: NoteRec['page']): Promise<void> {

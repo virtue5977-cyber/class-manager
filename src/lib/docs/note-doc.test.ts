@@ -79,3 +79,11 @@ test('노트 hwpx: 쪽 여백·머리말·꼬리말(쪽 번호·전체 쪽)', as
   expect(sec).toMatch(/<hp:footer [^>]*>[\s\S]*- [\s\S]*numType="PAGE"[\s\S]* \/ 3 -/)
   expect(sec).not.toContain('TOTAL_PAGE')
 })
+
+test('노트 hwpx: 쪽 수를 모르면(쪽 보기를 안 켬) {전체쪽}과 앞 "/"는 빼고 쪽 번호만', async () => {
+  const f = await unzipText(await buildNoteHwpx({ title: '', blocks: [{ id: 'p', type: 'p', text: '본문' }], page: { view: false, margin: 'normal', grid: false, footer: '- {쪽} / {전체쪽} -' } }))
+  const foot = /<hp:footer [\s\S]*?<\/hp:footer>/.exec(f['Contents/section0.xml'])![0]
+  expect(foot).toContain('numType="PAGE"')
+  expect(foot).not.toMatch(/\/ ?1/)
+  expect(foot).not.toContain('{전체쪽}')
+})

@@ -100,6 +100,9 @@ export function noteToPlain(note: Pick<NoteRec, 'title' | 'blocks'>, o: { withTi
     if (b.type === 'bullet' || b.type === 'number') return `${pad}${marks[i]} ${t}`
     if (b.type === 'check') return `${pad}${b.checked ? '☑' : '☐'} ${t}`
     if (b.type === 'divider') return '―――――'
+    if (b.type === 'table') return (b.cells ?? []).map((r) => r.join('\t')).join('\n')
+    if (b.type === 'image') return `[그림]${b.caption ? ` ${b.caption}` : ''}`
+    if (b.type === 'pagebreak') return ''
     if (b.type === 'roster') return [t, ...(b.rows ?? []).map((r) => `${r.label}\t${r.checked ? '✔' : ''}`)].filter(Boolean).join('\n')
     return pad + t
   })

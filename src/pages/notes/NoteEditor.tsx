@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type Keyboard
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
 import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent, setNotePage } from '../../lib/notes/notes'
-import { filterSlash, indentBlock, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
+import { filterSlash, indentBlock, insertBlockAfter, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
 import { caretNav, placeCaret } from '../../lib/ui/caretNav'
 import RichLine, { type LineHandle, type LineValue } from './RichLine'
 import NoteToolbar, { type InsertKind, type MarkKey } from './NoteToolbar'
@@ -165,6 +165,8 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   /** 글자를 고른 줄(서식 막대) */
   /** 도구 막대: 지금 줄과 고른 범위(커서만이면 start = end) */
   const [cur, setCur] = useState<{ id: string; start: number; end: number }>()
+  const curRef = useRef(cur)
+  curRef.current = cur
   /** 고른 글 없이 누른 글자 서식: 그 자리에서 다음에 칠 글자에 쓴다 */
   const pending = useRef<{ id: string; at: number; style: Record<string, unknown> } | undefined>(undefined)
   const [, bump] = useState(0)
@@ -237,6 +239,8 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   // 센 쪽 수를 저장해 둔다(한글 내보내기의 {전체쪽})
   useEffect(() => {
     if (page.view && pg.pageH && pg.starts.length !== page.pages) changePage({ ...page, pages: pg.starts.length })
+    // 쪽 보기를 끄면 센 쪽 수는 믿을 수 없으니 지운다(내보내기에서 {전체쪽}을 뺀다)
+    if (!page.view && page.pages !== undefined) changePage({ ...page, pages: undefined })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page.view, pg.starts.length, pg.pageH])
   useEffect(() => {
@@ -517,15 +521,12 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   }
   /** 지금 줄 다음에 블록 넣기(지금 줄이 비어 있으면 그 자리에) */
   function insertAfterCur(nb: NoteBlock, focus: 'next' | 'new' | 'none' = 'next') {
+    // 지금 줄은 ref에서(그림 줄이기·저장을 기다리는 동안 바뀌었을 수 있다) 읽고, 위치는 최신 목록에서 다시 계산
+    const curId = curRef.current?.id
     setBlocks((bs) => {
-      const i = curBlock ? bs.findIndex((x) => x.id === curBlock.id) : bs.length - 1
-      const empty = curBlock && curBlock.type === 'p' && !(curBlock.text ?? '').trim()
-      const tail: NoteBlock = { id: newBlockId(), type: 'p', text: '' }
-      const out = empty ? [...bs.slice(0, i), nb, ...bs.slice(i + 1)] : [...bs.slice(0, i + 1), nb, ...bs.slice(i + 1)]
-      const at = out.indexOf(nb)
-      if (at === out.length - 1) out.push(tail)
-      if (focus !== 'none') focusNext.current = focus === 'new' ? { id: nb.id, caret: 0 } : { id: out[at + 1].id, caret: 0 }
-      return out
+      const r = insertBlockAfter(bs, curId, nb, newBlockId)
+      if (focus !== 'none') focusNext.current = { id: focus === 'new' ? nb.id : r.after, caret: 0 }
+      return r.blocks
     })
   }
   function tbInsert(k: InsertKind, o?: { rows: number; cols: number }) {

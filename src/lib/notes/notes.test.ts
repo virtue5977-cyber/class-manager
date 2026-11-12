@@ -55,3 +55,12 @@ test('첨부는 모두 합쳐 MAX_TOTAL까지(지운 첨부는 빼고 센다)', 
   await db.note_files.update(one.id, { deleted: true })
   await expect(attachFile(db, n.id, { name: 'c', mime: '', bytes: new Uint8Array(3) })).resolves.toBeTruthy()
 })
+
+test('찾기 글·서식 없는 글에 표 칸과 그림 설명도 들어간다', async () => {
+  const { noteText } = await import('./notes')
+  const { noteToPlain } = await import('./toHtml')
+  const n = { title: '명단', blocks: [{ id: 't', type: 'table' as const, cells: [['이름', '확인'], ['가상일', '✔']] }, { id: 'i', type: 'image' as const, file_id: 'f', caption: '운동장 사진' }] }
+  expect(noteText(n as never)).toContain('가상일')
+  expect(noteText(n as never)).toContain('운동장 사진')
+  expect(noteToPlain(n, { withTitle: false })).toBe('이름\t확인\n가상일\t✔\n[그림] 운동장 사진')
+})

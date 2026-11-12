@@ -13,11 +13,16 @@ export default function NoteImage({ b, onChange, onDelete }: { b: NoteBlock; onC
   useEffect(() => {
     let u: string | undefined
     let live = true
+    setErr(false)
     readFile(db, b.file_id ?? '').then(
       (f) => {
         if (!live) return
-        u = URL.createObjectURL(new Blob([f.bytes as BlobPart], { type: f.mime }))
-        setUrl(u)
+        try {
+          u = URL.createObjectURL(new Blob([f.bytes as BlobPart], { type: f.mime }))
+          setUrl(u)
+        } catch {
+          setErr(true)
+        }
       },
       () => live && setErr(true),
     )

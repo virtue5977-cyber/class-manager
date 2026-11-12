@@ -220,8 +220,10 @@ function pageSetup(page: NoteRec['page'], reg: Registry, now?: Date): { secPr?: 
   const cp = reg.cp({ pt: 9, color: '#555555' })
   const width = u(210 - m.left - m.right)
   /** 글 + {쪽}·{전체쪽}은 쪽 번호 컨트롤로 */
+  // 쪽 수를 모르면 {전체쪽}(과 앞의 '/')은 뺀다
+  const known = (t: string) => (page.pages ? t : t.replace(/\s*\/?\s*\{전체쪽\}/g, ''))
   const runs = (t: string) =>
-    t
+    known(t)
       .split(/(\{쪽\})/)
       .filter(Boolean)
       .map((part) =>
