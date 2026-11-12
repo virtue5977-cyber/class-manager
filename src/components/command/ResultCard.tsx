@@ -9,6 +9,8 @@ import type { NoteBlock } from '../../lib/db/types'
 import { useRecall } from './session'
 import FloatingForm from './FloatingForm'
 import Icon from '../Icon'
+import SuggestCard from './SuggestCard'
+import type { Suggestion } from '../../lib/command/skills'
 
 const MODE_LABEL = { rule: '규칙', hybrid: '규칙+AI', ai: 'AI' } as const
 
@@ -40,6 +42,7 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
     if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'message' && d.text) return d.text.split('\n').map((text) => ({ type: 'p', text }))
     if (card?.kind === 'draft' && d && !Array.isArray(d) && d.kind === 'notices') return (d.items ?? []).map((text) => ({ type: 'bullet', text }))
     if (card?.kind === 'search' && Array.isArray(d)) return d.map((h) => ({ type: 'bullet', text: `${h.label} ${h.detail}`.trim() }))
+    if (card?.kind === 'suggest') return ((card.data as { items: Suggestion[] }).items ?? []).map((x) => ({ type: 'bullet', text: `${x.date ? `${x.date} ` : ''}${x.time ? `${x.time} ` : ''}${x.text}` }))
     return []
   }
   /** 대답 복사: 요약 + 빈 줄 + 카드 글 */
@@ -94,6 +97,7 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
         </ul>
       )}
       {card?.kind === 'draft' && (card.data as { kind: string }).kind === 'message' && <MessageDraft text={(card.data as { text: string }).text} />}
+      {card?.kind === 'suggest' && <SuggestCard items={(card.data as { items: Suggestion[] }).items} today={today} />}
       {card?.kind === 'confirm' && (
         <div className="row">
           <span className="pii">{(card.data as { preview: string }).preview}</span>

@@ -1,3 +1,4 @@
+import { SKILLS } from './skills'
 import { choseong } from '../hangul'
 import { findStudents, parseCommand, type ParseCtx } from './parse'
 import { commandNames, commandSubs, type CommandMeta } from './registry'
@@ -21,6 +22,14 @@ export function suggest(input: string, caret: number, ctx: ParseCtx & { commands
   const { start, text } = tokenAt(input, caret)
   const before = input.slice(0, start)
   const isFirst = !before.trim()
+  // ! 스킬: 처음 낱말 → 스킬, 둘째 낱말 → 하위(받는 사람)
+  if (isFirst && text.startsWith('!')) {
+    const q = text.slice(1)
+    return SKILLS.filter((k) => k.id.startsWith(q) || (q && choseong(k.id).startsWith(q))).map((k) => ({ label: `!${k.id}`, insert: `!${k.id}`, kind: 'cmd' as const, detail: k.help }))
+  }
+  const sk = /^!(\S+)\s+$/.exec(before) && SKILLS.find((k) => k.id === /^!(\S+)/.exec(before)![1])
+  if (sk && sk.subs) return sk.subs.filter((x) => x.startsWith(text) && x !== text).map((x) => ({ label: x, insert: x, kind: 'sub' as const, detail: sk.help }))
+  if (before.trimStart().startsWith('!')) return []
   // 명령
   if (isFirst && text.startsWith('/')) {
     const q = text.slice(1)

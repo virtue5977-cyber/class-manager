@@ -109,7 +109,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
         <input
           ref={ref}
           aria-label="명령 입력"
-          placeholder={env ? '/명령 @학생 #태그 — 예: /출결 @3 결석 질병 감기' : '먼저 학급을 만드세요'}
+          placeholder={env ? '/기록(예: /출결 @3 결석 질병) · !AI 글(예: !전달 학부모, !일정) · 질문은 그냥' : '먼저 학급을 만드세요'}
           value={value}
           disabled={!env}
           onChange={(e) => set(e.target.value, e.target.selectionStart ?? e.target.value.length)}

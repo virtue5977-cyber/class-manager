@@ -38,7 +38,7 @@ export interface RunResult {
   summary: string
   links: { label: string; to: string }[]
   undo?: () => Promise<void>
-  card?: { kind: 'student' | 'search' | 'draft' | 'confirm'; data: unknown }
+  card?: { kind: 'student' | 'search' | 'draft' | 'confirm' | 'suggest'; data: unknown }
   form?: { kind: 'attendance' | 'counsel'; studentId: string; date: string }
   /** 저장하지 않은 결과(확인 필요) */
   pending?: boolean

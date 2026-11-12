@@ -37,3 +37,12 @@ test('후보 넣기: 그 토큰을 바꾸고 띄어쓰기 하나', () => {
   expect(r).toEqual({ value: '/출결 @박도윤 ', caret: 9 })
   expect(applySuggestion('/출 내용', 2, { label: '/출결', insert: '/출결', kind: 'cmd' })).toEqual({ value: '/출결 내용', caret: 4 })
 })
+
+test('! 자동완성: 처음 낱말은 스킬, 그다음은 하위(받는 사람)', async () => {
+  const { suggest } = await import('./suggest')
+  const { COMMAND_META } = await import('./registry')
+  const c = { students: [], notes: [], today: '2026-11-12', commands: COMMAND_META } as never
+  expect(suggest('!전', 2, c).map((s) => s.insert)).toEqual(['!전달'])
+  expect(suggest('!', 1, c).length).toBe(7)
+  expect(suggest('!전달 학', 6, c).map((s) => s.insert)).toEqual(['학생', '학부모'])
+})

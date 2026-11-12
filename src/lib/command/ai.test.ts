@@ -29,10 +29,11 @@ test('/ 없는 문장 → 명령으로 바꿔 확인을 묻고 저장하지 않�
   expect(await db.attendance.count()).toBe(0)
 })
 
-test('긴 붙여넣기 → 전달사항 초안 줄들', async () => {
-  const { env, ctx } = await setup(() => '{"조례":["교육 3교시","동의서 제출"],"종례":["체육복"]}')
+test('긴 붙여넣기 → !처럼 추천 카드(전달사항·일정·할 일, 고쳐서 넣기)', async () => {
+  const { env, ctx } = await setup(() => '{"summary":"강당 교육 안내","notices":["강당 교육\\n- 3교시"],"events":[{"date":"2026-11-13","time":"","title":"강당 교육"}],"todos":[{"text":"동의서 걷기","due":"2026-11-11"}]}')
   const r = await executeInput('공지\n3교시 후 강당 교육\n동의서 내일까지\n체육복 지참', ctx, env, aiFallback)
-  expect(r.result?.card).toEqual({ kind: 'draft', data: { kind: 'notices', items: ['교육 3교시', '동의서 제출', '체육복'] } })
+  expect(r.result?.summary).toBe('강당 교육 안내')
+  expect(r.result?.card).toEqual({ kind: 'suggest', data: { items: [{ kind: 'notice', text: '강당 교육\n- 3교시', date: '2026-11-10' }, { kind: 'event', text: '강당 교육', date: '2026-11-13', time: '' }, { kind: 'todo', text: '동의서 걷기', date: '2026-11-11' }] } })
 })
 
 test('/상담정리 → 미정리 기록을 정리하고 되돌릴 수 있다', async () => {
@@ -65,17 +66,15 @@ test('AI가 꺼져 있으면 실패 + 설정 링크, 규칙 명령은 그대로'
   expect(await db.attendance.count()).toBe(1)
 })
 
-test('/전달 학생 → AI가 학생에게 맞게 고쳐 전달사항으로(되돌리기), 이름은 가림', async () => {
+test('!전달 학생(옛 /전달 학생도) → 학생용으로 고친 글을 고칠 수 있는 추천 카드로(저장은 카드에서), 이름은 가림', async () => {
   const { db, env, ctx, sent } = await setup(() => '{"text":"내일 체육복을 꼭 가져오세요."}')
-  const r = await executeInput('/전달 학생 박도윤 포함 다들 낼 체육복 챙겨', ctx, env, aiFallback)
-  expect(r.chat.mode).toBe('hybrid')
-  expect(r.chat.status).toBe('성공')
-  const items = (await db.notice_items.toArray()).filter((n) => !n.deleted)
-  expect(items.map((n) => n.text)).toEqual(['내일 체육복을 꼭 가져오세요.'])
-  expect(JSON.stringify(sent)).not.toContain('박도윤')
-  expect(JSON.stringify(sent)).toContain('학생')
-  await r.result!.undo!()
+  const r = await executeInput('!전달 학생 박도윤 포함 다들 낼 체육복 챙겨', ctx, env, aiFallback)
+  expect(r.chat.status).toBe('확인 필요')
+  expect(r.result?.card).toEqual({ kind: 'suggest', data: { items: [{ kind: 'notice', text: '내일 체육복을 꼭 가져오세요.', date: '2026-11-10' }] } })
   expect((await db.notice_items.toArray()).filter((n) => !n.deleted)).toHaveLength(0)
+  expect(JSON.stringify(sent)).not.toContain('박도윤')
+  const old = await executeInput('/전달 학생 체육복 챙겨', ctx, env, aiFallback)
+  expect(old.result?.summary).toContain('이제는 !전달 학생')
 })
 
 test('/전달(대상 없음)은 AI 없이 그대로 기록, AI가 꺼져 있으면 /전달 학생도 그대로', async () => {
@@ -92,4 +91,20 @@ test('전출 학생 이름도 가린다(maskNames)', async () => {
   const { env, ctx, sent } = await setup(() => '{"command":""}')
   await executeInput('김전출 학부모께 연락', { ...ctx, maskNames: ['김전출'] }, env, aiFallback)
   expect(JSON.stringify(sent)).not.toContain('김전출')
+})
+
+test('!일정·!요약·기호 없는 질문(앱 자료로 대답, 이름은 가림)·AI 꺼짐', async () => {
+  const { db, env, ctx, sent } = await setup((req) =>
+    req.system.includes('"events"') && !req.system.includes('"notices"') ? '{"events":[{"date":"2026-11-13","time":"9:00","title":"수학 올림픽"}]}' : req.system.includes('요점') ? '{"text":"- 금요일 올림픽"}' : '{"answer":"오늘 결석은 박도윤 한 명입니다."}',
+  )
+  const ev = await executeInput('!일정 금요일 9시 수학 올림픽', ctx, env, aiFallback)
+  expect(ev.result?.card).toEqual({ kind: 'suggest', data: { items: [{ kind: 'event', text: '수학 올림픽', date: '2026-11-13', time: '09:00' }] } })
+  const sum = await executeInput('!요약 긴 글', ctx, env, aiFallback)
+  expect(sum.result?.card).toEqual({ kind: 'draft', data: { kind: 'message', text: '- 금요일 올림픽' } })
+  const q = await executeInput('오늘 결석한 학생 누구야', ctx, env, aiFallback)
+  expect(q.chat.summary).toBe('오늘 결석은 박도윤 한 명입니다.')
+  expect(JSON.stringify(sent.at(-1))).toContain('앱 자료')
+  expect(JSON.stringify(sent)).not.toContain('박도윤')
+  await updateSettings(db, { ai_enabled: false })
+  expect((await executeInput('!요약 글', ctx, env, aiFallback)).chat.summary).toContain('AI가 꺼져 있습니다')
 })
