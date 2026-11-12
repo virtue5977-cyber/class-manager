@@ -354,7 +354,7 @@ test('노트 전체를 전달사항으로: 날짜를 골라 잇고, [전달사�
   const g = screen.getByRole('group', { name: '전달사항 날짜' })
   await user.click(within(g).getByRole('button', { name: '잇기' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-10')).map((x) => x.text)).toEqual(['체육복 지참']))
-  expect((await screen.findAllByText('[전달사항] 11/10')).length).toBeGreaterThan(0)
+  expect((await screen.findAllByText('[전달 11/10]')).length).toBeGreaterThan(0)
   const { addNotice } = await import('../../lib/notices/notices')
   await addNotice(db, { text: '우유 신청', start_date: '2026-11-10' })
   await waitFor(() => expect(blocks().map((b) => b.textContent)).toEqual(['체육복 지참', '우유 신청']))

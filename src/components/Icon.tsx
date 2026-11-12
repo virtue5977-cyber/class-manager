@@ -23,6 +23,7 @@ const P: Record<string, string> = {
   printer: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
   chevronDown: 'M6 9l6 6 6-6',
   done: 'M5 12l5 5 9-10',
+  megaphone: 'M4 10v4h3l7 4V6l-7 4zM18 9a4 4 0 0 1 0 6M7 14l1 5h2l-1-5',
   grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
   eyeOff: 'M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
 }

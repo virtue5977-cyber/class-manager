@@ -1034,3 +1034,16 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .notice-date-item .icon-btn { opacity: 0; }
 .notice-date-item:hover .icon-btn, .notice-date-item:focus-within .icon-btn { opacity: 1; }
 .notice-date-item.done .pii { color: var(--sub); text-decoration: line-through; }
+
+/* 마우스 올리면 오른쪽이 흐려지며 뜨는 도구(노트함 나무·홈 노트함) */
+.tree-row, .notebox-item { position: relative; }
+.notebox-item { display: flex; flex-wrap: wrap; }
+.notebox-item > .notebox-row { flex: 1 1 auto; min-width: 0; }
+.tree-row .tree-title { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; word-break: keep-all; line-height: 1.35; }
+.tree-pinned { color: var(--sub); flex: none; }
+.hover-tools { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 28px; background: linear-gradient(to right, transparent, var(--panel) 26px); opacity: 0; pointer-events: none; transition: opacity .12s; }
+.notes-tree .tree-row.on .hover-tools { background: linear-gradient(to right, transparent, var(--selected-solid, var(--panel)) 26px); }
+.tree-row:hover > .hover-tools, .tree-row:focus-within > .hover-tools, .notebox-item:hover > .hover-tools, .notebox-item:focus-within > .hover-tools { opacity: 1; pointer-events: auto; }
+.notice-badge { font-size: 10.5px; padding: 0 4px; line-height: 16px; border-radius: 4px; flex: none; }
+.confirm-inline { flex-basis: 100%; }
+.confirm-even button { min-width: 6em; height: 26px; padding: 0 10px; font-size: 13px; }

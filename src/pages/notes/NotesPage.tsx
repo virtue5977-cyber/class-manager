@@ -16,7 +16,8 @@ import ExportMenu from '../../components/ExportMenu'
 import { buildNoteHwpx } from '../../lib/docs/note-doc'
 import PageHead from '../../components/PageHead'
 import NoteEditor from './NoteEditor'
-import NoticeTag from './NoticeTag'
+import NoticeTag, { shownTitle } from './NoticeTag'
+import { unlinkNoticeNote } from '../../lib/notices/noteSync'
 
 /** 노트함: 왼쪽 목록(찾기·고정·지우기) + 오른쪽 편집. */
 export default function NotesPage({ today = toYmd(new Date()) }: { today?: string }) {
@@ -153,16 +154,26 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       <span className="tree-twisty" aria-hidden="true" />
       <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>
       <NoticeTag note={n} />
-      <Link to={`/notes?id=${n.id}`} draggable={false}>{n.title || '제목 없음'}</Link>
+      <Link to={`/notes?id=${n.id}`} draggable={false} className="tree-title">{shownTitle(n)}</Link>
       {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
-      <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => setPinned(db, n.id, !n.pinned)}>
-        <Icon name="pin" size={14} />
-      </button>
-      <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={() => setConfirmDel(n.id)}><Icon name="trash" size={14} /></button>
+      {n.pinned && <span className="tree-pinned" aria-hidden="true"><Icon name="pin" size={12} /></span>}
+      {/* 마우스를 올리면 오른쪽이 흐려지며 도구가 뜬다(제목이 …로 잘리지 않게 자리를 차지하지 않음) */}
+      <span className="hover-tools">
+        <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => setPinned(db, n.id, !n.pinned)}>
+          <Icon name="pin" size={14} />
+        </button>
+        {n.notice_date && (
+          <button type="button" className="icon-btn" aria-label={`${n.title} 전달사항에서 빼기`} title="전달사항 연결 제거(노트·전달사항은 남음)" onClick={() => void unlinkNoticeNote(db, n.id)}>
+            <Icon name="megaphone" size={14} />
+          </button>
+        )}
+        <button type="button" className="icon-btn" aria-label={`${n.title} 지우기`} onClick={() => setConfirmDel(n.id)}><Icon name="trash" size={14} /></button>
+      </span>
       {confirmDel === n.id && (
-        <span className="row confirm-inline" role="group" aria-label="노트 지우기 확인">
+        <span className="row confirm-inline confirm-even" role="group" aria-label="노트 지우기 확인">
+          <span>지울까요?</span>
           <button type="button" className="danger" onClick={async () => { setConfirmDel(undefined); await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>정말 지우기</button>
-          <button type="button" className="link" onClick={() => setConfirmDel(undefined)}>취소</button>
+          <button type="button" onClick={() => setConfirmDel(undefined)}>취소</button>
         </span>
       )}
     </li>
