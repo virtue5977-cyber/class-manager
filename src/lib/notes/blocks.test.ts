@@ -92,3 +92,14 @@ test('글자로 바꾸기: 줄 맨 앞 "# ", "## ", "- ", "* ", "1. ", "[] "', (
   expect(markdownPrefix('3.5 점')).toBeNull()
   expect(markdownPrefix('#해시')).toBeNull()
 })
+
+test('나누기·합치기·종류 바꾸기에 서식과 링크가 따라간다', () => {
+  const b: NoteBlock = { id: 'a', type: 'p', text: '가나다라', marks: [{ b: true, from: 1, to: 3 }], links: [{ from: 3, to: 4, note: 'n' }] }
+  const r = splitBlock([b], 'a', 2)
+  expect(r.blocks[0]).toMatchObject({ text: '가나', marks: [{ b: true, from: 1, to: 2 }] })
+  expect(r.blocks[0].links).toBeUndefined()
+  expect(r.blocks[1]).toMatchObject({ text: '다라', marks: [{ b: true, from: 0, to: 1 }], links: [{ from: 1, to: 2, note: 'n' }] })
+  const m = mergeUp(r.blocks, r.blocks[1].id)
+  expect(m.blocks[0]).toMatchObject({ text: '가나다라', marks: [{ b: true, from: 1, to: 3 }], links: [{ from: 3, to: 4, note: 'n' }] })
+  expect(setType([b], 'a', 'h1')[0]).toMatchObject({ type: 'h1', marks: b.marks, links: b.links })
+})

@@ -1,6 +1,10 @@
 import type { NoteBlock, NoteBlockType } from '../db/types'
 import { choseong } from '../hangul'
 import { newBlockId } from './notes'
+import { joinMarks, joinRanges, splitLinks, splitRanges } from './marks'
+
+/** 서식·링크 칸(비었으면 뺀다) */
+const rich = (marks?: NoteBlock['marks'], links?: NoteBlock['links']) => ({ ...(marks?.length ? { marks } : {}), ...(links?.length ? { links } : {}) })
 
 const LIST: NoteBlockType[] = ['check', 'bullet', 'number']
 
@@ -32,8 +36,13 @@ export function splitBlock(blocks: NoteBlock[], id: string, caret: number): { bl
     const next = blocks.map((x) => (x.id === id ? { id: x.id, type: 'p' as const, text: '' } : x))
     return { blocks: next, focusId: id }
   }
-  const nb: NoteBlock = { id: newBlockId(), type: LIST.includes(b.type) ? b.type : 'p', text: text.slice(caret), ...(b.type === 'check' ? { checked: false } : {}), ...(b.indent ? { indent: b.indent } : {}) }
-  const next = [...blocks.slice(0, i), { ...b, text: text.slice(0, caret) }, nb, ...blocks.slice(i + 1)]
+  const [ma, mb] = splitRanges(b.marks, caret)
+  const [la, lb] = splitLinks(b.links, caret)
+  const nb: NoteBlock = { id: newBlockId(), type: LIST.includes(b.type) ? b.type : 'p', text: text.slice(caret), ...(b.type === 'check' ? { checked: false } : {}), ...(b.indent ? { indent: b.indent } : {}), ...rich(mb, lb) }
+  const { marks: _m, links: _l, ...plain } = b
+  void _m
+  void _l
+  const next = [...blocks.slice(0, i), { ...plain, text: text.slice(0, caret), ...rich(ma, la) }, nb, ...blocks.slice(i + 1)]
   return { blocks: next, focusId: nb.id }
 }
 
@@ -50,7 +59,11 @@ export function mergeUp(blocks: NoteBlock[], id: string): { blocks: NoteBlock[];
   const cur = blocks[i]
   if (up.type === 'divider' || up.type === 'file' || up.type === 'folder') return { blocks: blocks.filter((b) => b.id !== up.id), focusId: id, caret: 0 }
   const caret = (up.text ?? '').length
-  const next = [...blocks.slice(0, i - 1), { ...up, text: (up.text ?? '') + (cur.text ?? '') }, ...blocks.slice(i + 1)]
+  const { marks: _m, links: _l, ...upPlain } = up
+  void _m
+  void _l
+  const joined = { ...upPlain, text: (up.text ?? '') + (cur.text ?? ''), ...rich(joinMarks(up.marks, up.text ?? '', cur.marks, cur.text ?? ''), joinRanges(up.links, caret, cur.links)) }
+  const next = [...blocks.slice(0, i - 1), joined, ...blocks.slice(i + 1)]
   return { blocks: next, focusId: up.id, caret }
 }
 
@@ -63,7 +76,7 @@ export function moveBlock(blocks: NoteBlock[], id: string, toIndex: number): Not
 }
 
 export function setType(blocks: NoteBlock[], id: string, type: NoteBlockType): NoteBlock[] {
-  return blocks.map((b) => (b.id === id ? { id: b.id, type, text: b.text ?? '', ...(type === 'check' ? { checked: false } : {}), ...(b.indent ? { indent: b.indent } : {}) } : b))
+  return blocks.map((b) => (b.id === id ? { id: b.id, type, text: b.text ?? '', ...(type === 'check' ? { checked: false } : {}), ...(b.indent ? { indent: b.indent } : {}), ...rich(b.marks, b.links) } : b))
 }
 
 export const MAX_INDENT = 4
