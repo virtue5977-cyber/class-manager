@@ -46,6 +46,15 @@ export async function setTodoDone(db: AppDB, id: string, done: boolean): Promise
   if (cur) await save(db.todos, { ...cur, done, done_at: done ? new Date().toISOString() : null })
 }
 
+/** 할 일 고치기(글·마감일). 빈 글은 안 됨. */
+export async function updateTodo(db: AppDB, id: string, patch: { parts?: TodoRec['parts']; due?: string | null }): Promise<void> {
+  if (patch.parts && !patch.parts.some((p) => (typeof p === 'string' ? p.trim() : true))) throw new Error('내용을 입력하세요.')
+  await db.transaction('rw', db.todos, async () => {
+    const cur = await db.todos.get(id)
+    if (cur && !cur.deleted) await save(db.todos, { ...cur, ...(patch.parts ? { parts: patch.parts } : {}), ...(patch.due !== undefined ? { due: patch.due } : {}) })
+  })
+}
+
 export const deleteTodo = (db: AppDB, id: string) => scrubDelete(db.todos, id, { parts: [] }).then(() => undefined)
 
 export async function todosLinkingNote(db: AppDB, noteId: string): Promise<TodoRec[]> {

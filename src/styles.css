@@ -900,3 +900,10 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .roster-all td, .roster-all th { padding: 6px 10px; }
 .roster-all tr.inactive td { color: var(--sub); }
 .roster-all td .link { font-weight: 600; }
+
+/* 할 일 고치기 */
+.todo-edit { flex: 1; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.todo-edit input:not([type='date']) { flex: 1; min-width: 120px; }
+.todo-list li .row-edit { opacity: 0; }
+.todo-list li:hover .row-edit, .todo-list li .row-edit:focus-visible { opacity: .7; }
+@media (hover: none) { .todo-list li .row-edit { opacity: .7; } }
