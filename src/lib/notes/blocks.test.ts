@@ -71,7 +71,14 @@ test('노트 단축키: Ctrl+Shift+숫자와 Ctrl+Alt+숫자 모두(1·2 제목,
   expect(noteShortcut(ev({ altKey: true, key: '9', code: 'Digit9' }))).toBe('check')
   expect(noteShortcut(ev({ altKey: true, key: 't', code: 'KeyT' }))).toBe('roster')
   expect(noteShortcut(ev({ shiftKey: true, key: 'T', code: 'KeyT' }))).toBeNull()
-  expect(noteShortcut(ev({ key: '1', code: 'Digit1' }))).toBeNull() // Ctrl+1은 메뉴 이동
+  // 0.13: 노트 안 Ctrl+숫자(한글 프로그램처럼) 1 문단 2 제목1 3 제목2 4 글머리 5 번호 6 체크
+  expect(noteShortcut(ev({ key: '1', code: 'Digit1' }))).toBe('p')
+  expect(noteShortcut(ev({ key: '2', code: 'Digit2' }))).toBe('h1')
+  expect(noteShortcut(ev({ key: '3', code: 'Digit3' }))).toBe('h2')
+  expect(noteShortcut(ev({ key: '4', code: 'Digit4' }))).toBe('bullet')
+  expect(noteShortcut(ev({ key: '5', code: 'Digit5' }))).toBe('number')
+  expect(noteShortcut(ev({ key: '6', code: 'Digit6' }))).toBe('check')
+  expect(noteShortcut(ev({ key: '7', code: 'Digit7' }))).toBeNull()
   expect(noteShortcut(ev({ ctrlKey: false, shiftKey: true, key: '!', code: 'Digit1' }))).toBeNull()
 })
 

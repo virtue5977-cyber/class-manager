@@ -223,17 +223,23 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         return
       }
     }
-    // 노트 안 단축키(이 칸에 초점이 있을 때만): Ctrl+Shift 또는 Ctrl+Alt + 1/2 제목, 7 번호, 8 글머리, 9 체크, 0 문단, Ctrl+Alt+T 학생 체크 표
+    // 노트 안 단축키(이 칸에 초점이 있을 때만): Ctrl+1 문단 2 제목1 3 제목2 4 글머리 5 번호 6 체크(예전 Ctrl+Shift·Alt 숫자, Ctrl+Alt+T 표)
     {
       const type = noteShortcut(e)
       if (type) {
         e.preventDefault()
+        e.stopPropagation()
         if (type === 'roster') return void insertRoster(b)
         const caret = el.selectionStart
         setBlocks((bs) => setType(bs, b.id, type))
         focusNext.current = { id: b.id, caret }
         return
       }
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && b.type === 'check') {
+      e.preventDefault()
+      update(b.id, { checked: !b.checked })
+      return
     }
     if (e.key === 'Enter' && !e.shiftKey && /^[@/]명렬표$/.test((b.text ?? '').trim())) {
       e.preventDefault()

@@ -255,3 +255,16 @@ test('/ 메뉴가 열려 있으면 ←→도 블록을 옮기지 않는다', asy
   await user.keyboard('{Home}{ArrowLeft}')
   expect(screen.getByRole('textbox', { name: '블록 2' })).toHaveFocus()
 })
+
+test('노트 안 Ctrl+2는 제목 1, Ctrl+6은 체크, Ctrl+Enter로 체크 켜기', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('안내')
+  await user.keyboard('{Control>}2{/Control}')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].type).toBe('h1'), { timeout: 3000 })
+  await user.keyboard('{Control>}6{/Control}')
+  await user.keyboard('{Control>}{Enter}{/Control}')
+  expect(await screen.findByRole('checkbox', { name: '체크' })).toBeChecked()
+})

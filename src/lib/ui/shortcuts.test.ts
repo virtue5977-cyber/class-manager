@@ -31,9 +31,11 @@ test('글자 칸에서는 Ctrl/Alt 조합만, 한글 조합 중에는 아무것�
   expect(matchShortcut(k('a'), false)).toBeNull()
 })
 
-test('설정 화면용 단축키 표: 앱 7줄 + 노트·전달사항 5줄(노트 Ctrl+Shift 단축키가 보인다)', () => {
-  expect(SHORTCUT_TABLE).toHaveLength(12)
-  expect(SHORTCUT_TABLE.map((r) => r.keys).join(' ')).toContain('Ctrl+Shift+7 / 8 / 9')
+test('설정 화면용 단축키 표: 앱 7줄 + 노트·전달사항 7줄(노트 Ctrl+숫자, 예전 Ctrl+Shift는 표에서 뺌)', () => {
+  expect(SHORTCUT_TABLE).toHaveLength(14)
+  const keys = SHORTCUT_TABLE.map((r) => r.keys).join(' ')
+  expect(keys).toContain('노트 안: Ctrl+4 / 5 / 6')
+  expect(keys).not.toContain('Ctrl+Shift+7')
 })
 
 test('Ctrl+숫자는 보이는 메뉴 순서대로(1~9), 설정은 Ctrl+쉼표', () => {
