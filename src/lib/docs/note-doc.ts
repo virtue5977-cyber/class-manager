@@ -4,6 +4,7 @@ import { buildHwpx, BASE_CHARPR_COUNT, BASE_HEADER_XML } from '../hwpx/package'
 import { escapeXml } from '../hwpx/xml'
 import { tableXml, PARA_JUSTIFY } from '../hwpx/xml'
 import { outlineMarks } from '../notes/blocks'
+import { tableWidths } from '../notes/tableOps'
 import { ptOf, segments, type Style } from '../notes/marks'
 import { A4_PORTRAIT_BODY_WIDTH } from './roster-doc'
 import { tableColWidths } from './table-doc'
@@ -95,40 +96,65 @@ function runs(reg: Registry, text: string, b: NoteBlock, pt: number, base: Style
     return `<hp:run charPrIDRef="${reg.cp({ ...base, ...look, pt: ptOf(s.style, pt) })}">${tx(s.text)}</hp:run>`
   }).join('')
 }
-const para = (paraPr: number, inner: string) => `<hp:p id="0" paraPrIDRef="${paraPr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${inner}</hp:p>`
+const para = (paraPr: number, inner: string, pageBreak = false) => `<hp:p id="0" paraPrIDRef="${paraPr}" styleIDRef="0" pageBreak="${pageBreak ? 1 : 0}" columnBreak="0" merged="0">${inner}</hp:p>`
 
 export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, files: Map<string, string> = new Map(), now?: Date): Promise<Uint8Array> {
   const reg = new Registry()
   const marks = outlineMarks(note.blocks)
   const body: string[] = []
   if (note.title) body.push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: 18, b: true })}">${tx(note.title)}</hp:run>`))
+  // 쪽 나누기 블록 다음 문단은 새 쪽에서 시작한다
+  let breakNext = false
+  const push = (x: string) => {
+    body.push(breakNext ? x.replace('pageBreak="0"', 'pageBreak="1"') : x)
+    breakNext = false
+  }
   note.blocks.forEach((b, i) => {
+    if (b.type === 'pagebreak') {
+      breakNext = true
+      return
+    }
     const ind = b.indent ?? 0
     const text = b.text ?? ''
     const P = (left: number) => reg.para(left, b.align, b.line)
     const lead = (s: string) => `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT })}">${tx(s + ' ')}</hp:run>`
     switch (b.type) {
       case 'h1':
-        return body.push(para(P(ind * 20), runs(reg, text, b, 16, { b: true })))
+        return push(para(P(ind * 20), runs(reg, text, b, 16, { b: true })))
       case 'h2':
-        return body.push(para(P(ind * 20), runs(reg, text, b, 13, { b: true })))
+        return push(para(P(ind * 20), runs(reg, text, b, 13, { b: true })))
       case 'bullet':
       case 'number':
-        return body.push(para(P((ind + 1) * 20), lead(marks[i]) + runs(reg, text, b, BASE_PT)))
+        return push(para(P((ind + 1) * 20), lead(marks[i]) + runs(reg, text, b, BASE_PT)))
       case 'check':
-        return body.push(para(P(ind * 20), lead(b.checked ? '☑' : '☐') + runs(reg, text, b, BASE_PT, b.checked ? { s: true } : {})))
+        return push(para(P(ind * 20), lead(b.checked ? '☑' : '☐') + runs(reg, text, b, BASE_PT, b.checked ? { s: true } : {})))
       case 'divider':
-        return body.push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT, color: '#888888' })}">${tx('―'.repeat(30))}</hp:run>`))
+        return push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT, color: '#888888' })}">${tx('―'.repeat(30))}</hp:run>`))
       case 'file':
-        return body.push(para(P(ind * 20), lead(`[첨부] ${files.get(b.file_id ?? '') ?? '파일'}`)))
+        return push(para(P(ind * 20), lead(`[첨부] ${files.get(b.file_id ?? '') ?? '파일'}`)))
       case 'folder':
-        return body.push(para(P(ind * 20), lead(`[폴더] ${b.path ?? ''}`)))
+        return push(para(P(ind * 20), lead(`[폴더] ${b.path ?? ''}`)))
+      case 'table': {
+        const cp = reg.cp({ pt: BASE_PT })
+        const cpHead = reg.cp({ pt: BASE_PT, b: true })
+        const cells = b.cells ?? []
+        if (!cells.length) return
+        const total = A4_PORTRAIT_BODY_WIDTH
+        return push(
+          tableXml({
+            rows: cells.map((row, r) => row.map((t) => ({ text: t, charPr: b.head && r === 0 ? cpHead : cp }))),
+            colWidths: tableColWidths(tableWidths(b), total),
+            rowHeights: cells.map(() => 1700),
+            repeatHeader: !!b.head,
+          }),
+        )
+      }
       case 'roster': {
-        if (text) body.push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT, b: true })}">${tx(text)}</hp:run>`))
+        if (text) push(para(PARA_JUSTIFY, `<hp:run charPrIDRef="${reg.cp({ pt: BASE_PT, b: true })}">${tx(text)}</hp:run>`))
         const cp = reg.cp({ pt: BASE_PT })
         const rows = b.rows ?? []
         if (rows.length)
-          body.push(
+          push(
             tableXml({
               rows: rows.map((r) => [{ text: r.label, charPr: cp }, { text: r.checked ? '✔' : '', charPr: cp }]),
               colWidths: tableColWidths([5, 1], Math.round(A4_PORTRAIT_BODY_WIDTH * 0.5)),
@@ -138,9 +164,10 @@ export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, fil
         return
       }
       default:
-        return body.push(para(P(ind * 20), runs(reg, text, b, BASE_PT)))
+        return push(para(P(ind * 20), runs(reg, text, b, BASE_PT)))
     }
   })
+  if (breakNext) body.push(para(PARA_JUSTIFY, '<hp:run charPrIDRef="0"/>', true))
   const previewText = [note.title, ...note.blocks.map((b) => b.text ?? '')].join('\n').slice(0, 2000)
   return buildHwpx({ landscape: false, bodyXml: body.join(''), charPrXml: reg.charPrXml(), previewText, title: note.title || '노트', headerXml: reg.header() }, now)
 }

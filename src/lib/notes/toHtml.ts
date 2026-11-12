@@ -1,6 +1,7 @@
 /** 노트 → 한글(HWP)에 붙여 넣어도 모양이 남는 HTML. 한글이 잘 읽는 것만 쓴다: p·b·u·i·s·span(style)·table. 목록 기호는 글자로 넣는다. */
 import type { NoteBlock, NoteRec } from '../db/types'
 import { outlineMarks } from './blocks'
+import { tableWidths } from './tableOps'
 import { ptOf, segments, type Mark, type NoteLink, type Style } from './marks'
 
 const BASE_PT = 10
@@ -55,6 +56,16 @@ function blockHtml(b: NoteBlock, mark: string, files: Map<string, string>): stri
       return para(`[첨부] ${esc(files.get(b.file_id ?? '') ?? '파일')}`, { indent: ind })
     case 'folder':
       return para(`[폴더] ${esc(b.path ?? '')}`, { indent: ind })
+    case 'table': {
+      const ws = tableWidths(b)
+      const cell = (t: string, r: number, c: number) => {
+        const tag = b.head && r === 0 ? 'th' : 'td'
+        return `<${tag} style="border:1px solid #000;padding:2pt 6pt;font-size:${BASE_PT}pt;width:${ws[c]}%;${tag === 'th' ? 'font-weight:bold;background:#f2f2f2;' : ''}">${esc(t).replace(/\n/g, '<br>') || '&nbsp;'}</${tag}>`
+      }
+      return `<table style="border-collapse:collapse;border:1px solid #000;width:100%">${(b.cells ?? []).map((row, r) => `<tr>${row.map((t, c) => cell(t, r, c)).join('')}</tr>`).join('')}</table>`
+    }
+    case 'pagebreak':
+      return '<p style="page-break-before:always;margin:0"></p>'
     case 'roster': {
       const rows = (b.rows ?? []).map((r) => `<tr><td style="border:1px solid #000;padding:2pt 6pt;font-size:${BASE_PT}pt">${esc(r.label)}</td><td style="border:1px solid #000;padding:2pt 6pt;text-align:center;font-size:${BASE_PT}pt">${r.checked ? '✔' : ''}</td></tr>`)
       const title = b.text ? para(esc(b.text), { bold: true }) : ''

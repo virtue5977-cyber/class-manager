@@ -42,3 +42,12 @@ test('정렬·줄 간격·pt가 한글용 HTML에', () => {
   expect(h).toContain('line-height:200%')
   expect(h).toContain('font-size:14pt')
 })
+
+test('표 블록 → 테두리 표(머리 줄 굵게·칸 너비), 쪽 나누기 → 쪽 나눔', () => {
+  const h = noteToHtml({ title: '', blocks: [{ id: 't', type: 'table', cells: [['이름', '확인'], ['가상일', '✔']], widths: [70, 30], head: true }, { id: 'pb', type: 'pagebreak' }] })
+  expect(h).toMatch(/<table[^>]*border-collapse:collapse/)
+  expect(h).toContain('width:70%')
+  expect(h).toMatch(/<th[^>]*>이름<\/th>/)
+  expect(h).toContain('<td')
+  expect(h).toContain('page-break-before:always')
+})

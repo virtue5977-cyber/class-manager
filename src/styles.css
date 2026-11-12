@@ -1103,3 +1103,20 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .tb-grid-cells > button { width: 16px; height: 16px; padding: 0; border: 1px solid var(--line-input); border-radius: 2px; background: var(--panel); }
 .tb-grid-cells > button.on { background: var(--accent-soft); border-color: var(--accent); }
 @media (max-width: 900px) { .tb-labeled span { display: none; } }
+
+/* 0.15 표 블록 */
+.nb-table { flex: 1; min-width: 0; position: relative; }
+.nb-table-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; opacity: 0; transition: opacity .12s; }
+.nb-table:hover .nb-table-tools, .nb-table:focus-within .nb-table-tools { opacity: 1; }
+.nb-table-tools button { height: 24px; padding: 0 8px; font-size: 12px; }
+.nb-table-tools button.on { background: var(--accent-soft); border-color: var(--accent-soft-line); }
+.nb-tbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.nb-tbl td { position: relative; border: 1px solid var(--ink-soft, #999); padding: 0; vertical-align: top; }
+.nb-tbl td.on { outline: 2px solid var(--accent-soft-line); outline-offset: -2px; }
+.nb-tbl.has-head tr:first-child td { background: var(--hover); font-weight: 700; }
+.nb-tbl textarea { display: block; width: 100%; min-height: 30px; border: 0; background: transparent; resize: none; overflow: hidden; padding: 4px 6px; font: inherit; font-size: calc(var(--pt, 1.5px) * 10); line-height: 1.5; box-shadow: none; }
+.nb-tbl textarea:focus { outline: none; }
+.nb-col-handle { position: absolute; top: 0; bottom: 0; right: -4px; width: 7px; cursor: col-resize; z-index: 2; }
+.nb-col-handle:hover { background: var(--accent-soft-line); }
+.nb-pagebreak { flex: 1; border-top: 2px dashed var(--line-input); margin: 10px 0; text-align: center; height: 0; }
+.nb-pagebreak span { position: relative; top: -10px; background: var(--panel); padding: 0 8px; font-size: 12px; color: var(--sub); }

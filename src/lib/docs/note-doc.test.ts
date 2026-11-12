@@ -39,3 +39,14 @@ test('노트 hwpx: 정렬·줄 간격은 문단 모양, pt는 글자 크기로',
   expect(h).toMatch(/<hh:align horizontal="RIGHT"/)
   expect(h).toContain('height="1400"')
 })
+
+test('노트 hwpx: 표 블록은 hp:tbl(칸 너비 비율), 쪽 나누기는 pageBreak="1"', async () => {
+  const f = await unzipText(await buildNoteHwpx({ title: '', blocks: [{ id: 't', type: 'table', cells: [['이름', '확인'], ['가상일', '✔']], widths: [75, 25], head: true }, { id: 'pb', type: 'pagebreak' }, { id: 'p', type: 'p', text: '다음 쪽' }] }))
+  const sec = f['Contents/section0.xml']
+  expect(xmlErrors(sec)).toEqual([])
+  expect(sec).toContain('<hp:tbl')
+  expect(sec).toMatch(/rowCnt="2" colCnt="2"/)
+  const ws = [...sec.matchAll(/<hp:cellSz width="(\d+)"/g)].slice(0, 2).map((m) => Number(m[1]))
+  expect(ws[0] / ws[1]).toBeCloseTo(3, 0)
+  expect(sec).toMatch(/pageBreak="1"[^>]*>[\s\S]*?다음 쪽/)
+})

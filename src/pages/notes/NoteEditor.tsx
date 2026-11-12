@@ -6,6 +6,8 @@ import { filterSlash, indentBlock, markdownPrefix, mergeUp, moveBlock, noteShort
 import { caretNav, placeCaret } from '../../lib/ui/caretNav'
 import RichLine, { type LineHandle, type LineValue } from './RichLine'
 import NoteToolbar, { type InsertKind, type MarkKey } from './NoteToolbar'
+import NoteTable from './NoteTable'
+import { newTable } from '../../lib/notes/tableOps'
 import { applyStyle, forceStyle, styleAt, type Style } from '../../lib/notes/marks'
 import { getSel } from '../../lib/notes/richDom'
 import { copyRich, noteToHtml, noteToPlain } from '../../lib/notes/toHtml'
@@ -423,8 +425,12 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     return () => document.removeEventListener('selectionchange', trackSel)
   }, [trackSel])
 
+  /** 막 넣은 표(첫 칸에 커서) */
+  const freshTable = useRef<string | null>(null)
   function insertTable(o: { rows: number; cols: number }) {
-    void o
+    const nb: NoteBlock = { id: newBlockId(), type: 'table', ...newTable(o.rows, o.cols) }
+    freshTable.current = nb.id
+    insertAfterCur(nb, 'none')
   }
   async function pickImage() {}
   // ---- 도구 막대 ----
@@ -470,7 +476,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     backTo(curBlock.id, cur.start, cur.end)
   }
   /** 지금 줄 다음에 블록 넣기(지금 줄이 비어 있으면 그 자리에) */
-  function insertAfterCur(nb: NoteBlock, focusNew = false) {
+  function insertAfterCur(nb: NoteBlock, focus: 'next' | 'new' | 'none' = 'next') {
     setBlocks((bs) => {
       const i = curBlock ? bs.findIndex((x) => x.id === curBlock.id) : bs.length - 1
       const empty = curBlock && curBlock.type === 'p' && !(curBlock.text ?? '').trim()
@@ -478,7 +484,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       const out = empty ? [...bs.slice(0, i), nb, ...bs.slice(i + 1)] : [...bs.slice(0, i + 1), nb, ...bs.slice(i + 1)]
       const at = out.indexOf(nb)
       if (at === out.length - 1) out.push(tail)
-      focusNext.current = focusNew ? { id: nb.id, caret: 0 } : { id: out[at + 1].id, caret: 0 }
+      if (focus !== 'none') focusNext.current = focus === 'new' ? { id: nb.id, caret: 0 } : { id: out[at + 1].id, caret: 0 }
       return out
     })
   }
@@ -487,7 +493,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     if (k === 'pagebreak') return insertAfterCur({ id: newBlockId(), type: 'pagebreak' })
     if (k === 'file') {
       const nb: NoteBlock = { id: newBlockId(), type: 'p', text: '' }
-      insertAfterCur(nb, true)
+      insertAfterCur(nb, 'new')
       return void chooseSlash(nb, 'file')
     }
     if (k === 'table') return insertTable(o ?? { rows: 2, cols: 2 })
@@ -737,7 +743,11 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                   <button type="button" role="menuitem" onClick={() => blockAction(b, 'delete')}>지우기</button>
                 </div>
               )}
-              {b.type === 'roster' ? (
+              {b.type === 'table' ? (
+                <NoteTable b={b} autoFocus={freshTable.current === b.id} onChange={(patch) => update(b.id, patch)} onDelete={() => setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))} />
+              ) : b.type === 'pagebreak' ? (
+                <div className="nb-pagebreak" role="separator" aria-label="쪽 나눔"><span>쪽 나눔</span></div>
+              ) : b.type === 'roster' ? (
                 <RosterTable b={b} onChange={(patch) => update(b.id, patch)} />
               ) : b.type === 'divider' ? (
                 <hr />

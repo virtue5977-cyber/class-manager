@@ -301,6 +301,13 @@ export interface NoteBlock {
   hide_done?: boolean
   /** 표 접기 */
   collapsed?: boolean
+  /** 표(table): 칸 글[줄][칸], 칸 너비 %, 첫 줄 머리 */
+  cells?: string[][]
+  widths?: number[]
+  head?: boolean
+  /** 그림(image): 너비 %(기본 100), 설명 */
+  width?: number
+  caption?: string
   /** 글자 서식(text 안 위치 [from,to)). 없으면 서식 없음 */
   marks?: import('../notes/marks').Mark[]
   /** @노트 링크(text 안 위치) */
