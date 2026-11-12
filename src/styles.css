@@ -1161,3 +1161,6 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
   .pg-first-head { display: none; }
 }
 .tb-pt-step button { min-height: 0 !important; min-width: 0; height: 14px; line-height: 14px; font-size: 9px; color: var(--sub); display: grid; place-items: center; }
+/* 종이 안은 늘 밝은 색(어두운 화면에서도 흰 종이에 검은 글) */
+.note-paper { --ink: #111; --sub: #666; --hover: #f1f1ef; --line: #ddd; --line-input: #c9c9c9; --panel: #fff; --ink-soft: #999; --accent-soft: #e9f3fd; --accent-soft-line: #a8cdf3; color-scheme: light; }
+.note-paper textarea, .note-paper input { color: #111; }
