@@ -97,7 +97,7 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
         </ul>
       )}
       {card?.kind === 'draft' && (card.data as { kind: string }).kind === 'message' && <MessageDraft text={(card.data as { text: string }).text} />}
-      {card?.kind === 'suggest' && <SuggestCard items={(card.data as { items: Suggestion[] }).items} today={today} />}
+      {card?.kind === 'suggest' && <SuggestCard cardKey={chat.id} items={(card.data as { items: Suggestion[] }).items} today={today} />}
       {card?.kind === 'confirm' && (
         <div className="row">
           <span className="pii">{(card.data as { preview: string }).preview}</span>

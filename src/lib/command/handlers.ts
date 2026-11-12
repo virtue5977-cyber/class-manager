@@ -189,7 +189,7 @@ export const HANDLERS: Record<string, Handler> = {
       const f = exportFormatOf(p.rest ?? '')
       env.navigate(to)
       if (f) {
-        requestExport(f)
+        requestExport(to, f)
         return { summary: `${p.sub} ${f === 'print' ? '인쇄 창을 열었습니다' : `${FORMAT_WORD[f]} 파일로 내보냈습니다`}.`, links: [{ label: p.sub!, to }] }
       }
       env.openExport?.()
@@ -210,6 +210,6 @@ export function exportFormatOf(text: string): 'hwpx' | 'xlsx' | 'pdf' | 'print' 
 }
 
 export const EXPORT_ROUTES: Record<string, string> = {
-  출결: '/attendance', 신고서: '/attendance/reports', 통계: '/attendance/stats', 상담일지: '/counseling',
-  명렬표: '/class/sheet', 명단: '/class/roster', 자리배치: '/class/seating', 청소배치: '/class/cleaning', 달력: '/calendar',
+  출결: '/attendance/stats', 신고서: '/attendance/reports', 통계: '/attendance/stats', 상담일지: '/counseling',
+  명렬표: '/class/sheet', 자리배치: '/class/seating', 청소배치: '/class/cleaning', 달력: '/calendar',
 }

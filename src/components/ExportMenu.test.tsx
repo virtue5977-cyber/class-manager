@@ -52,12 +52,14 @@ test('/내보내기 화면 형식: 미리 부탁한 형식은 그 화면의 내�
   const { render } = await import('@testing-library/react')
   const { default: ExportMenu, requestExport } = await import('./ExportMenu')
   const run = vi.fn()
-  requestExport('xlsx')
+  window.location.hash = '#/x'
+  requestExport('/elsewhere', 'pdf') // 다른 화면 부탁은 받지 않는다
+  requestExport('/x', 'xlsx')
   render(<ExportMenu items={[{ format: 'hwpx', run: () => {} }, { format: 'xlsx', run }]} />)
   await new Promise((r) => setTimeout(r, 30))
   expect(run).toHaveBeenCalledTimes(1)
   const print = vi.spyOn(window, 'print').mockImplementation(() => {})
-  requestExport('print')
+  requestExport('/x', 'print')
   render(<ExportMenu items={[{ format: 'pdf', run: () => {} }]} />)
   await new Promise((r) => setTimeout(r, 30))
   expect(print).toHaveBeenCalledTimes(1)

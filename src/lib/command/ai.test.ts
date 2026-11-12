@@ -108,3 +108,20 @@ test('!일정·!요약·기호 없는 질문(앱 자료로 대답, 이름은 가
   await updateSettings(db, { ai_enabled: false })
   expect((await executeInput('!요약 글', ctx, env, aiFallback)).chat.summary).toContain('AI가 꺼져 있습니다')
 })
+
+test('리뷰 고침: 질문과 앱 자료는 같은 가명 표를 쓴다(다른 학생을 같은 가명으로 보내지 않음), 가리기 설정이 꺼져 있어도 늘 가림', async () => {
+  const { db, env, ctx, sent } = await setup(() => '{"answer":"모르겠습니다."}')
+  await updateSettings(db, { mask_names: false, current_class_id: env.classId } as never)
+  const { saveStudent, emptyStudent } = await import('../roster/roster')
+  const other = await saveStudent(db, env.classId!, emptyStudent(7, '이서연'))
+  await db.attendance.add({ id: 'a1', student_id: other.id, date: '2026-11-10', kind: '결석', category: '질병', reason: '', created_at: '', updated_at: '', deleted: false } as never)
+  await executeInput('박도윤 오늘 출석했어', { ...ctx, students: await db.students.toArray() }, env, aiFallback)
+  const req = sent.at(-1) as { system: string; user: string }
+  expect(JSON.stringify(req)).not.toContain('박도윤')
+  expect(JSON.stringify(req)).not.toContain('이서연')
+  const qTok = /학생[A-Z]/.exec(req.user)?.[0]
+  const sysTok = /7번 (학생[A-Z])/.exec(req.system)?.[1]
+  expect(qTok).toBeTruthy()
+  expect(sysTok).toBeTruthy()
+  expect(sysTok).not.toBe(qTok)
+})

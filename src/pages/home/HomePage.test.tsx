@@ -183,3 +183,18 @@ test('할 일 고치기: 연필(또는 두 번 누르기) → 글·마감일 고
   expect(screen.queryByRole('textbox', { name: '할 일 고치기' })).not.toBeInTheDocument()
   expect((await db.todos.toArray())[0].parts).toEqual(['동의서 걷기'])
 })
+
+test('리뷰 고침: 학생이 연결된 할 일을 고쳐도 학생 연결은 남는다', async () => {
+  const user = userEvent.setup()
+  const { db, show } = await home()
+  const { addTodo } = await import('../../lib/todos/todos')
+  const { saveStudent, emptyStudent, getCurrentClassId } = await import('../../lib/roster/roster')
+  const st = await saveStudent(db, (await getCurrentClassId(db))!, emptyStudent(3, '가상삼'))
+  await addTodo(db, [{ student: st.id }, ' 동의서'], null)
+  show()
+  await user.click(await screen.findByRole('button', { name: /가상삼.*동의서 고치기/ }, { timeout: 3000 }))
+  const box = screen.getByRole('textbox', { name: '할 일 고치기' })
+  expect(box).toHaveValue(`@${st.number} 동의서`)
+  await user.type(box, ' 걷기{Enter}')
+  await waitFor(async () => expect((await db.todos.toArray())[0].parts).toEqual([{ student: st.id }, ' 동의서 걷기']))
+})

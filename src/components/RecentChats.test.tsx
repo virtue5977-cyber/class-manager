@@ -38,3 +38,16 @@ test('최근 대화: 묶음을 누르면 그 대화가 열리고, 휴지통은 �
   await waitFor(async () => expect((await listChat(db, 2026, b)).length).toBe(0))
   expect((await listChat(db, 2026, a)).length).toBe(1)
 })
+
+test('리뷰 고침: "이 대화 지우기"는 한 번 더 묻는다', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  newThread()
+  await appendChat(db, e('/할일 지울 대화'))
+  render(<MemoryRouter><AppProviders db={db} fs={createMemoryFsAdapter()}><ChatLog today={new Date().toISOString().slice(0, 10)} onRun={() => {}} /></AppProviders></MemoryRouter>)
+  await user.click(await screen.findByRole('button', { name: '이 대화 지우기' }))
+  expect((await db.chat_log.toArray()).filter((c) => !c.deleted)).toHaveLength(1)
+  const { within } = await import('@testing-library/react')
+  await user.click(within(screen.getByRole('group', { name: '이 대화 지우기 확인' })).getByRole('button', { name: '지우기' }))
+  await waitFor(async () => expect((await db.chat_log.toArray()).filter((c) => !c.deleted)).toHaveLength(0))
+})

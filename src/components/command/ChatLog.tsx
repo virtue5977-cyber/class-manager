@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDb } from '../../app/context'
 import type { ChatRec } from '../../lib/db/types'
 import { deleteChat, deleteThread, listChat, schoolYearOf } from '../../lib/command/chatLog'
@@ -12,6 +12,7 @@ import ResultCard from './ResultCard'
 export default function ChatLog({ today, onRun }: { today: string; onRun: (input: string) => void }) {
   const db = useDb()
   const thread = useCurrentThread()
+  const [askClear, setAskClear] = useState(false)
   const list = useLive<ChatRec[]>(() => listChat(db, schoolYearOf(today), thread), [db, today, thread], [])
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -44,9 +45,17 @@ export default function ChatLog({ today, onRun }: { today: string; onRun: (input
       })}
       <div ref={end} />
       {list.length > 0 && (
-        <button type="button" className="link chat-clear" onClick={async () => { await deleteThread(db, thread); newThread() }}>
-          이 대화 지우기
-        </button>
+        askClear ? (
+          <p className="row chat-clear" role="group" aria-label="이 대화 지우기 확인">
+            <span>이 대화를 지울까요? 되돌릴 수 없습니다.</span>
+            <button type="button" className="link danger-text" onClick={async () => { setAskClear(false); await deleteThread(db, thread); newThread() }}>지우기</button>
+            <button type="button" className="link" onClick={() => setAskClear(false)}>취소</button>
+          </p>
+        ) : (
+          <button type="button" className="link chat-clear" onClick={() => setAskClear(true)}>
+            이 대화 지우기
+          </button>
+        )
       )}
     </section>
   )

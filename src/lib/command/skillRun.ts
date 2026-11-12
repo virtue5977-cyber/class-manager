@@ -7,7 +7,7 @@ import { listLocalEvents } from '../events/localEvents'
 import { listCalendar } from '../neis/schedule'
 import { noticesOn } from '../notices/notices'
 import { listTodos } from '../todos/todos'
-import { listAttendanceByDate } from '../attendance/attendance'
+import { listLogsByStudent } from '../counseling/counseling'
 import { getCurrentClassId, listStudents } from '../roster/roster'
 import { addDays, weekday } from '../schoolDays'
 import type { RunEnv, RunResult } from './handlers'
@@ -62,8 +62,8 @@ export async function runSkillAi(input: string, env: AiEnv, names: string[]): Pr
   return null
 }
 
-/** 질문에 답할 때 붙이는 앱 자료(이름은 가림): 일정 1주, 할 일, 오늘 전달사항, 오늘 출결 */
-export async function appContext(env: RunEnv): Promise<string> {
+/** 질문에 답할 때 붙이는 앱 자료(부르는 쪽에서 이름을 가린다): 일정 1주, 할 일, 오늘 전달사항, 오늘 출결, 이번 달 출결 요약, @학생이면 그 학생 이번 달 출결·최근 상담 5개 */
+export async function appContext(env: RunEnv, studentIds: string[] = []): Promise<string> {
   const to = addDays(env.today, 7)
   const ev = [
     ...(await listCalendar(env.db, env.today, to)).filter((r) => r.title && r.title !== '토요휴업일').map((r) => `${r.date} ${r.title}(학사)`),
@@ -71,13 +71,23 @@ export async function appContext(env: RunEnv): Promise<string> {
   ].sort()
   const todos = (await listTodos(env.db)).filter((t) => !t.done).map((t) => `${t.parts.map((p) => (typeof p === 'string' ? p : '')).join('')}${t.due ? ` (마감 ${t.due})` : ''}`)
   const notices = (await noticesOn(env.db, env.today)).map((n) => n.text.replace(/\n/g, ' '))
-  let att: string[] = []
-  const cid = await getCurrentClassId(env.db)
+  const sec = (t: string, xs: string[]) => `## ${t}\n${xs.length ? xs.map((x) => `- ${x}`).join('\n') : '- 없음'}`
+  const out = [todayLine(env.today), sec('일정(7일)', ev.slice(0, 30)), sec('할 일', todos.slice(0, 20)), sec('오늘 전달사항', notices)]
+  const cid = env.classId ?? (await getCurrentClassId(env.db))
   if (cid) {
     const st = await listStudents(env.db, cid)
     const by = new Map(st.map((s) => [s.id, s]))
-    att = (await listAttendanceByDate(env.db, st.map((s) => s.id), env.today)).filter((a) => !a.deleted).map((a) => `${by.get(a.student_id)?.number}번 ${by.get(a.student_id)?.name} ${a.kind}(${a.category})`)
+    const who = (id: string) => `${by.get(id)?.number}번 ${by.get(id)?.name}`
+    const month = (await env.db.attendance.where('date').between(`${env.today.slice(0, 7)}-01`, `${env.today.slice(0, 7)}-31`, true, true).toArray()).filter((a) => !a.deleted && by.has(a.student_id))
+    out.push(sec('오늘 출결', month.filter((a) => a.date === env.today).map((a) => `${who(a.student_id)} ${a.kind}(${a.category})`)))
+    const cnt = new Map<string, number>()
+    for (const a of month) cnt.set(`${a.kind}(${a.category})`, (cnt.get(`${a.kind}(${a.category})`) ?? 0) + 1)
+    out.push(sec('이번 달 출결 요약', [...cnt.entries()].map(([k, n]) => `${k} ${n}건`)))
+    for (const id of studentIds.filter((x) => by.has(x))) {
+      out.push(sec(`${who(id)} 이번 달 출결`, month.filter((a) => a.student_id === id).map((a) => `${a.date} ${a.kind}(${a.category})${a.reason ? ` ${a.reason}` : ''}`)))
+      const logs = (await listLogsByStudent(env.db, id)).slice(0, 5)
+      out.push(sec(`${who(id)} 최근 상담`, logs.map((l) => `${l.date} ${l.content.replace(/\n/g, ' ').slice(0, 120)}`)))
+    }
   }
-  const sec = (t: string, xs: string[]) => `## ${t}\n${xs.length ? xs.map((x) => `- ${x}`).join('\n') : '- 없음'}`
-  return [todayLine(env.today), sec('일정(7일)', ev.slice(0, 30)), sec('할 일', todos.slice(0, 20)), sec('오늘 전달사항', notices), sec('오늘 출결', att)].join('\n')
+  return out.join('\n')
 }

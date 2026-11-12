@@ -54,7 +54,8 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
   /** 고친 글 저장: '@노트' 는 다시 노트 연결로, 날짜 말이 있으면 마감일로 */
   async function saveEdit() {
     if (!edit) return
-    const p = parseCommand(`/할일 ${edit.text}`, noteCtx, commandNames(), commandSubs())
+    // 고칠 때는 학생 연결(@번호)도 다시 읽는다
+    const p = parseCommand(`/할일 ${edit.text}`, ctx, commandNames(), commandSubs())
     const bad = p.missing[0] ?? p.ambiguous[0]
     if (bad !== undefined) return setErr(`'${bad}' 노트를 찾지 못했습니다.`)
     try {
@@ -125,11 +126,11 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
                 </span>
               ) : (
                 <>
-                  <span className="todo-text pii" onDoubleClick={() => setEdit({ id: t.id, text: editText(t.parts, notes), due: t.due ?? '' })}>
+                  <span className="todo-text pii" onDoubleClick={() => setEdit({ id: t.id, text: editText(t.parts, notes, studs), due: t.due ?? '' })}>
                     {parts.map((p, i) => (p.to ? <Link key={i} to={p.to}>{p.text}</Link> : p.dead ? <span key={i} className="dead" title="지운 노트입니다">{p.text}</span> : <span key={i}>{p.text}</span>))}
                   </span>
                   {t.due && <span className={`todo-due${!t.done && t.due < ctx.today ? ' late' : ''}`}>{shortDate(t.due)}</span>}
-                  <button type="button" className="icon-btn row-edit" aria-label={`${label} 고치기`} title="고치기(두 번 눌러도 됨)" onClick={() => setEdit({ id: t.id, text: editText(t.parts, notes), due: t.due ?? '' })}>
+                  <button type="button" className="icon-btn row-edit" aria-label={`${label} 고치기`} title="고치기(두 번 눌러도 됨)" onClick={() => setEdit({ id: t.id, text: editText(t.parts, notes, studs), due: t.due ?? '' })}>
                     <Icon name="pencil" size={13} />
                   </button>
                 </>
@@ -174,7 +175,11 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
   )
 }
 
-/** 고칠 글: 노트 연결은 '@노트제목'으로 되돌린다(저장 때 다시 연결) */
-function editText(parts: TodoRec['parts'], notes: Map<string, { title: string }>): string {
-  return parts.map((p) => (typeof p === 'string' ? p : 'note' in p ? `@${notes.get(p.note)?.title ?? ''}` : '')).join('').trim()
+/** 고칠 글: 노트 연결은 '@노트제목', 학생 연결은 '@번호'로 되돌린다(저장 때 다시 연결). 지운 노트 연결은 뺀다. */
+function editText(parts: TodoRec['parts'], notes: Map<string, { title: string }>, studs: Map<string, StudentRec>): string {
+  return parts
+    .map((p) => (typeof p === 'string' ? p : 'note' in p ? (notes.get(p.note) ? `@${notes.get(p.note)!.title}` : '') : studs.get(p.student) ? `@${studs.get(p.student)!.number}` : ''))
+    .join('')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }

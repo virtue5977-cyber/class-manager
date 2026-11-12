@@ -27,6 +27,7 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
   const bang = input.trim().startsWith('!') ? parseSkill(input) : null
   if (bang?.skill === '전달') {
     if (!bang.sub) return { summary: '받는 사람을 고르세요: !전달 학생 · !전달 교사 · !전달 학부모', links: [], pending: true }
+    if (!bang.body) return { summary: `!전달 ${bang.sub} 뒤에 전할 내용을 쓰세요.`, links: [], pending: true }
     input = `/전달 ${bang.sub} ${bang.body}`
   } else if (bang?.skill === '상담정리') input = `/상담정리 ${bang.body}`
   const p = parseCommand(input, ctx, commandNames(), commandSubs())
@@ -38,8 +39,10 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
   const s = await aiReady(env)
   if (!s) return isStudentNotice && !bang ? null : AI_OFF
   const names = effectiveMask(s) ? [...new Set([...(ctx.maskNames ?? ctx.students.map((x) => x.name)), ...(await allStudentNames(env.db))])] : []
+  // ! 스킬과 질문은 설정과 상관없이 이름을 늘 가린다(설계서 10 §1)
+  const allNames = [...new Set([...(ctx.maskNames ?? ctx.students.map((x) => x.name)), ...(await allStudentNames(env.db))])]
   // 나머지 ! 스킬(일정·할일·나누기·요약·누가·추천)
-  if (bang && bang.skill !== '전달' && bang.skill !== '상담정리') return runSkillAi(input, env as never, names)
+  if (bang && bang.skill !== '전달' && bang.skill !== '상담정리') return runSkillAi(input, env as never, allNames)
   // 옛 쓰임 안내: /전달 학생|교사|학부모, /상담정리 → 이제는 !
   const hint = !bang && (isMessage || isStudentNotice || p.cmd === 'counselDraft') ? ` (이제는 !${p.cmd === 'counselDraft' ? '상담정리' : `전달 ${p.sub}`})` : ''
 
@@ -83,12 +86,13 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
   }
 
   // 긴 붙여넣기 → ! 와 같이 추천 카드
-  if (isLongPaste(input)) return runSkillAi(`! ${input}`, env as never, names)
+  if (isLongPaste(input)) return runSkillAi(`! ${input}`, env as never, allNames)
 
   // 짧은 글 → 질문이면 앱 자료로 대답, 할 일이면 명령 제안(AI 한 번)
   const list = COMMAND_META.map((c) => `- ${c.help}`).join('\n')
-  const m = maskText(input, names)
-  const data = maskText(await appContext(env), names)
+  // 질문과 앱 자료는 같은 가명 표로(같은 학생 = 같은 가명, 다른 학생 = 다른 가명)
+  const m = maskText(input, allNames)
+  const data = maskText(await appContext(env, p.students.map((x) => x.id)), allNames, m.map)
   const reply = extractJson<{ command?: string; answer?: string }>(
     await env.ai!({
       system: `${await getPrompt(env.db, 'command')}\n- 글이 앱에 기록·실행할 일이면 command에 명령 한 줄을 쓴다.\n- 글이 질문이면 answer에 아래 '앱 자료'만 보고 짧게(3문장 안팎) 답한다. 자료에 없는 것은 모른다고 하고 지어내지 않는다. 앱 자료와 상관없는 일반 질문이면 answer에 "앱 자료와 상관없는 질문은 Claude 앱에서 물어보세요."라고만 쓴다.\n\n# 명령 목록\n${list}\n\n# 앱 자료\n${data.text}\n\n# 출력 형식\nJSON {"command": "/..."} 또는 {"answer": "..."} 하나만.`,
@@ -96,9 +100,9 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
       maxTokens: 600,
     }),
   )
-  const answer = unmaskText(unmaskText(String(reply.answer ?? '').trim(), m.map), data.map)
+  const answer = unmaskText(String(reply.answer ?? '').trim(), data.map)
   if (answer) return { summary: answer, links: [] }
-  const command = unmaskText(String(reply.command ?? '').trim(), m.map)
+  const command = unmaskText(String(reply.command ?? '').trim(), data.map)
   if (!command.startsWith('/')) return { summary: '알맞은 명령을 찾지 못했습니다. /는 기록, !는 AI 글, 질문은 그냥 쓰세요.', links: [], pending: true }
   const parsed = parseCommand(command, ctx, commandNames(), commandSubs())
   return { summary: '이렇게 실행할까요?', links: [], card: { kind: 'confirm', data: { command, preview: describe(parsed, commandLabel) } }, pending: true }
