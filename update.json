@@ -1,9 +1,9 @@
 {
-  "version": "0.11.0",
+  "version": "0.12.0",
   "shell": 1,
-  "bundle": "bundle-0.11.0.zip",
-  "sha256": "b89207215c8cc09975e2fd3badfd820445352509843117360e188611540f466a",
-  "sig": "fX5QHNrxJDZ63GLTeZiGEmih8D/TCbfLFd6emCgJNcB7x2n4bMZo8PDbx6Tyu0IIXVmhA8mYqkuqWQadaR3tBA==",
-  "note": "0.11.0: 다른 학교 양식 인식 개선(예시를 채워 올려도 됨, ◯ 표시 칸, 표 밖 날짜), 구글 Gemini API 키 연결(새 설치형 필요), 홈 오른쪽 칸 높이 맞춤, 학급 명단 기본 표",
-  "date": "2026-11-11"
+  "bundle": "bundle-0.12.0.zip",
+  "sha256": "ee6e4a66e6ce8f4c799e506ec4cc18cb5b1e4c084be7f6382a83cc39bae51aa5",
+  "sig": "HcyBcEp3C6YA6L1v7i4HSI1Vbe0L8LFO04zCH1jYdlYZ/es0bzrZmAfjXEUtpQY2Ipt1/ULdgw18BsjZSRoRBw==",
+  "note": "0.12.0: ! AI 스킬(!전달 학생·교사·학부모, !일정, !할일, !나누기, !요약, !누가, ! 붙여넣기 추천), 고칠 수 있는 추천 카드, 그냥 쓴 질문은 앱 자료로 대답, 새 채팅·최근 대화, 할 일 고치기, 홈 탭·칸 끌어 옮기기, /내보내기 화면 형식 바로 실행, 전달사항 묶어 나누기",
+  "date": "2026-11-12"
 }
