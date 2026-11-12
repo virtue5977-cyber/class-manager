@@ -123,7 +123,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       setBsel(undefined)
     }
     const key = (e: globalThis.KeyboardEvent) => {
-      if (e.isComposing) return
+      if (e.isComposing || e.keyCode === 229) return
+      // 다른 입력칸(명령 막대 등)에 친 키는 그 칸 몫: 줄 고르기를 풀고 손대지 않는다
+      const t = e.target as HTMLElement | null
+      if (t && t !== document.body && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return setBsel(undefined)
       const mod = e.ctrlKey || e.metaKey
       if (e.key === 'Escape') return (e.preventDefault(), setBsel(undefined))
       if (e.key === 'Delete' || e.key === 'Backspace') return (e.preventDefault(), removeChosen())
@@ -139,11 +142,18 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     const down = (e: MouseEvent) => {
       if (!(e.target as Element | null)?.closest?.('.nb-selected')) setBsel(undefined)
     }
+    // 다른 칸에 초점이 가면(Ctrl+K 등) 풀기
+    const focus = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) setBsel(undefined)
+    }
     document.addEventListener('keydown', key)
     document.addEventListener('mousedown', down)
+    document.addEventListener('focusin', focus)
     return () => {
       document.removeEventListener('keydown', key)
       document.removeEventListener('mousedown', down)
+      document.removeEventListener('focusin', focus)
     }
   }, [bsel, blocks])
   /** 글자를 고른 줄(서식 막대) */

@@ -158,14 +158,22 @@ export async function impactOfChange(
   studentId: string,
   change: { upsert?: AttendanceInput & { id?: string }; removeId?: string },
 ): Promise<AbsenceReportRec[]> {
+  return impactOfChanges(db, studentId, { upserts: change.upsert ? [change.upsert] : [], removeIds: change.removeId ? [change.removeId] : [] })
+}
+
+/** 여러 출결을 한꺼번에 바꿀 때(결석 기간) 영향을 받는 제출·직접 고친 신고서 */
+export async function impactOfChanges(
+  db: AppDB,
+  studentId: string,
+  change: { upserts: (AttendanceInput & { id?: string })[]; removeIds: string[] },
+): Promise<AbsenceReportRec[]> {
   const ctx = await loadReportContext(db)
   const current: AttendanceRec[] = await listAttendanceByStudent(db, studentId)
-  let atts = current
-  if (change.removeId) atts = atts.filter((a) => a.id !== change.removeId)
-  if (change.upsert) {
-    const { id, ...fields } = change.upsert
+  let atts = current.filter((a) => !change.removeIds.includes(a.id))
+  for (const [k, up] of change.upserts.entries()) {
+    const { id, ...fields } = up
     const base = id ? atts.find((a) => a.id === id) : undefined
-    const rec = (base ? { ...base, ...fields } : { ...newRecord(fields), id: 'pending' }) as AttendanceRec
+    const rec = (base ? { ...base, ...fields } : { ...newRecord(fields), id: `pending-${k}` }) as AttendanceRec
     atts = [...atts.filter((a) => a.id !== rec.id), rec]
   }
   const { reports, links } = await loadState(db, studentId)

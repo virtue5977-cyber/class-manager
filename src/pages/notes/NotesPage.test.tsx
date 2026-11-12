@@ -438,3 +438,26 @@ test('명렬표: 크기(작게·보통·크게), 체크한 학생은 작게, 체
   expect(screen.getByText('2번 가상이')).toBeInTheDocument()
   await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ hide_done: true, collapsed: false }))
 })
+
+test('여러 줄을 고른 채 다른 입력칸에서 Backspace·Ctrl+C를 눌러도 고른 줄은 지워지지 않는다(그 칸 글이 먼저)', async () => {
+  const { db, n } = await setup()
+  await saveNoteContent(db, n.id, { title: '회의록', blocks: [{ id: 'a', type: 'p', text: '하나' }, { id: 'b', type: 'p', text: '둘' }, { id: 'c', type: 'p', text: '셋' }] })
+  await waitFor(() => expect(blocks().map((x) => x.textContent)).toEqual(['하나', '둘', '셋']))
+  const rows = () => Array.from(document.querySelectorAll<HTMLElement>('.nb'))
+  const orig = document.elementFromPoint
+  document.elementFromPoint = () => rows()[0]
+  fireEvent.pointerDown(blocks()[2], { button: 0 })
+  fireEvent.pointerMove(window, {})
+  fireEvent.pointerUp(window, {})
+  document.elementFromPoint = orig
+  expect(document.querySelectorAll('.nb-selected')).toHaveLength(3)
+  const other = document.createElement('input')
+  document.body.appendChild(other)
+  other.focus()
+  const ev = fireEvent.keyDown(other, { key: 'Backspace' })
+  expect(ev).toBe(true) // 막지 않음
+  await new Promise((r) => setTimeout(r, 50))
+  expect(blocks().map((x) => x.textContent)).toEqual(['하나', '둘', '셋'])
+  expect(document.querySelectorAll('.nb-selected')).toHaveLength(0) // 다른 칸으로 가면 풀린다
+  other.remove()
+})

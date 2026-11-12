@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useDb } from '../../app/context'
 import type { AbsenceReportRec, AttendanceCategory, AttendanceKind, AttendanceRec, RecognizedEvidence, StudentRec } from '../../lib/db/types'
 import { deleteAttendance, saveAttendance, type AttendanceInput } from '../../lib/attendance/attendance'
-import { impactOfChange, reconcileStudent } from '../../lib/absenceReports/reconcile'
+import { impactOfChange, impactOfChanges, reconcileStudent } from '../../lib/absenceReports/reconcile'
 import { planAbsenceRange, saveAbsenceRange } from '../../lib/attendance/range'
 
 const KINDS: AttendanceKind[] = ['결석', '지각', '조퇴', '결과']
@@ -58,8 +58,20 @@ export default function AttendanceForm({
       live = false
     }
   }, [db, student.id, date, endDate, ranged])
-  async function saveRange(overwrite: boolean) {
+  /** 결석 기간 저장 전, 제출·직접 고친 신고서에 영향을 주면 묻는다 */
+  const [rangePending, setRangePending] = useState<{ overwrite: boolean; reports: AbsenceReportRec[] } | null>(null)
+  async function saveRange(overwrite: boolean, confirmed = false) {
     if (!plan || busy.current) return
+    if (!confirmed) {
+      const all = (await db.attendance.where('student_id').equals(student.id).toArray()).filter((r) => !r.deleted && plan.days.includes(r.date))
+      const days = overwrite ? plan.days : plan.days.filter((d) => !plan.taken.includes(d))
+      const reports = await impactOfChanges(db, student.id, { upserts: days.map((d) => ({ ...input(), date: d, kind: '결석', period: null })), removeIds: overwrite ? all.map((r) => r.id) : [] })
+      if (reports.length) {
+        setAskTaken(false)
+        return setRangePending({ overwrite, reports })
+      }
+    }
+    setRangePending(null)
     busy.current = true
     try {
       const n = await saveAbsenceRange(db, input(), plan.days, overwrite)
@@ -214,7 +226,17 @@ export default function AttendanceForm({
           {error}
         </p>
       )}
-      {askTaken && plan ? (
+      {rangePending ? (
+        <div className="row confirm">
+          <span>{`제출했거나 직접 고친 신고서(${rangePending.reports.map(periodText).join(', ')})에 영향을 줍니다. 계속할까요?`}</span>
+          <button type="button" className="danger" onClick={() => void saveRange(rangePending.overwrite, true)}>
+            계속
+          </button>
+          <button type="button" onClick={() => setRangePending(null)}>
+            취소
+          </button>
+        </div>
+      ) : askTaken && plan ? (
         <div className="row confirm" role="group" aria-label="이미 출결이 있는 날">
           <span>{`${plan.taken.map(md).join(', ')}에는 이미 출결이 있습니다.`}</span>
           <button type="button" className="danger" onClick={() => void saveRange(true)}>
