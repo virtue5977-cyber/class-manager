@@ -1,9 +1,9 @@
 {
-  "version": "0.12.0",
+  "version": "0.13.0",
   "shell": 1,
-  "bundle": "bundle-0.12.0.zip",
-  "sha256": "ee6e4a66e6ce8f4c799e506ec4cc18cb5b1e4c084be7f6382a83cc39bae51aa5",
-  "sig": "HcyBcEp3C6YA6L1v7i4HSI1Vbe0L8LFO04zCH1jYdlYZ/es0bzrZmAfjXEUtpQY2Ipt1/ULdgw18BsjZSRoRBw==",
-  "note": "0.12.0: ! AI 스킬(!전달 학생·교사·학부모, !일정, !할일, !나누기, !요약, !누가, ! 붙여넣기 추천), 고칠 수 있는 추천 카드, 그냥 쓴 질문은 앱 자료로 대답, 새 채팅·최근 대화, 할 일 고치기, 홈 탭·칸 끌어 옮기기, /내보내기 화면 형식 바로 실행, 전달사항 묶어 나누기",
+  "bundle": "bundle-0.13.0.zip",
+  "sha256": "6244bb792967738c3b28aef42460e66ab91131fecbb59e9f12c45c3041162bbc",
+  "sig": "HYPOkIDwn+dqG1TLfN5prm1k44GY5xIr2bvVH43nALsTKPf+yxsUrp7Irrja/2KBgLMdFCXvCfvrQSnzN+psBA==",
+  "note": "0.13.0: 채팅 바로 올라가기·● ● ●, 노트 서식(굵게·밑줄·기울임·색·형광펜·한글 글꼴·크기)·긴 줄 줄바꿈·한글로 복사, 노트 단축키 Ctrl+1~6, 하루 전달사항 = 노트 한 장, @노트 링크, 누가기록(상담·관찰, 전체 목록, /관찰), 명단 상세에 기록, 바탕화면 바로가기·자동 실행 도우미",
   "date": "2026-11-12"
 }
