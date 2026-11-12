@@ -155,3 +155,43 @@ test('일정 추가에서 날짜(와 끝 날짜)를 직접 고를 수 있다(고
   await waitFor(async () => expect((await db.local_events.toArray()).map((e) => [e.date, e.end_date, e.title])).toEqual([['2026-11-18', '2026-11-19', '수련회']]))
   expect(await within(screen.getByRole('gridcell', { name: '11월 19일' })).findByText('수련회')).toBeInTheDocument()
 })
+
+test('일정을 누르면 상세: 내 일정은 고치기·지우기, 학사일정은 보기만', async () => {
+  const { addLocalEvent } = await import('../../lib/events/localEvents')
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await addLocalEvent(db, { date: '2026-11-13', title: '병원', tag: '개인' })
+  await db.school_calendar.add(newRecord({ date: '2026-11-13', title: '체육대회', type: '행사', is_class_day: true, source: 'manual' }) as SchoolCalendarRec)
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <CalendarPage today="2026-11-06" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  const cell = await screen.findByRole('gridcell', { name: '11월 13일' })
+  await user.click(await within(cell).findByText('병원'))
+  const dlg = await screen.findByRole('dialog', { name: '일정 상세' })
+  await user.clear(within(dlg).getByLabelText('제목'))
+  await user.type(within(dlg).getByLabelText('제목'), '치과')
+  await user.type(within(dlg).getByLabelText('장소'), '연세치과')
+  await user.selectOptions(within(dlg).getByLabelText('구분'), '업무')
+  await user.click(within(dlg).getByRole('button', { name: '저장' }))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '일정 상세' })).not.toBeInTheDocument())
+  expect(await within(cell).findByText('치과')).toHaveClass('cal-tag-업무')
+  const ev = (await db.local_events.toArray())[0]
+  expect(ev.place).toBe('연세치과')
+  // 지우기는 한 번 더 묻는다
+  await user.click(within(cell).getByText('치과'))
+  const dlg2 = await screen.findByRole('dialog', { name: '일정 상세' })
+  await user.click(within(dlg2).getByRole('button', { name: '지우기' }))
+  await user.click(within(dlg2).getByRole('button', { name: '정말 지우기' }))
+  await waitFor(() => expect(within(cell).queryByText('치과')).not.toBeInTheDocument())
+  // 학사일정: 보기만
+  await user.click(within(cell).getByText('체육대회'))
+  const dlg3 = await screen.findByRole('dialog', { name: '일정 상세' })
+  expect(within(dlg3).getByText('학사일정')).toBeInTheDocument()
+  expect(within(dlg3).queryByRole('button', { name: '저장' })).not.toBeInTheDocument()
+  expect(within(dlg3).queryByRole('button', { name: '지우기' })).not.toBeInTheDocument()
+})

@@ -63,6 +63,8 @@ export interface PushItem {
   end_date: string
   title: string
   description?: string
+  /** 장소(구글 location) */
+  location?: string
 }
 
 /** 보낼 일정: 학사일정(나이스·직접) + 달마다 미제출 결석신고서가 있으면 말일 알림 */
@@ -72,7 +74,14 @@ export async function buildPushItems(db: AppDB, from: string, to: string, classI
   // 내 일정(개인·업무)도 앱 캘린더로. 제목의 학생 이름은 ○○로(학생 자료는 노트북 밖으로 보내지 않음).
   const names = classId ? (await db.students.where('class_id').equals(classId).toArray()).filter((x) => !x.deleted).map((x) => x.name) : (await db.students.toArray()).filter((x) => !x.deleted).map((x) => x.name)
   for (const e of (await db.local_events.where('date').belowOrEqual(to).toArray()).filter((x) => !x.deleted && (x.end_date ?? x.date) >= from))
-    items.push({ key: `local-${e.id}`, date: e.date, end_date: e.end_date ?? e.date, title: hideNames(`[${e.tag}] ${e.time ? e.time + ' ' : ''}${e.title}`, names) })
+    items.push({
+      key: `local-${e.id}`,
+      date: e.date,
+      end_date: e.end_date ?? e.date,
+      title: hideNames(`[${e.tag}] ${e.time ? e.time + ' ' : ''}${e.title}`, names),
+      ...(e.memo ? { description: hideNames(e.memo, names) } : {}),
+      ...(e.place ? { location: hideNames(e.place, names) } : {}),
+    })
   if (classId) {
     for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = addDays(`${m}-28`, 7).slice(0, 7)) {
       const open = (await listReportsForMonth(db, classId, m)).filter((r) => !r.report.submitted)
@@ -85,7 +94,7 @@ export async function buildPushItems(db: AppDB, from: string, to: string, classI
   return items
 }
 
-const sameEvent = (e: GEvent, it: PushItem) => e.summary === it.title && e.start?.date === it.date && e.end?.date === addDays(it.end_date, 1) && (e as { description?: string }).description === (it.description ?? '')
+const sameEvent = (e: GEvent, it: PushItem) => e.summary === it.title && e.start?.date === it.date && e.end?.date === addDays(it.end_date, 1) && (e as { description?: string }).description === (it.description ?? '') && ((e as { location?: string }).location ?? '') === (it.location ?? '')
 
 /** 앱 → 구글: 바뀐 것만 만들고 고치고 지운다(앱이 만든 일정만 건드림). */
 export async function pushToGoogle(g: GoogleBridge, calId: string, items: PushItem[], from: string, to: string) {
@@ -95,7 +104,7 @@ export async function pushToGoogle(g: GoogleBridge, calId: string, items: PushIt
   let updated = 0
   let removed = 0
   for (const it of items) {
-    const body = { summary: it.title, description: it.description ?? '', start: { date: it.date }, end: { date: addDays(it.end_date, 1) }, transparency: 'transparent', extendedProperties: { private: { damim: '1', damimKey: it.key } } }
+    const body = { summary: it.title, description: it.description ?? '', location: it.location ?? '', start: { date: it.date }, end: { date: addDays(it.end_date, 1) }, transparency: 'transparent', extendedProperties: { private: { damim: '1', damimKey: it.key } } }
     const cur = byKey.get(it.key)
     byKey.delete(it.key)
     if (!cur) {

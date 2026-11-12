@@ -55,6 +55,10 @@ export interface Suggestion {
   /** 전달사항: 날짜, 일정: 날짜, 할 일: 마감일('' = 없음) */
   date: string
   time?: string
+  /** 일정: 장소(선택) */
+  place?: string
+  /** 일정: 개인/업무(기본 업무) */
+  tag?: '개인' | '업무'
 }
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/
@@ -72,7 +76,7 @@ export function normalizeSuggestions(
   for (const n of (r.notices ?? []).slice(0, 5)) if (str(n)) out.push({ kind: 'notice', text: str(n), date: today })
   for (const e of (r.events ?? []).slice(0, 5)) {
     const o = (e ?? {}) as Record<string, unknown>
-    if (str(o.title)) out.push({ kind: 'event', text: str(o.title), date: YMD.test(str(o.date)) ? str(o.date) : today, time: time(o.time) })
+    if (str(o.title)) out.push({ kind: 'event', text: str(o.title), date: YMD.test(str(o.date)) ? str(o.date) : today, time: time(o.time), place: str(o.place).slice(0, 60) || undefined, tag: o.tag === '개인' ? '개인' : '업무' })
   }
   for (const t of (r.todos ?? []).slice(0, 5)) {
     const o = (t ?? {}) as Record<string, unknown>

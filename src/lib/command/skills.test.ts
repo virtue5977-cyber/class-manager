@@ -20,8 +20,8 @@ test('AI 추천 정리: 날짜·시간 형식이 아니면 비우고, 빈 글은
   const s = normalizeSuggestions({ notices: ['수학 올림픽\n- 3교시', ' '], events: [{ date: '2026-11-13', time: '9:00', title: '올림픽' }, { date: '13일', title: 'x' }], todos: [{ text: '명단 입력', due: '2026-11-11' }] }, '2026-11-12')
   expect(s).toEqual([
     { kind: 'notice', text: '수학 올림픽\n- 3교시', date: '2026-11-12' },
-    { kind: 'event', text: '올림픽', date: '2026-11-13', time: '09:00' },
-    { kind: 'event', text: 'x', date: '2026-11-12', time: '' },
+    { kind: 'event', text: '올림픽', date: '2026-11-13', time: '09:00', tag: '업무' },
+    { kind: 'event', text: 'x', date: '2026-11-12', time: '', tag: '업무' },
     { kind: 'todo', text: '명단 입력', date: '2026-11-11' },
   ])
 })
@@ -29,4 +29,9 @@ test('AI 추천 정리: 날짜·시간 형식이 아니면 비우고, 빈 글은
 test('!상담 = !상담정리(옛 이름도 받음)', () => {
   expect(parseSkill('!상담 @3')).toEqual({ skill: '상담', sub: undefined, body: '@3' })
   expect(parseSkill('!상담정리 @3')).toEqual({ skill: '상담', sub: undefined, body: '@3' })
+})
+
+test('일정 추천은 장소와 개인/업무를 받는다(없으면 장소 없음·업무)', () => {
+  const s = normalizeSuggestions({ events: [{ date: '2026-11-13', time: '08:00', title: '도우미 교육', place: '본관 3층 시청각실', tag: '업무' }, { date: '2026-11-14', title: '병원', tag: '개인' }, { date: '2026-11-15', title: 'x', tag: '이상' }] }, '2026-11-12')
+  expect(s.map((x) => [x.place, x.tag])).toEqual([['본관 3층 시청각실', '업무'], [undefined, '개인'], [undefined, '업무']])
 })

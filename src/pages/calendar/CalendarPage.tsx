@@ -16,6 +16,7 @@ import { softDelete } from '../../lib/db/records'
 import { logTags } from '../../lib/counseling/counseling'
 import { toYmd, weekday } from '../../lib/schoolDays'
 import { ClassSelect, NoClass, useClasses } from '../common/useClasses'
+import EventDetail, { type DetailItem } from './EventDetail'
 
 const DAYS = ['월', '화', '수', '목', '금', '토', '일']
 /** 주말을 보일 때 머리 줄(일요일부터 — 사용자 요청 11/11) */
@@ -34,6 +35,13 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
   const [weekends, setWeekends] = useState(false)
   const [data, setData] = useState<Record<string, DayData>>({})
   const seq = useRef(0)
+  const [detail, setDetail] = useState<DetailItem>()
+  /** 칸 안 일정 누르기: 그 날을 고르고 상세를 연다(칸 단추 누르기는 막음) */
+  const openDetail = (e: React.MouseEvent, d: string, it: DetailItem) => {
+    e.stopPropagation()
+    setPicked(d)
+    setDetail(it)
+  }
 
   const shownCells = monthCells(month, weekends, weekends)
   const all = monthCells(month, true, weekends)
@@ -105,17 +113,17 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
               >
                 <span className="cal-date">{Number(d.slice(8))}</span>
                 {dd?.events.map((e) => (
-                  <span key={e.id} className={`cal-ev${e.is_class_day ? '' : ' off'}`}>
+                  <span key={e.id} className={`cal-ev${e.is_class_day ? '' : ' off'}`} onClick={(x) => openDetail(x, d, { kind: 'school', title: e.title, date: e.date })}>
                     {e.title}
                   </span>
                 ))}
                 {dd?.local.map((e) => (
-                  <span key={e.id} className={`cal-ev cal-tag-${e.tag}`}>
+                  <span key={e.id} className={`cal-ev cal-tag-${e.tag}`} title={e.place ? `장소: ${e.place}` : undefined} onClick={(x) => openDetail(x, d, { kind: 'local', ev: e })}>
                     {`${e.time ? e.time + ' ' : ''}${e.title}`}
                   </span>
                 ))}
                 {dd?.google.map((e) => (
-                  <span key={e.id} className="cal-g">
+                  <span key={e.id} className="cal-g" onClick={(x) => openDetail(x, d, { kind: 'google', title: e.title, date: e.date, end_date: e.end_date, time: e.time })}>
                     {`${e.time ? e.time + ' ' : ''}${e.title}`}
                   </span>
                 ))}
@@ -133,7 +141,10 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
               {sel.local.map((e) => (
                 <li key={e.id} className="row">
                   <span className={`up-tag tag-${e.tag === '개인' ? 'personal' : 'work'}`}>{e.tag}</span>
-                  <span>{`${e.time ? e.time + ' ' : ''}${e.title}`}</span>
+                  <button type="button" className="link ev-open" aria-label={`${e.title} 자세히`} onClick={() => setDetail({ kind: 'local', ev: e })}>
+                    {`${e.time ? e.time + ' ' : ''}${e.title}`}
+                    {e.place && <span className="muted">{` · ${e.place}`}</span>}
+                  </button>
                   <button type="button" className="icon-btn" aria-label={`${e.title} 지우기`} onClick={async () => { await softDelete(db.local_events, e.id); load() }}>×</button>
                 </li>
               ))}
@@ -143,7 +154,10 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
           {sel.events.length > 0 && (
             <ul className="plain">
               {sel.events.map((e) => (
-                <li key={e.id}><span className="dot dot-school" aria-hidden="true" />{e.title}</li>
+                <li key={e.id}>
+                  <span className="dot dot-school" aria-hidden="true" />
+                  <button type="button" className="link ev-open" onClick={() => setDetail({ kind: 'school', title: e.title, date: e.date })}>{e.title}</button>
+                </li>
               ))}
             </ul>
           )}
@@ -187,7 +201,11 @@ export default function CalendarPage({ today = toYmd(new Date()) }: { today?: st
           </div>
         </aside>
       </div>
-      <p className="muted">학사일정(설정에서 나이스 연결), 출결, 상담 기록이 함께 보입니다. 날짜를 누르면 오른쪽에 자세히 나옵니다.</p>
+      <p className="muted cal-legend">
+        <span className="cal-ev">학사</span> <span className="cal-ev cal-tag-업무">업무</span> <span className="cal-ev cal-tag-개인">개인</span> <span className="cal-g">구글</span>
+        {' '}— 날짜를 누르면 오른쪽에 자세히, 일정을 누르면 고치기·지우기.
+      </p>
+      {detail && <EventDetail item={detail} onClose={() => setDetail(undefined)} onChanged={load} />}
     </section>
   )
 }

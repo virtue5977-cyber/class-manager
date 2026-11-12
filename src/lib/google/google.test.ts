@@ -106,3 +106,16 @@ test('내 일정 제목의 학생 이름은 구글로 보낼 때 ○○로 가�
   const items = await buildPushItems(db, '2026-11-01', '2026-11-30', c.id)
   expect(items.map((i) => i.title)).toContain('[업무] 15:00 ○○ 어머니 상담, ○○ 진로')
 })
+
+test('내 일정 장소·메모는 구글 location·description으로(이름은 가림)', async () => {
+  const { createDb } = await import('../db/schema')
+  const { createClass, emptyStudent, saveStudent } = await import('../roster/roster')
+  const { addLocalEvent } = await import('../events/localEvents')
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await saveStudent(db, c.id, emptyStudent(3, '김민수'))
+  await addLocalEvent(db, { date: '2026-11-12', title: '협의회', tag: '업무', place: '3층 시청각실', memo: '김민수 자료' })
+  const { buildPushItems } = await import('./google')
+  const it = (await buildPushItems(db, '2026-11-01', '2026-11-30', c.id)).find((i) => i.title.includes('협의회'))!
+  expect([it.location, it.description]).toEqual(['3층 시청각실', '○○ 자료'])
+})

@@ -330,6 +330,10 @@ export interface LocalEventRec extends BaseRecord {
   title: string
   tag: '개인' | '업무'
   google_id: string | null
+  /** 장소(선택) */
+  place?: string
+  /** 메모(선택) */
+  memo?: string
 }
 
 export interface ChatRec extends BaseRecord {

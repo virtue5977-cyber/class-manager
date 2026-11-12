@@ -757,8 +757,8 @@ li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .small { font-size: 12px; }
 @media (max-width: 1100px) { .reflection-layout { grid-template-columns: 1fr; } .reflection-side { position: static; } }
 @media print { .paper-wrap { background: none; padding: 0; } .paper { box-shadow: none; zoom: 1 !important; } .paper-line.sel td { background: #fff; } }
-.cal-tag-개인 { background: var(--c-yellow-bg); color: var(--c-yellow-ink); }
-.cal-tag-업무 { background: var(--c-green-bg); color: var(--c-green); }
+.cal-tag-개인 { background: var(--c-yellow-bg); color: var(--c-yellow-ink); box-shadow: inset 2px 0 0 var(--c-yellow); }
+.cal-tag-업무 { background: var(--c-green-bg); color: var(--c-green); box-shadow: inset 2px 0 0 var(--c-green); }
 .cal-add { border-top: 1px solid var(--line); padding-top: 8px; gap: 6px; }
 .cal-add input[aria-label='일정 제목'] { width: 100%; }
 .paper-mode, .paper-tools .seg, .seg[role='radiogroup'] { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -827,7 +827,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [role='tab']:focus
 .mini-day.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .mini-dots { display: flex; gap: 2px; min-height: 6px; }
 .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--sub); }
-.dot.tag-school { background: var(--accent); } .dot.tag-google { background: var(--sub); } .dot.tag-personal { background: var(--c-yellow-ink, #b7791f); } .dot.tag-work { background: var(--c-green, #2f855a); }
+.dot.tag-school { background: var(--accent); } .dot.tag-google { background: var(--sub); } .dot.tag-personal { background: var(--c-yellow-ink, #9a6b12); } .dot.tag-work { background: var(--c-green, #2f855a); }
 .mini-att { font-size: 11px; color: var(--c-red, #d1242f); }
 .mini-events li { display: flex; gap: 6px; align-items: center; font-size: 13px; }
 .col-pick fieldset { border: 0; padding: 2px 0; margin: 0; display: flex; gap: 8px; align-items: center; } .col-pick legend { float: left; width: 36px; font-weight: 600; font-size: 13px; }
@@ -1004,3 +1004,16 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .help-card dt { font-family: var(--mono, ui-monospace, monospace); color: var(--accent); white-space: nowrap; }
 .help-card dd { margin: 0; color: var(--sub); }
 @container (max-width: 520px) { .help-card dl { grid-template-columns: 1fr; } .help-card dd { margin-bottom: 4px; } }
+
+/* 달력 일정 상세 */
+.cal-day .cal-ev, .cal-day .cal-g { cursor: pointer; }
+.cal-day .cal-ev:hover, .cal-day .cal-g:hover { filter: brightness(.95); text-decoration: underline; }
+.cal-legend .cal-ev, .cal-legend .cal-g { display: inline-block; }
+.ev-open { padding: 0; text-align: left; }
+.modal-back { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, .28); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 12px 36px rgba(0, 0, 0, .25); }
+.modal .field { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.modal .field > span { color: var(--sub); }
+.modal .grow { flex: 1; }
+.modal-actions { align-items: center; }
+.suggest-place { width: 9em; }
