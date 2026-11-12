@@ -105,3 +105,12 @@ test('내보내기 형식 낱말', async () => {
   expect(exportFormatOf('인쇄')).toBe('print')
   expect(exportFormatOf('')).toBeNull()
 })
+
+test('/관찰 @3 내용 → 관찰 기록(누가기록)', async () => {
+  const { db, s3, env, ctx } = await setup()
+  const r = await executeInput('/관찰 @3 어제 모둠 활동에서 친구를 도움', ctx, env)
+  expect(r.chat.summary).toContain('관찰 기록 저장 · 11/9')
+  const logs = (await db.counseling_logs.toArray()).filter((l) => l.student_id === s3.id)
+  expect(logs).toHaveLength(1)
+  expect(logs[0]).toMatchObject({ kind: '관찰', date: '2026-11-09', content: '모둠 활동에서 친구를 도움' })
+})

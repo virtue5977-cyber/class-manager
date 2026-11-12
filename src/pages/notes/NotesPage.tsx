@@ -8,14 +8,15 @@ import { createNote, deleteNote, listNotes, noteText, setPinned } from '../../li
 import { addFolder, deleteFolder, folderTree, listFolders, moveFolder, moveNote, renameFolder, reorderNotes, type FolderNode } from '../../lib/notes/noteFolders'
 import type { NoteFolder } from '../../lib/db/types'
 import { setTodoDone, todosLinkingNote } from '../../lib/todos/todos'
-import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import { exportPdf } from '../../lib/export/pdf'
 import { toYmd } from '../../lib/schoolDays'
 import { useLive } from '../../lib/ui/useLive'
 import ExportMenu from '../../components/ExportMenu'
+import { buildNoteHwpx } from '../../lib/docs/note-doc'
 import PageHead from '../../components/PageHead'
 import NoteEditor from './NoteEditor'
+import NoticeTag from './NoticeTag'
 
 /** 노트함: 왼쪽 목록(찾기·고정·지우기) + 오른쪽 편집. */
 export default function NotesPage({ today = toYmd(new Date()) }: { today?: string }) {
@@ -139,10 +140,10 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       )
       fs.downloadFile(name, await writeSimpleXlsx('노트', [['체크', '내용'], ...rows]))
     } else {
-      const rows = n.blocks.flatMap((b) =>
-        b.type === 'roster' ? [['■', b.text || '학생 체크 표'], ...(b.rows ?? []).map((r) => [r.checked ? '☑' : '☐', r.label])] : (b.text ?? '').trim() ? [[b.type === 'check' ? (b.checked ? '☑' : '☐') : b.type === 'bullet' ? '•' : b.type.startsWith('h') ? '■' : '', b.text ?? '']] : [],
-      )
-      fs.downloadFile(name, await buildTableHwpx({ title: n.title || '노트', header: ['', '내용'], rows, colRatios: [1, 12] }))
+      // 한글: 글자 서식·들여쓰기·목록·체크·학생 표를 한글 문단 그대로
+      const names = new Map<string, string>()
+      for (const b of n.blocks) if (b.type === 'file' && b.file_id) names.set(b.file_id, (await db.note_files.get(b.file_id))?.name ?? '파일')
+      fs.downloadFile(name, await buildNoteHwpx(n, names))
     }
   }
 
@@ -151,6 +152,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
     <li key={n.id} data-kind="note" data-id={n.id} data-parent={parent ?? ''} className={`note-item tree-row${n.id === id ? ' on' : ''}${drag?.id === n.id ? ' dragging' : ''}${lineCls(n.id)}`} style={{ paddingLeft: 4 + depth * 16 }} onPointerDown={(e) => !q.trim() && beginDrag(e, 'note', n.id)}>
       <span className="tree-twisty" aria-hidden="true" />
       <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>
+      <NoticeTag note={n} />
       <Link to={`/notes?id=${n.id}`} draggable={false}>{n.title || '제목 없음'}</Link>
       {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
       <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => setPinned(db, n.id, !n.pinned)}>

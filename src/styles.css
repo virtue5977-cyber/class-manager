@@ -696,11 +696,14 @@ li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .note-title { font-size: 22px; font-weight: 700; border: 0; background: transparent; padding: 4px 0; }
 .note-blocks { display: flex; flex-direction: column; }
 .nb { position: relative; display: flex; align-items: flex-start; gap: 6px; padding: 1px 0; }
-.nb textarea { flex: 1; border: 0; background: transparent; resize: none; overflow: hidden; padding: 3px 2px; min-height: 28px; font-size: 15px; line-height: 1.6; }
-.nb textarea:focus { outline: none; box-shadow: none; }
-.nb-h1 textarea { font-size: 20px; font-weight: 700; }
-.nb-h2 textarea { font-size: 17px; font-weight: 600; }
-.nb-check:has(input:checked) textarea { color: var(--sub); text-decoration: line-through; }
+.nb-text { flex: 1; min-width: 0; position: relative; border: 0; background: transparent; padding: 3px 2px; min-height: 28px; font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; outline: none; cursor: text; }
+.nb-text.is-empty::before { content: attr(data-placeholder); position: absolute; left: 2px; top: 3px; color: var(--sub); pointer-events: none; }
+.nb-text .nl { cursor: pointer; }
+.nb-text .nl:hover { color: var(--accent); text-decoration: underline; }
+.nb-text:focus { outline: none; box-shadow: none; }
+.nb-h1 .nb-text { font-size: 20px; font-weight: 700; }
+.nb-h2 .nb-text { font-size: 17px; font-weight: 600; }
+.nb-check:has(input:checked) .nb-text { color: var(--sub); text-decoration: line-through; }
 /* 표시 칸(번호·점·체크)은 같은 너비 → 목록 글은 모두 같은 세로선에서 시작(/로 바꾸든 단축키로 바꾸든) */
 .nb-lead { flex: none; min-width: 26px; height: 30px; display: flex; align-items: center; justify-content: flex-end; padding-right: 2px; }
 .nb-lead-bullet, .nb-lead-check { justify-content: center; }
@@ -708,8 +711,8 @@ li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .nb-mark { color: var(--sub); font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1; }
 .nb-h1 { margin-top: 14px; }
 .nb-h2 { margin-top: 8px; }
-.nb-l1 textarea, .nb-l2 textarea { font-size: 14.5px; }
-.nb-l3 textarea, .nb-l4 textarea { font-size: 14px; color: var(--ink); }
+.nb-l1 .nb-text, .nb-l2 .nb-text { font-size: 14.5px; }
+.nb-l3 .nb-text, .nb-l4 .nb-text { font-size: 14px; color: var(--ink); }
 .nb-l2 .nb-mark, .nb-l3 .nb-mark, .nb-l4 .nb-mark { font-size: 13px; }
 .nb hr { flex: 1; border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .nb-handle { opacity: 0; border: 0; background: transparent; color: var(--sub); cursor: grab; padding: 4px 2px; min-height: 0; font-size: 11px; letter-spacing: -2px; }
@@ -946,3 +949,48 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .suggest-when input { font-size: 12px; padding: 2px 4px; }
 .suggest-all { align-self: flex-end; }
 @container (max-width: 520px) { .suggest-row { grid-template-columns: minmax(0, 1fr) auto; } .suggest-kind { grid-column: 1 / -1; justify-self: start; } }
+
+/* 0.13 대답 기다림 */
+.typing { align-self: flex-start; display: inline-flex; gap: 5px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px 12px 12px 2px; margin-top: 4px; }
+.typing .dot { width: 7px; height: 7px; border-radius: 50%; margin: 0; background: var(--sub); opacity: .35; animation: typing-dot 1.2s infinite ease-in-out; }
+.typing .dot:nth-child(2) { animation-delay: .2s; }
+.typing .dot:nth-child(3) { animation-delay: .4s; }
+@keyframes typing-dot { 0%, 80%, 100% { opacity: .35; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .typing .dot { animation: none; opacity: .7; } }
+.chat-waiting { display: flex; flex-direction: column; }
+
+/* 0.13 서식 막대 */
+.format-bar { position: fixed; z-index: 60; display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .14); }
+.fb-btn { min-width: 28px; height: 28px; min-height: 0; padding: 0 6px; border: 0; background: transparent; color: var(--ink); border-radius: 6px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 1px; }
+.fb-btn:hover, .fb-btn.on { background: var(--hover, rgba(127, 127, 127, .14)); }
+.fb-btn.on { color: var(--accent); }
+.fb-wide { min-width: 0; gap: 4px; font-size: 13px; }
+.fb-sep { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
+.fb-pop { position: relative; }
+.fb-menu { position: absolute; top: 32px; left: 0; z-index: 61; display: flex; flex-direction: column; min-width: 120px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .14); }
+.fb-menu button { border: 0; background: transparent; text-align: left; padding: 5px 8px; border-radius: 6px; min-height: 0; color: var(--ink); }
+.fb-menu button:hover, .fb-menu button.on { background: var(--hover, rgba(127, 127, 127, .14)); }
+.fb-swatches { flex-direction: row; flex-wrap: wrap; gap: 4px; min-width: 0; width: 132px; }
+.fb-swatches .fb-swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1px solid var(--line); }
+.fb-swatches .fb-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.note-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.note-head .note-title { flex: 1 1 240px; min-width: 0; }
+.note-head .note-tools { margin: 0; gap: 14px; flex: none; }
+.notice-badge { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft, rgba(37, 99, 235, .1)); color: var(--accent); white-space: nowrap; }
+
+.notice-box { position: relative; }
+.mention-list { position: absolute; top: 100%; left: 0; z-index: 30; min-width: 220px; }
+.notice-links { display: inline-flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.notice-link { white-space: nowrap; }
+.nb .mention-list { left: 36px; }
+
+.student-logs { margin-top: 12px; }
+.student-log-list li a { gap: 8px; padding: 3px 0; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tag.kind-관찰 { background: rgba(30, 132, 73, .12); color: #1e8449; }
+.tag.kind-상담 { background: rgba(31, 97, 141, .12); color: #1f618d; }
+.all-logs-table tr.clickable { cursor: pointer; }
+.all-logs-table tr.clickable:hover { background: var(--hover, rgba(127, 127, 127, .08)); }
+.back-all { align-self: flex-start; }
+.nowrap { white-space: nowrap; }

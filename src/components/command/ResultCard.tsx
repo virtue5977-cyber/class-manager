@@ -74,6 +74,11 @@ export default function ResultCard({ chat, onRun, today }: { chat: ChatRec; onRu
         <span className="result-summary pii">{chat.summary}</span>
       </div>
       {note && <p className="muted" role="status">{note}</p>}
+      {chat.status === '실패' && onRun && (
+        <p className="row">
+          <button type="button" className="link" onClick={() => onRun(chat.input)}>다시 보내기</button>
+        </p>
+      )}
       {card?.kind === 'student' && <StudentCard data={card.data as { student: StudentRec; atts: AttendanceRec[]; logs: CounselingLogRec[]; open: number }} />}
       {card?.kind === 'search' && (
         <ul className="plain result-list">

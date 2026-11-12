@@ -10,16 +10,17 @@ import { updateNuga } from './counseling'
 /** 앱 고정 출력 형식: 지시문을 어떻게 고쳐도 이 형식이 우선한다. */
 export const NUGA_OUTPUT_FORMAT = `# 출력 형식(앱 고정, 반드시 지킬 것)
 - 입력은 JSON 배열이며 각 항목에 id, 날짜, 장소, 메모가 있다.
-- 각 항목마다 누가기록 내용 문장만 만든다. 날짜·장소 머리줄은 앱이 붙이므로 쓰지 않는다.
+- 각 항목마다 누가기록 내용 문장만 만든다. 머리줄(일자 → 시각 → 장소 → 대상·방법)은 앱이 붙이므로 쓰지 않는다.
+- 종류가 관찰이면 교사가 본 행동을 중심으로, 상담이면 나눈 이야기와 지도를 중심으로 쓴다.
 - 다른 설명 없이 아래 JSON만 출력한다.
 {"items":[{"id":"입력의 id","text":"정리한 내용"}]}`
 
 export const DIAGNOSIS_TERMS = ['ADHD', '우울증', '우울', '자폐', '조울', '불안장애', '틱장애', '경계선', '지적장애', '품행장애', '공황']
 
-export function buildNugaPrompt(instruction: string, items: { id: string; date: string; place: string; memo: string }[], maxChars: number | null) {
+export function buildNugaPrompt(instruction: string, items: { id: string; date: string; place: string; memo: string; kind?: string }[], maxChars: number | null) {
   return {
     system: `${fillInstruction(instruction, { 최대글자수: maxChars })}\n\n${NUGA_OUTPUT_FORMAT}${maxChars ? `\n- 항목마다 ${maxChars}자를 넘지 않는다.` : ''}`,
-    user: JSON.stringify(items.map((i) => ({ id: i.id, 날짜: i.date, 장소: i.place, 메모: i.memo }))),
+    user: JSON.stringify(items.map((i) => ({ id: i.id, ...(i.kind ? { 종류: i.kind } : {}), 날짜: i.date, 장소: i.place, 메모: i.memo }))),
   }
 }
 
@@ -54,7 +55,7 @@ export async function runNuga(db: AppDB, ai: AiCaller, student: StudentRec, rost
     map = m.map
     const place = maskText(l.place, names, map)
     map = place.map
-    return { id: l.id, date: l.date, place: place.text, memo: m.text }
+    return { id: l.id, kind: l.kind ?? '상담', date: l.date, place: place.text, memo: m.text }
   })
   const { system, user } = buildNugaPrompt(await getPrompt(db, 'nuga'), items, settings.nuga_max_chars)
   const reply = extractJson<{ items?: { id: string; text: string }[] }>(await ai({ system, user, maxTokens: 1500 + logs.length * 400 }))

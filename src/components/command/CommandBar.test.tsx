@@ -164,3 +164,34 @@ test('Ctrl+Z(입력 칸이 비었을 때): 방금 실행한 명령을 되돌린�
   await waitFor(async () => expect((await db.todos.toArray()).filter((t) => !t.deleted)).toHaveLength(0))
   expect(await screen.findByText(/되돌렸습니다/)).toBeInTheDocument()
 })
+
+test('보내면 입력 칸이 바로 비고 내 말이 올라가며, 대답 동안 ● ● ●가 보인다', async () => {
+  const { updateSettings } = await import('../../lib/settings')
+  ;(await import('../../lib/command/pending')).resetPending()
+  let release!: (v: string) => void
+  const ai = () => new Promise<string>((r) => (release = r))
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await setCurrentClassId(db, c.id)
+  await updateSettings(db, { ai_enabled: true })
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()} ai={ai}>
+        <ChatLog today="2026-11-10" onRun={() => {}} />
+        <CommandBar today="2026-11-10" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  const user = userEvent.setup()
+  const input = await screen.findByRole('combobox', { name: '명령 입력' })
+  await waitFor(() => expect(input).toBeEnabled())
+  await user.type(input, '오늘 할 일 알려줘{Enter}')
+  expect(input).toHaveValue('')
+  const log = screen.getByRole('region', { name: '대화 기록' })
+  expect(within(log).getByText('오늘 할 일 알려줘')).toBeInTheDocument()
+  expect(await within(log).findByRole('status', { name: '대답을 만드는 중' })).toBeInTheDocument()
+  release(JSON.stringify({ answer: '할 일이 없습니다.' }))
+  expect(await within(log).findByText(/할 일이 없습니다/)).toBeInTheDocument()
+  await waitFor(() => expect(within(log).queryByRole('status', { name: '대답을 만드는 중' })).toBeNull())
+  expect(within(log).getAllByText('오늘 할 일 알려줘')).toHaveLength(1)
+})

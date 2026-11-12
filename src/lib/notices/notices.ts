@@ -1,8 +1,15 @@
 import type { AppDB } from '../db/schema'
 import type { NoticeItemRec } from '../db/types'
 import { newRecord, save, scrubDelete } from '../db/records'
+import { syncNoticesToNote } from './noteSync'
 
-type Patch = Partial<Pick<NoticeItemRec, 'text' | 'start_date' | 'end_date' | 'done' | 'pinned' | 'order'>>
+/** 하루짜리 전달사항이 바뀌면 그날 짝 노트를 맞춘다 */
+const resync = async (db: AppDB, ...recs: (NoticeItemRec | undefined)[]) => {
+  const days = new Set(recs.filter((r): r is NoticeItemRec => !!r && r.start_date === r.end_date).map((r) => r.start_date))
+  for (const d of days) await syncNoticesToNote(db, d)
+}
+
+type Patch = Partial<Pick<NoticeItemRec, 'text' | 'start_date' | 'end_date' | 'done' | 'pinned' | 'order' | 'parts'>>
 
 function checkRange(start: string, end: string) {
   const ok = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d)
@@ -15,14 +22,15 @@ async function nextOrder(db: AppDB): Promise<number> {
   return all.reduce((m, n) => Math.max(m, n.order), -1) + 1
 }
 
-export async function addNotice(db: AppDB, input: { text: string; start_date: string; end_date?: string }): Promise<NoticeItemRec> {
+export async function addNotice(db: AppDB, input: { text: string; start_date: string; end_date?: string; parts?: NoticeItemRec['parts'] }): Promise<NoticeItemRec> {
   const text = input.text.trim()
   if (!text) throw new Error('내용을 입력하세요.')
   const end = input.end_date || input.start_date
   checkRange(input.start_date, end)
-  const rec = newRecord({ text, start_date: input.start_date, end_date: end, done: false, pinned: false, order: await nextOrder(db) }) as NoticeItemRec
+  const rec = newRecord({ text, start_date: input.start_date, end_date: end, done: false, pinned: false, order: await nextOrder(db), ...(input.parts ? { parts: input.parts } : {}) }) as NoticeItemRec
   await db.notice_items.add(rec)
-  return rec
+  await resync(db, rec)
+  return (await db.notice_items.get(rec.id)) ?? rec
 }
 
 const sortNotices = (a: NoticeItemRec, b: NoticeItemRec) =>
@@ -40,14 +48,23 @@ export async function updateNotice(db: AppDB, id: string, patch: Patch): Promise
   const next = { ...cur, ...patch }
   if (patch.text !== undefined && !patch.text.trim()) throw new Error('내용을 입력하세요.')
   checkRange(next.start_date, next.end_date)
-  return save(db.notice_items, next)
+  const saved = await save(db.notice_items, next)
+  await resync(db, cur, saved)
+  return (await db.notice_items.get(id)) ?? saved
 }
 
 /** 지우고 되돌리기 함수를 돌려준다. */
 export async function deleteNotice(db: AppDB, id: string): Promise<() => Promise<void>> {
   const before = await scrubDelete(db.notice_items, id, { text: '' })
+  await resync(db, before)
   return async () => {
-    if (before) await save(db.notice_items, { ...before, deleted: false })
+    if (!before) return
+    // 짝 노트의 줄은 지웠으므로 새 줄로 다시 붙는다
+    const { block_id: _b, note_id: _n, ...plain } = before
+    void _b
+    void _n
+    await save(db.notice_items, { ...(plain as NoticeItemRec), deleted: false })
+    await resync(db, before)
   }
 }
 
@@ -72,6 +89,7 @@ export async function moveNotice(db: AppDB, date: string, id: string, dir: -1 | 
     await save(db.notice_items, { ...a, order: b.order })
     await save(db.notice_items, { ...b, order: a.order })
   })
+  await resync(db, a, b)
 }
 
 /**

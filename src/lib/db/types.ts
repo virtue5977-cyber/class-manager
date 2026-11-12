@@ -98,6 +98,8 @@ export interface CounselingLogRec extends BaseRecord {
   method?: string
   topic?: string
   time?: string
+  /** 기록 종류(없으면 상담) */
+  kind?: '상담' | '관찰'
 }
 
 export interface Seat {
@@ -268,6 +270,11 @@ export interface NoticeItemRec extends BaseRecord {
   done: boolean
   pinned: boolean
   order: number
+  /** 짝 노트(그날 전달사항 노트)와 그 노트의 줄 */
+  note_id?: string
+  block_id?: string
+  /** @노트 링크가 든 글(할 일과 같은 형식). 없으면 text 그대로 */
+  parts?: TodoPart[]
 }
 
 export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder' | 'roster'
@@ -282,6 +289,10 @@ export interface NoteBlock {
   indent?: number
   /** 학생 체크 표(roster): 만든 때의 학생(번호 이름)과 체크. text는 표 제목 */
   rows?: { sid: string; label: string; checked: boolean }[]
+  /** 글자 서식(text 안 위치 [from,to)). 없으면 서식 없음 */
+  marks?: import('../notes/marks').Mark[]
+  /** @노트 링크(text 안 위치) */
+  links?: import('../notes/marks').NoteLink[]
 }
 export interface NoteRec extends BaseRecord {
   title: string
@@ -291,6 +302,8 @@ export interface NoteRec extends BaseRecord {
   folder_id?: string | null
   /** 끌어서 정한 순서(없으면 맨 위, 최근 고친 순) */
   order?: number
+  /** 이 날짜 전달사항과 짝인 노트(YYYY-MM-DD) */
+  notice_date?: string
 }
 /** 노트 첨부(내용은 base64, 50MB까지) */
 export interface NoteFileRec extends BaseRecord {

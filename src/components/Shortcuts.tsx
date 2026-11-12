@@ -19,6 +19,8 @@ export default function Shortcuts() {
   useEffect(() => closeAllMenus(document), [pathname, search])
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
+      // 노트 글 안 Ctrl+숫자처럼 화면이 먼저 받아 처리한 키는 건너뛴다
+      if (e.defaultPrevented) return
       const a = matchShortcut(e, isField(e.target), navOrder.current)
       if (!a) return
       if (a.kind === 'nav') navigate(a.to)

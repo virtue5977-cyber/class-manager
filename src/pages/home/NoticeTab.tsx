@@ -5,20 +5,24 @@ import { useAi, useDb, useFs } from '../../app/context'
 import type { NoticeItemRec } from '../../lib/db/types'
 import { addNotice, clearNoticesOn, deleteNotice, moveNotice, noticesOn, updateNotice } from '../../lib/notices/notices'
 import { splitNoticesByAi } from '../../lib/notices/aiSplit'
-import { createNote, newBlockId } from '../../lib/notes/notes'
+import { openNoticeNote } from '../../lib/notices/noteSync'
+import { listNotes } from '../../lib/notes/notes'
+import { matchNotes, mentionAt, parseNoteParts, type NoteTitle } from '../../lib/notes/noteLinks'
+import NoteMentionList from '../../components/NoteMentionList'
+import type { NoteRec } from '../../lib/db/types'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import { exportPdf } from '../../lib/export/pdf'
 import { useLive } from '../../lib/ui/useLive'
 import ExportMenu from '../../components/ExportMenu'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 const DRAFT = '__draft'
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
 const period = (n: NoticeItemRec) => (n.start_date === n.end_date ? md(n.start_date) : `${md(n.start_date)}~${md(n.end_date)}`)
 
-/** 그날 전달사항: 체크 · 고정 · 순서 · 기간 · 지우기(되돌리기) · 직접 추가 · AI로 나누기 · 노트로 보내기 · 내보내기. */
+/** 그날 전달사항: 체크 · 고정 · 순서 · 기간 · 지우기(되돌리기) · 직접 추가 · AI로 나누기 · 노트로 열기(짝 노트) · 내보내기. */
 /** 글 길이에 맞춰 칸 높이를 늘린다(잘리지 않게) */
 const grow = (el: HTMLTextAreaElement | null) => {
   if (!el) return
@@ -28,6 +32,7 @@ const grow = (el: HTMLTextAreaElement | null) => {
 
 export default function NoticeTab({ date }: { date: string }) {
   const db = useDb()
+  const navigate = useNavigate()
   const fs = useFs()
   const ai = useAi()
   const list = useLive<NoticeItemRec[]>(() => noticesOn(db, date), [db, date], [])
@@ -81,6 +86,52 @@ export default function NoticeTab({ date }: { date: string }) {
       grow(el)
     } else fields.current.delete(id)
   }
+  // '@'로 노트 연결: 어느 줄에서, 어디부터, 무엇을 찾는지
+  const notes = useLive<NoteRec[]>(() => listNotes(db), [db], [])
+  const [men, setMen] = useState<{ id: string; start: number; q: string; caret: number }>()
+  const [menSel, setMenSel] = useState(0)
+  const menItems: NoteTitle[] = men ? matchNotes(notes, men.q) : []
+  const watchMention = (id: string, el: HTMLTextAreaElement) => {
+    const c = el.selectionStart ?? el.value.length
+    const m = mentionAt(el.value, c)
+    setMen(m ? { id, ...m, caret: c } : undefined)
+    setMenSel(0)
+  }
+  const pickMention = (id: string, n: NoteTitle) => {
+    const el = fields.current.get(id)
+    if (!el || !men) return
+    const v = `${el.value.slice(0, men.start)}@${n.title} ${el.value.slice(men.caret)}`
+    const c = men.start + n.title.length + 2
+    if (id === DRAFT) setDraft(v)
+    else el.value = v
+    setMen(undefined)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(c, c)
+      grow(el)
+    })
+  }
+  /** 노트 후보가 열려 있으면 ↑↓·Enter·Tab·Esc는 후보가 먼저 */
+  const mentionKey = (e: KeyboardEvent<HTMLTextAreaElement>, id: string): boolean => {
+    if (!men || men.id !== id || !menItems.length || e.nativeEvent.isComposing || e.keyCode === 229) return false
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      setMenSel((i) => (i + (e.key === 'ArrowDown' ? 1 : menItems.length - 1)) % menItems.length)
+      return true
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      pickMention(id, menItems[Math.min(menSel, menItems.length - 1)])
+      return true
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setMen(undefined)
+      return true
+    }
+    return false
+  }
+  const partsOf = (text: string) => parseNoteParts(text, notes)
   const [msg, setMsg] = useState<string>()
   const [undo, setUndo] = useState<{ text: string; run: () => Promise<void> }>()
   const [rangeFor, setRangeFor] = useState<string>()
@@ -116,12 +167,11 @@ export default function NoticeTab({ date }: { date: string }) {
           <button
             type="button"
             className="icon-btn tool-ico"
-            aria-label="노트로 보내기"
-            title="노트로 보내기"
-            disabled={!list.length}
+            aria-label="노트로 열기"
+            title="노트로 열기 — 이날 전달사항이 노트 한 장과 이어집니다(어느 쪽에서 고쳐도 같이 바뀜)"
             onClick={() => act(async () => {
-              const n = await createNote(db, `${md(date)} 전달사항`, list.map((x) => ({ id: newBlockId(), type: 'check' as const, text: x.text, checked: x.done })))
-              setMsg(`노트 '${n.title}'로 보냈습니다.`)
+              const n = await openNoticeNote(db, date)
+              navigate(`/notes?id=${n.id}`)
             })}
           >
             <Icon name="noteAdd" size={16} />
@@ -194,8 +244,12 @@ export default function NoticeTab({ date }: { date: string }) {
               defaultValue={n.text}
               key={n.text}
               ref={fieldRef(n.id)}
-              onInput={(e) => grow(e.currentTarget)}
+              onInput={(e) => {
+                grow(e.currentTarget)
+                watchMention(n.id, e.currentTarget)
+              }}
               onKeyDown={(e) => {
+                if (mentionKey(e, n.id)) return
                 if (arrow(e, n.id)) return
                 // Enter는 저장하고 다음 줄로(줄바꿈은 Shift+Enter). 저장은 떠날 때(blur) 한다.
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
@@ -206,12 +260,20 @@ export default function NoticeTab({ date }: { date: string }) {
                 }
               }}
               onBlur={(e) => {
+                setMen(undefined)
                 const v = e.target.value.trim()
                 // 다 지우고 떠나면 그 줄을 없앤다(되돌리기 가능)
                 if (!v) return void act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))
-                if (v !== n.text) act(() => updateNotice(db, n.id, { text: e.target.value }))
+                const parts = partsOf(v)
+                if (v !== n.text || JSON.stringify(parts) !== JSON.stringify(n.parts)) act(() => updateNotice(db, n.id, { text: e.target.value, parts }))
               }}
             />
+            {men?.id === n.id && <NoteMentionList items={menItems} sel={menSel} onPick={(x) => pickMention(n.id, x)} />}
+            {n.parts?.some((p) => typeof p !== 'string' && 'note' in p) && (
+              <span className="notice-links">
+                {n.parts.flatMap((p, k) => (typeof p !== 'string' && 'note' in p ? [<Link key={k} to={`/notes?id=${p.note}`} className="note-link notice-link" title="노트 열기">{`📄 ${notes.find((x) => x.id === p.note)?.title ?? '지운 노트'}`}</Link>] : []))}
+              </span>
+            )}
             <button type="button" className="notice-period link" aria-label={`${n.text} 기간 고치기`} onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>
               {period(n)}
             </button>
@@ -247,23 +309,27 @@ export default function NoticeTab({ date }: { date: string }) {
                 onChange={(e) => {
                   setDraft(e.target.value)
                   grow(e.target)
+                  watchMention(DRAFT, e.target)
                 }}
                 onKeyDown={(e) => {
+                  if (mentionKey(e, DRAFT)) return
                   if (arrow(e, DRAFT)) return
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                     e.preventDefault()
                     const t = draft.trim()
                     if (!t) return
                     setDraft('')
-                    act(() => addNotice(db, { text: t, start_date: date, end_date: date }))
+                    act(() => addNotice(db, { text: t, start_date: date, end_date: date, parts: partsOf(t) }))
                   }
                 }}
                 onBlur={() => {
+                  setMen(undefined)
                   const t = (draft ?? '').trim()
                   setDraft(null)
-                  if (t) act(() => addNotice(db, { text: t, start_date: date, end_date: date }))
+                  if (t) act(() => addNotice(db, { text: t, start_date: date, end_date: date, parts: partsOf(t) }))
                 }}
               />
+              {men?.id === DRAFT && <NoteMentionList items={menItems} sel={menSel} onPick={(x) => pickMention(DRAFT, x)} />}
             </span>
           </li>
         )}

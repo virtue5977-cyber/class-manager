@@ -71,7 +71,14 @@ test('노트 단축키: Ctrl+Shift+숫자와 Ctrl+Alt+숫자 모두(1·2 제목,
   expect(noteShortcut(ev({ altKey: true, key: '9', code: 'Digit9' }))).toBe('check')
   expect(noteShortcut(ev({ altKey: true, key: 't', code: 'KeyT' }))).toBe('roster')
   expect(noteShortcut(ev({ shiftKey: true, key: 'T', code: 'KeyT' }))).toBeNull()
-  expect(noteShortcut(ev({ key: '1', code: 'Digit1' }))).toBeNull() // Ctrl+1은 메뉴 이동
+  // 0.13: 노트 안 Ctrl+숫자(한글 프로그램처럼) 1 문단 2 제목1 3 제목2 4 글머리 5 번호 6 체크
+  expect(noteShortcut(ev({ key: '1', code: 'Digit1' }))).toBe('p')
+  expect(noteShortcut(ev({ key: '2', code: 'Digit2' }))).toBe('h1')
+  expect(noteShortcut(ev({ key: '3', code: 'Digit3' }))).toBe('h2')
+  expect(noteShortcut(ev({ key: '4', code: 'Digit4' }))).toBe('bullet')
+  expect(noteShortcut(ev({ key: '5', code: 'Digit5' }))).toBe('number')
+  expect(noteShortcut(ev({ key: '6', code: 'Digit6' }))).toBe('check')
+  expect(noteShortcut(ev({ key: '7', code: 'Digit7' }))).toBeNull()
   expect(noteShortcut(ev({ ctrlKey: false, shiftKey: true, key: '!', code: 'Digit1' }))).toBeNull()
 })
 
@@ -84,4 +91,15 @@ test('글자로 바꾸기: 줄 맨 앞 "# ", "## ", "- ", "* ", "1. ", "[] "', (
   expect(markdownPrefix('[] 숙제')).toEqual({ type: 'check', rest: '숙제' })
   expect(markdownPrefix('3.5 점')).toBeNull()
   expect(markdownPrefix('#해시')).toBeNull()
+})
+
+test('나누기·합치기·종류 바꾸기에 서식과 링크가 따라간다', () => {
+  const b: NoteBlock = { id: 'a', type: 'p', text: '가나다라', marks: [{ b: true, from: 1, to: 3 }], links: [{ from: 3, to: 4, note: 'n' }] }
+  const r = splitBlock([b], 'a', 2)
+  expect(r.blocks[0]).toMatchObject({ text: '가나', marks: [{ b: true, from: 1, to: 2 }] })
+  expect(r.blocks[0].links).toBeUndefined()
+  expect(r.blocks[1]).toMatchObject({ text: '다라', marks: [{ b: true, from: 0, to: 1 }], links: [{ from: 1, to: 2, note: 'n' }] })
+  const m = mergeUp(r.blocks, r.blocks[1].id)
+  expect(m.blocks[0]).toMatchObject({ text: '가나다라', marks: [{ b: true, from: 1, to: 3 }], links: [{ from: 3, to: 4, note: 'n' }] })
+  expect(setType([b], 'a', 'h1')[0]).toMatchObject({ type: 'h1', marks: b.marks, links: b.links })
 })

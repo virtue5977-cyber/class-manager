@@ -31,7 +31,7 @@ test('기록 추가 → AI 정리(가짜) → 나이스 입력 완료, 미입력
   await user.type(screen.getByLabelText('장소'), '교실')
   await user.type(screen.getByLabelText('내용(개조식 메모나 녹음 글)'), '박민수랑 말다툼')
   await user.click(screen.getByRole('button', { name: '기록 추가' }))
-  const card = await screen.findByRole('article', { name: '2026.11.05.(목) | 교실 기록' })
+  const card = await screen.findByRole('article', { name: '2026.11.05.(목) | 교실 | 학생·대면 기록' })
   expect(within(card).getByText('미정리')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '미정리 1건 누가기록으로 정리' }))
   expect(await screen.findByText('1건을 누가기록으로 정리했습니다.')).toBeInTheDocument()
@@ -42,7 +42,7 @@ test('기록 추가 → AI 정리(가짜) → 나이스 입력 완료, 미입력
   await user.selectOptions(screen.getByLabelText('보기'), '나이스 미입력')
   expect(await screen.findByText('해당하는 기록이 없습니다.')).toBeInTheDocument()
   await pickExport(user, '한글(hwpx)')
-  await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1번_김지훈_상담일지.hwpx']))
+  await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1번_김지훈_누가기록.hwpx']))
 })
 
 test('AI가 꺼져 있으면 안내', async () => {
@@ -164,7 +164,7 @@ test('이름 가림 중에는 내보낸 파일 이름에 학생 이름 대신 �
     )
     await user.click(await screen.findByRole('button', { name: /^1번/ }))
     await pickExport(user, '엑셀(xlsx)')
-    await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1번_상담일지.xlsx']))
+    await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1번_누가기록.xlsx']))
   } finally {
     setHideNames(false)
   }
@@ -205,4 +205,31 @@ test('주소의 ?sid= 학생이 처음부터 열린다(명령·할 일 링크)',
   )
   expect(await screen.findByRole('heading', { name: '2번 박민수' })).toBeInTheDocument()
   window.location.hash = ''
+})
+
+test('기본 화면은 학급 전체 누가기록(종류·학생 거르기), 관찰 기록은 대상·방법 없이, 줄을 누르면 그 학생', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const students = [await saveStudent(db, c.id, emptyStudent(1, '김지훈')), await saveStudent(db, c.id, emptyStudent(2, '박민수'))]
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  await saveLog(db, { student_id: students[0].id, date: '2026-11-03', place: '교실', content: '진로 상담' })
+  await saveLog(db, { student_id: students[1].id, date: '2026-11-05', place: '복도', content: '친구를 도움', kind: '관찰' })
+  const all = await screen.findByRole('region', { name: '전체 누가기록' })
+  await waitFor(() => expect(within(all).getAllByRole('row')).toHaveLength(3))
+  expect(within(all).getAllByRole('row')[1]).toHaveTextContent('관찰')
+  await user.selectOptions(within(all).getByLabelText('종류'), '상담')
+  expect(within(all).getAllByRole('row')).toHaveLength(2)
+  expect(within(all).getAllByRole('row')[1]).toHaveTextContent('진로 상담')
+  await user.click(within(all).getByText('진로 상담'))
+  expect(await screen.findByRole('button', { name: '← 전체 기록' })).toBeInTheDocument()
+  // 새 기록에서 관찰을 고르면 대상·방법이 사라진다
+  await user.click(screen.getByRole('button', { name: '+ 새 기록' }))
+  const form = screen.getByLabelText('새 기록')
+  await user.click(within(within(form).getByRole('radiogroup', { name: '종류' })).getByRole('radio', { name: '관찰' }))
+  expect(within(form).queryByRole('radiogroup', { name: '대상' })).toBeNull()
 })

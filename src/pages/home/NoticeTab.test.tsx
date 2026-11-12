@@ -37,7 +37,7 @@ test('기간 안 항목이 보이고, 고정하면 맨 위, 체크·지우기·�
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).find((n) => n.text === '동의서 걷기')!.done).toBe(true))
   await user.click(within(rows()[0]).getByRole('button', { name: '체육복 지우기' }))
   await waitFor(() => expect(rows()).toHaveLength(1))
-  await user.click(screen.getByRole('button', { name: /되돌리기/ }))
+  await user.click(await screen.findByRole('button', { name: /되돌리기/ }))
   await waitFor(() => expect(rows()).toHaveLength(2))
 })
 
@@ -74,12 +74,13 @@ test('줄에서 Enter는 저장하고 다음 줄로, 마지막 줄이면 새 빈
   await waitFor(() => expect(screen.getByRole('textbox', { name: '새 전달사항 줄' })).toHaveFocus())
 })
 
-test('노트로 보내기 → 체크 블록 노트, 내보내기 엑셀', async () => {
+test('노트로 열기 → 이날 짝 노트(체크 줄), 내보내기 엑셀', async () => {
   const user = userEvent.setup()
   const { db, fs } = await setup()
   await waitFor(() => expect(rows()).toHaveLength(2))
-  await user.click(screen.getByRole('button', { name: '노트로 보내기' }))
-  await waitFor(async () => expect((await listNotes(db))[0].blocks.map((b) => [b.type, b.text])).toEqual([['check', '동의서 걷기'], ['check', '체육복']]))
+  await user.click(screen.getByRole('button', { name: '노트로 열기' }))
+  await waitFor(async () => expect((await listNotes(db, '2026-11-11'))[0]).toMatchObject({ title: '[전달사항] 11/11(수)', notice_date: '2026-11-11' }))
+  expect((await listNotes(db, '2026-11-11'))[0].blocks.map((b) => [b.type, b.text])).toEqual([['check', '체육복']]) // 여러 날 전달사항(동의서 걷기)은 노트에 넣지 않는다
   await pickExport(user, '엑셀(xlsx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['전달사항_2026-11-11.xlsx']))
 })
@@ -122,6 +123,24 @@ test('머리 아이콘의 전체 지우기: 한 번 더 묻고, 되돌리기로 
   await user.click(screen.getByRole('button', { name: '전체 지우기' }))
   await user.click(screen.getByRole('button', { name: '모두 지우기' }))
   await waitFor(async () => expect(await noticesOn(db, '2026-11-11')).toEqual([]))
-  await user.click(screen.getByRole('button', { name: /되돌리기/ }))
+  await user.click(await screen.findByRole('button', { name: /되돌리기/ }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).length).toBe(2))
+})
+
+test('전달사항 줄에서 @를 치면 노트 후보, 고르면 노트 링크(누르면 노트로)', async () => {
+  const user = userEvent.setup()
+  const { createNote } = await import('../../lib/notes/notes')
+  const { db } = await setup()
+  const ref = await createNote(db, '수학올림피아드 안내')
+  await waitFor(() => expect(rows()).toHaveLength(2))
+  await user.click(screen.getByRole('button', { name: '+ 추가' }))
+  const box = await screen.findByRole('textbox', { name: '새 전달사항 줄' })
+  await user.type(box, '자세히는 @수학')
+  const opt = await screen.findByRole('option', { name: /수학올림피아드 안내/ })
+  expect(opt).toHaveAttribute('aria-selected', 'true')
+  await user.keyboard('{Enter}')
+  expect(box).toHaveValue('자세히는 @수학올림피아드 안내 ')
+  await user.keyboard('{Enter}')
+  await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).find((n) => n.text.startsWith('자세히는'))?.parts).toEqual(['자세히는 ', { note: ref.id }]))
+  expect(await screen.findByRole('link', { name: '📄 수학올림피아드 안내' })).toHaveAttribute('href', `/notes?id=${ref.id}`)
 })

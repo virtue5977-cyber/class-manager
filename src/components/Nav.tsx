@@ -26,7 +26,7 @@ export const MENU: MenuItem[] = [
     ],
   },
   { to: '/attendance', base: '/attendance', label: '출결', icon: 'check', children: [{ to: '/attendance/reports', label: '결석신고서' }, { to: '/attendance/stats', label: '통계' }] },
-  { to: '/counseling', base: '/counseling', label: '상담일지', icon: 'note' },
+  { to: '/counseling', base: '/counseling', label: '누가기록', icon: 'note' },
   { to: '/notes', base: '/notes', label: '노트함', icon: 'book' },
 ]
 export const SETTINGS_ITEM: MenuItem = { to: '/settings', base: '/settings', label: '설정', icon: 'gear' }

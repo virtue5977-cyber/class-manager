@@ -1,9 +1,21 @@
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
 import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
 import { filterSlash, indentBlock, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
-import { atVisualEdge, caretNav, placeCaret } from '../../lib/ui/caretNav'
+import { caretNav, placeCaret } from '../../lib/ui/caretNav'
+import RichLine, { type LineHandle, type LineValue } from './RichLine'
+import FormatBar from './FormatBar'
+import { applyStyle, styleAt } from '../../lib/notes/marks'
+import { getSel } from '../../lib/notes/richDom'
+import { copyRich, noteToHtml, noteToPlain } from '../../lib/notes/toHtml'
+import { useLive } from '../../lib/ui/useLive'
+import { linkNoteToDate, noticeNoteOf, unlinkNoticeNote } from '../../lib/notices/noteSync'
+import { listNotes } from '../../lib/notes/notes'
+import { matchNotes, mentionAt, type NoteTitle } from '../../lib/notes/noteLinks'
+import { shiftLinks, shiftMarks } from '../../lib/notes/marks'
+import NoteMentionList from '../../components/NoteMentionList'
+import { useNavigate } from 'react-router-dom'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
@@ -24,6 +36,12 @@ const fmtSize = (n: number) => (n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024)
 export default function NoteEditor({ note, today }: { note: NoteRec; today: string }) {
   const db = useDb()
   const fs = useFs()
+  const navigate = useNavigate()
+  // '@'로 다른 노트 연결
+  const allNotes = useLive<NoteRec[]>(() => listNotes(db), [db], [])
+  const [men, setMen] = useState<{ id: string; start: number; q: string; caret: number }>()
+  const [menSel, setMenSel] = useState(0)
+  const menItems: NoteTitle[] = men ? matchNotes(allNotes, men.q, note.id) : []
   const [title, setTitle] = useState(note.title)
   const [blocks, setBlocks] = useState<NoteBlock[]>(note.blocks.length ? note.blocks : [{ id: newBlockId(), type: 'p', text: '' }])
   const [slashSel, setSlashSel] = useState(0)
@@ -56,25 +74,70 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const [dragId, setDragId] = useState<string>()
   const [fileInfo, setFileInfo] = useState<Record<string, { name: string; size: number }>>({})
   const [folderList, setFolderList] = useState<Record<string, { name: string; dir: boolean }[]>>({})
-  const refs = useRef(new Map<string, HTMLTextAreaElement>())
+  const refs = useRef(new Map<string, LineHandle>())
+  /** 글자를 고른 줄(서식 막대) */
+  const [picked, setPicked] = useState<{ id: string; start: number; end: number; top: number; left: number }>()
   const focusNext = useRef<{ id: string; caret: number } | null>(null)
+  // 되돌리기(Ctrl+Z)·다시(Ctrl+Y, Ctrl+Shift+Z): 0.7초 넘게 쉬거나 줄 수가 바뀌면 한 단계
+  const hist = useRef({ past: [] as NoteBlock[][], future: [] as NoteBlock[][], last: 0, prev: blocks, skip: false })
+  useEffect(() => {
+    const h = hist.current
+    if (h.prev === blocks) return
+    if (h.skip) {
+      h.skip = false
+      h.prev = blocks
+      return
+    }
+    const now = Date.now()
+    if (now - h.last > 700 || h.prev.length !== blocks.length) {
+      h.past.push(h.prev)
+      if (h.past.length > 100) h.past.shift()
+    }
+    h.last = now
+    h.future = []
+    h.prev = blocks
+  }, [blocks])
+  function stepHistory(dir: -1 | 1, focusId: string) {
+    const h = hist.current
+    const from = dir === -1 ? h.past : h.future
+    const to = dir === -1 ? h.future : h.past
+    const next = from.pop()
+    if (!next) return
+    to.push(blocks)
+    h.skip = true
+    h.last = 0
+    setBlocks(next)
+    const id = next.some((x) => x.id === focusId) ? focusId : next[next.length - 1]?.id
+    if (id) focusNext.current = { id, caret: (next.find((x) => x.id === id)?.text ?? '').length }
+  }
   const latest = useRef({ title, blocks })
   latest.current = { title, blocks }
 
   // 입력이 멈추면 저장(바뀐 것이 있을 때만). 화면을 떠날 때도 저장.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (title !== note.title || JSON.stringify(blocks) !== JSON.stringify(note.blocks)) saveNoteContent(db, note.id, { title, blocks })
-    }, 500)
-    return () => clearTimeout(t)
-  }, [db, note, title, blocks])
-  useEffect(
-    () => () => {
-      const l = latest.current
-      if (l.title !== note.title || JSON.stringify(l.blocks) !== JSON.stringify(note.blocks)) saveNoteContent(db, note.id, l)
+  const saved = useRef({ title: note.title, blocks: JSON.stringify(note.blocks) })
+  const persist = useCallback(
+    (t: string, bs: NoteBlock[]) => {
+      const j = JSON.stringify(bs)
+      if (t === saved.current.title && j === saved.current.blocks) return
+      saved.current = { title: t, blocks: j }
+      void saveNoteContent(db, note.id, { title: t, blocks: bs })
     },
-    [db, note],
+    [db, note.id],
   )
+  useEffect(() => {
+    const t = setTimeout(() => persist(title, blocks), 500)
+    return () => clearTimeout(t)
+  }, [persist, title, blocks])
+  useEffect(() => () => persist(latest.current.title, latest.current.blocks), [persist])
+  // 다른 곳(전달사항 칸 등)에서 노트가 바뀌면 받아 온다(내가 저장한 것과 다를 때만)
+  const live = useLive<NoteRec | undefined>(() => db.notes.get(note.id), [db, note.id], note)
+  useEffect(() => {
+    if (!live || live.deleted) return
+    const j = JSON.stringify(live.blocks)
+    if (j === saved.current.blocks || j === JSON.stringify(latest.current.blocks)) return
+    saved.current = { ...saved.current, blocks: j }
+    setBlocks(live.blocks.length ? live.blocks : [{ id: newBlockId(), type: 'p', text: '' }])
+  }, [live])
   useEffect(() => {
     const f = focusNext.current
     if (!f) return
@@ -186,8 +249,85 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     focusNext.current = { id: b.id, caret: 0 }
   }
 
-  function onKey(e: KeyboardEvent<HTMLTextAreaElement>, b: NoteBlock) {
+  /** 줄 글이 바뀜: 문단 맨 앞에 '# ', '- ', '1. ', '[] ' 등을 치면 그 블록으로(방금 친 글자가 띄어쓰기이고 커서 앞이 바꾸기 글자뿐일 때만) */
+  function onLineChange(b: NoteBlock, v: LineValue, at: number) {
+    const head = markdownPrefix(v.text.slice(0, at))
+    const md = b.type === 'p' && v.text.length === (b.text ?? '').length + 1 && v.text[at - 1] === ' ' && head && head.rest === '' ? { type: head.type, rest: v.text.slice(at) } : null
+    if (md) {
+      setBlocks((bs) => setType(bs, b.id, md.type).map((x) => (x.id === b.id ? { ...x, text: md.rest, marks: undefined, links: undefined } : x)))
+      focusNext.current = { id: b.id, caret: 0 }
+      return
+    }
+    update(b.id, { text: v.text, marks: v.marks?.length ? v.marks : undefined, links: v.links?.length ? v.links : undefined })
+    const m = mentionAt(v.text, at)
+    setMen(m ? { id: b.id, ...m, caret: at } : undefined)
+    setMenSel(0)
+    setSlashSel(0)
+    if (slashOff === b.id && !v.text.startsWith('/')) setSlashOff(undefined)
+  }
+
+  /** '@제목'을 넣고 그 자리를 노트 링크로 */
+  function pickMention(b: NoteBlock, n: NoteTitle) {
+    if (!men) return
+    const old = b.text ?? ''
+    const ins = `@${n.title}`
+    const text = `${old.slice(0, men.start)}${ins} ${old.slice(men.caret)}`
+    const links = [...shiftLinks(b.links, old, text).filter((l) => l.to <= men.start || l.from >= men.start + ins.length), { from: men.start, to: men.start + ins.length, note: n.id }].sort((x, y) => x.from - y.from)
+    const marks = shiftMarks(b.marks, old, text)
+    update(b.id, { text, links, marks: marks.length ? marks : undefined })
+    focusNext.current = { id: b.id, caret: men.start + ins.length + 1 }
+    setMen(undefined)
+  }
+
+  /** 글자를 고르면 서식 막대를 띄운다 */
+  const trackSel = useCallback(() => {
+    for (const [id, h] of refs.current) {
+      const d = h.el
+      if (!d || d.ownerDocument.activeElement !== d) continue
+      const sel = getSel(d)
+      if (!sel || sel.start === sel.end) return setPicked(undefined)
+      const r = d.ownerDocument.getSelection()?.getRangeAt(0)
+      const rect = r && typeof r.getBoundingClientRect === 'function' ? r.getBoundingClientRect() : null
+      const box = d.getBoundingClientRect?.()
+      return setPicked({ id, start: Math.min(sel.start, sel.end), end: Math.max(sel.start, sel.end), top: rect?.top || box?.top || 0, left: rect?.left || box?.left || 0 })
+    }
+    setPicked(undefined)
+  }, [])
+  useEffect(() => {
+    document.addEventListener('selectionchange', trackSel)
+    return () => document.removeEventListener('selectionchange', trackSel)
+  }, [trackSel])
+  function applyFormat(key: Parameters<typeof applyStyle>[4], value?: string) {
+    if (!picked) return
+    const b = blocks.find((x) => x.id === picked.id)
+    if (!b) return
+    const marks = applyStyle(b.marks, (b.text ?? '').length, picked.start, picked.end, key, value)
+    update(b.id, { marks: marks.length ? marks : undefined })
+    requestAnimationFrame(() => refs.current.get(b.id)?.setSelectionRange(picked.start, picked.end))
+  }
+
+  function onKey(e: KeyboardEvent<HTMLDivElement>, b: NoteBlock, el: LineHandle) {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY' || /^[zy]$/i.test(e.key))) {
+      e.preventDefault()
+      const redo = e.code === 'KeyY' || e.key.toLowerCase() === 'y' || e.shiftKey
+      return stepHistory(redo ? 1 : -1, b.id)
+    }
+    if (men && men.id === b.id && menItems.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMenSel((i) => (i + (e.key === 'ArrowDown' ? 1 : menItems.length - 1)) % menItems.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        return pickMention(b, menItems[Math.min(menSel, menItems.length - 1)])
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        return setMen(undefined)
+      }
+    }
     const q = slashOf(b)
     const items = q !== null ? filterSlash(q) : []
     if (items.length) {
@@ -206,11 +346,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         return
       }
     }
-    const el = e.currentTarget
     // 방향키: 첫·마지막 줄(맨 앞·끝)에서 옆 글 블록으로(구분선·파일·표는 건너뜀)
     // / 메뉴가 열려 있으면 메뉴가 먼저(←→로도 블록을 떠나지 않는다)
     const mv = items.length ? null : caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, el)
-    if (mv && ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || atVisualEdge(el, mv.dir))) {
+    if (mv && ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || el.atEdge(mv.dir))) {
       const i = blocks.findIndex((x) => x.id === b.id)
       const dir = mv.dir
       for (let j = i + dir; j >= 0 && j < blocks.length; j += dir) {
@@ -223,17 +362,23 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         return
       }
     }
-    // 노트 안 단축키(이 칸에 초점이 있을 때만): Ctrl+Shift 또는 Ctrl+Alt + 1/2 제목, 7 번호, 8 글머리, 9 체크, 0 문단, Ctrl+Alt+T 학생 체크 표
+    // 노트 안 단축키(이 칸에 초점이 있을 때만): Ctrl+1 문단 2 제목1 3 제목2 4 글머리 5 번호 6 체크(예전 Ctrl+Shift·Alt 숫자, Ctrl+Alt+T 표)
     {
       const type = noteShortcut(e)
       if (type) {
         e.preventDefault()
+        e.stopPropagation()
         if (type === 'roster') return void insertRoster(b)
         const caret = el.selectionStart
         setBlocks((bs) => setType(bs, b.id, type))
         focusNext.current = { id: b.id, caret }
         return
       }
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && b.type === 'check') {
+      e.preventDefault()
+      update(b.id, { checked: !b.checked })
+      return
     }
     if (e.key === 'Enter' && !e.shiftKey && /^[@/]명렬표$/.test((b.text ?? '').trim())) {
       e.preventDefault()
@@ -272,9 +417,27 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     } else setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))
   }
 
-  /** 기간을 정해 보내기: 블록 하나 또는 노트 전체(글이 있는 블록마다 한 항목) */
+  /** 노트 전체를 그날 전달사항과 잇기(이미 다른 노트가 이어져 있으면 합치기·바꾸기를 묻는다) */
+  const [clash, setClash] = useState<string>()
+  async function linkAll(mode?: 'merge' | 'replace') {
+    try {
+      if (!mode) {
+        const other = await noticeNoteOf(db, range.start)
+        if (other && other.id !== note.id) return setClash(other.title || '제목 없음')
+      }
+      persist(title, blocks)
+      await linkNoteToDate(db, note.id, range.start, mode ?? 'merge')
+      setSendFor(undefined)
+      setClash(undefined)
+      setMsg(`${+range.start.slice(5, 7)}/${+range.start.slice(8)} 전달사항과 이었습니다. 여기서 고치면 전달사항도 바뀝니다.`)
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  /** 기간을 정해 블록 하나를 전달사항으로 보내기 */
   async function sendNotices() {
-    const targets = sendFor === 'all' ? blocks.filter((x) => (x.text ?? '').trim() && x.type !== 'h1' && x.type !== 'h2') : blocks.filter((x) => x.id === sendFor)
+    const targets = blocks.filter((x) => x.id === sendFor)
     try {
       for (const x of targets) await addNotice(db, { text: x.text!.trim(), start_date: range.start, end_date: range.end })
       setMsg(`전달사항 ${targets.length}개를 보냈습니다.`)
@@ -282,6 +445,15 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e))
     }
+  }
+
+  /** 노트 전체를 서식째 복사(한글에 붙여 넣기) */
+  async function copyForHwp() {
+    const names = new Map<string, string>()
+    for (const b of blocks) if (b.type === 'file' && b.file_id) names.set(b.file_id, fileInfo[b.file_id]?.name ?? '파일')
+    const n = { title, blocks }
+    const ok = await copyRich(noteToHtml(n, { files: names }), noteToPlain(n))
+    setMsg(ok ? '복사했습니다. 한글에서 Ctrl+V로 붙여 넣으세요.' : '복사하지 못했습니다. 글을 골라 Ctrl+C를 눌러 보세요.')
   }
 
   const onDrop = (e: DragEvent) => {
@@ -295,14 +467,40 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const marks = outlineMarks(blocks)
   return (
     <section className="note-editor" aria-label="노트 편집" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
-      <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
-      {msg && <p className="notice" role="status">{msg}</p>}
-      <div className="row note-tools">
-        <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+      <div className="note-head">
+        <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
+        <div className="row note-tools">
+          <button type="button" className="link" title="서식을 살려 복사합니다. 한글·워드에 붙여 넣으세요." onClick={copyForHwp}>한글로 복사</button>
+          {live?.notice_date ? (
+            <>
+              <span className="badge notice-badge" title="이날 전달사항과 이어진 노트입니다. 글 줄 하나가 전달사항 한 항목입니다.">{`[전달사항] ${+live.notice_date.slice(5, 7)}/${+live.notice_date.slice(8)}`}</span>
+              <button type="button" className="link" onClick={() => void unlinkNoticeNote(db, note.id).then(() => setMsg('전달사항과 연결을 끊었습니다. 전달사항은 그대로 남습니다.'))}>연결 끊기</button>
+            </>
+          ) : (
+            <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+          )}
+        </div>
       </div>
-      {sendFor && (
+      {msg && <p className="notice" role="status">{msg}</p>}
+      {sendFor === 'all' && (
+        <div className="row card send-range" role="group" aria-label="전달사항 날짜">
+          <span>이 노트를 이날 전달사항으로(글 줄 하나 = 한 항목, 서로 이어짐):</span>
+          <input type="date" aria-label="날짜" value={range.start} onChange={(e) => setRange({ start: e.target.value, end: e.target.value })} />
+          {clash ? (
+            <>
+              <span className="muted">{`이날 이미 '${clash}' 노트가 이어져 있습니다.`}</span>
+              <button type="button" className="primary" onClick={() => linkAll('merge')}>합치기</button>
+              <button type="button" onClick={() => linkAll('replace')}>바꾸기</button>
+            </>
+          ) : (
+            <button type="button" className="primary" onClick={() => linkAll()}>잇기</button>
+          )}
+          <button type="button" className="link" onClick={() => (setSendFor(undefined), setClash(undefined))}>취소</button>
+        </div>
+      )}
+      {sendFor && sendFor !== 'all' && (
         <div className="row card send-range" role="group" aria-label="전달사항 기간">
-          <span>{sendFor === 'all' ? '노트 전체(글 블록마다 한 항목)' : '이 블록'}을 전달사항으로:</span>
+          <span>이 블록을 전달사항으로:</span>
           <input type="date" aria-label="시작" value={range.start} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
           ~
           <input type="date" aria-label="끝" value={range.end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
@@ -368,32 +566,20 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                       {b.type === 'check' ? <input type="checkbox" aria-label="체크" checked={!!b.checked} onChange={(e) => update(b.id, { checked: e.target.checked })} /> : <span className={`nb-mark nb-mark-${b.type}`}>{marks[i]}</span>}
                     </span>
                   )}
-                  <textarea
-                    ref={(el) => (el ? refs.current.set(b.id, el) : refs.current.delete(b.id))}
-                    aria-label={`블록 ${i + 1}`}
-                    rows={1}
-                    value={b.text ?? ''}
+                  <RichLine
+                    ref={(h) => (h ? refs.current.set(b.id, h) : refs.current.delete(b.id))}
+                    label={`블록 ${i + 1}`}
+                    text={b.text ?? ''}
+                    marks={b.marks}
+                    links={b.links}
                     placeholder={i === blocks.length - 1 ? "글을 쓰거나 '/'로 블록 고르기" : ''}
-                    onChange={(e) => {
-                      // 문단 맨 앞에 '# ', '- ', '1. ', '[] ' 등을 치면 그 블록으로
-                      // 방금 친 글자가 띄어쓰기이고, 커서 앞이 바꾸기 글자(예: '- ')뿐일 때만
-                      const v = e.target.value
-                      const at = e.target.selectionStart ?? v.length
-                      const head = markdownPrefix(v.slice(0, at))
-                      const md = b.type === 'p' && v.length === (b.text ?? '').length + 1 && v[at - 1] === ' ' && head && head.rest === '' ? { type: head.type, rest: v.slice(at) } : null
-                      if (md) {
-                        setBlocks((bs) => setType(bs, b.id, md.type).map((x) => (x.id === b.id ? { ...x, text: md.rest } : x)))
-                        focusNext.current = { id: b.id, caret: 0 }
-                        return
-                      }
-                      update(b.id, { text: e.target.value })
-                      setSlashSel(0)
-                      if (slashOff === b.id && !e.target.value.startsWith('/')) setSlashOff(undefined)
-                      e.target.style.height = 'auto'
-                      e.target.style.height = `${e.target.scrollHeight}px`
-                    }}
-                    onKeyDown={(e) => onKey(e, b)}
+                    onChange={(v, at) => onLineChange(b, v, at)}
+                    onKeyDown={(e, h) => onKey(e, b, h)}
+                    onSelect={trackSel}
+                    onOpenLink={(id) => navigate(`/notes?id=${id}`)}
+                    onBlur={() => setMen((m) => (m?.id === b.id ? undefined : m))}
                   />
+                  {men?.id === b.id && <NoteMentionList items={menItems} sel={menSel} onPick={(x) => pickMention(b, x)} />}
                   {items.length > 0 && (
                     <ul className="suggest nb-slash" role="listbox" aria-label="블록 고르기">
                       {items.map((it, k) => (
@@ -414,6 +600,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           )
         })}
       </div>
+      {picked && (() => {
+        const b = blocks.find((x) => x.id === picked.id)
+        return b ? <FormatBar style={styleAt(b.marks, (b.text ?? '').length, picked.start, picked.end)} top={picked.top} left={picked.left} onApply={applyFormat} onClose={() => setPicked(undefined)} /> : null
+      })()}
       <p className="muted nb-hint">파일을 끌어다 놓으면 붙습니다(50MB까지).</p>
     </section>
   )

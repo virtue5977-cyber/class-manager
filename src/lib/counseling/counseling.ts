@@ -12,7 +12,11 @@ export interface LogInput {
   method?: string
   topic?: string
   time?: string
+  kind?: '상담' | '관찰'
 }
+
+export const KINDS = ['상담', '관찰'] as const
+export const kindOf = (l: { kind?: '상담' | '관찰' }) => l.kind ?? '상담'
 
 /** 담임용으로 줄인 분류(위로그의 상담 분류 참고) */
 export const TARGETS = ['학생', '보호자', '교사', '기타'] as const
@@ -27,7 +31,9 @@ export function logTags(l: { target?: string; method?: string; topic?: string; t
 export async function saveLog(db: AppDB, input: LogInput, id?: string): Promise<CounselingLogRec> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error('날짜를 입력하세요.')
   if (!input.content.trim()) throw new Error('내용을 입력하세요.')
-  const fields = { ...input, place: input.place.trim(), content: input.content.trim(), target: input.target ?? '학생', method: input.method ?? '대면', topic: input.topic ?? '', time: input.time ?? '' }
+  const obs = input.kind === '관찰'
+  // 관찰 기록은 날짜·시각·장소·내용만(대상·방법은 비운다)
+  const fields = { ...input, kind: input.kind ?? '상담', place: input.place.trim(), content: input.content.trim(), target: obs ? '' : (input.target ?? '학생'), method: obs ? '' : (input.method ?? '대면'), topic: input.topic ?? '', time: input.time ?? '' }
   if (id) {
     const cur = await db.counseling_logs.get(id)
     if (!cur) throw new Error('상담 기록을 찾을 수 없습니다.')
@@ -82,7 +88,21 @@ export function nugaHeader(date: string, place: string): string {
   return place ? `${head} | ${place}` : head
 }
 
+/** 누가기록 머리줄(일자 → 시각 → 장소 → 상담이면 대상·방법). 빈 것은 뺀다: 2026.11.05.(목) 12:40 | 점심시간 교실 | 보호자·전화 */
+export function nugaHead(l: Pick<CounselingLogRec, 'date' | 'place'> & { time?: string; target?: string; method?: string; kind?: '상담' | '관찰' }): string {
+  const day = `${l.date.replace(/-/g, '.')}.(${DAY[weekday(l.date)]})`
+  const first = [day, l.time].filter(Boolean).join(' ')
+  const who = kindOf(l) === '상담' ? [l.target, l.method].filter(Boolean).join('·') : ''
+  return [first, l.place, who].filter(Boolean).join(' | ')
+}
+
 /** 나이스에 붙여넣을 글: 머리줄 + 정리본(없으면 원문). */
 export function nugaCopyText(log: CounselingLogRec): string {
-  return `${nugaHeader(log.date, log.place)}\n${log.nuga_text || log.content}`
+  return `${nugaHead(log)}\n${log.nuga_text || log.content}`
+}
+
+/** 학급 전체 기록(최근 먼저) */
+export async function listAllLogs(db: AppDB, studentIds: string[]): Promise<CounselingLogRec[]> {
+  const set = new Set(studentIds)
+  return (await db.counseling_logs.where('student_id').anyOf([...set]).toArray()).filter((l) => !l.deleted).sort((a, b) => -byDate(a, b))
 }
