@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
 import type { NoteRec, StudentRec, TodoRec } from '../../lib/db/types'
-import { addTodo, deleteTodo, listTodos, renderParts, reorderTodos, setTodoDone } from '../../lib/todos/todos'
+import { addTodo, deleteTodo, listTodos, renderParts, reorderTodos, setTodoDone, updateTodo } from '../../lib/todos/todos'
 import { dropIndex, reorderIds, startPointerDrag } from '../../lib/ui/pointerDrag'
 import Icon from '../../components/Icon'
 import { applySuggestion, suggest } from '../../lib/command/suggest'
@@ -19,6 +19,8 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
   const studs = useMemo(() => new Map<string, StudentRec>(ctx.students.map((s) => [s.id, s])), [ctx.students])
   const [text, setText] = useState('')
   const listRef = useRef<HTMLUListElement>(null)
+  /** 고치는 중인 할 일 */
+  const [edit, setEdit] = useState<{ id: string; text: string; due: string }>()
   const [dragId, setDragId] = useState<string>()
   const [dropAt, setDropAt] = useState<number>()
   const [caret, setCaret] = useState(0)
@@ -44,6 +46,21 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
     try {
       await addTodo(db, p.parts, p.dateGiven ? p.date : null)
       setText('')
+      setErr(undefined)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    }
+  }
+  /** 고친 글 저장: '@노트' 는 다시 노트 연결로, 날짜 말이 있으면 마감일로 */
+  async function saveEdit() {
+    if (!edit) return
+    // 고칠 때는 학생 연결(@번호)도 다시 읽는다
+    const p = parseCommand(`/할일 ${edit.text}`, ctx, commandNames(), commandSubs())
+    const bad = p.missing[0] ?? p.ambiguous[0]
+    if (bad !== undefined) return setErr(`'${bad}' 노트를 찾지 못했습니다.`)
+    try {
+      await updateTodo(db, edit.id, { parts: p.parts, due: p.dateGiven ? p.date : edit.due || null })
+      setEdit(undefined)
       setErr(undefined)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -90,10 +107,34 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
                 </span>
               )}
               <input type="checkbox" aria-label={label} checked={t.done} onChange={(e) => setTodoDone(db, t.id, e.target.checked)} />
-              <span className="todo-text pii">
-                {parts.map((p, i) => (p.to ? <Link key={i} to={p.to}>{p.text}</Link> : p.dead ? <span key={i} className="dead" title="지운 노트입니다">{p.text}</span> : <span key={i}>{p.text}</span>))}
-              </span>
-              {t.due && <span className={`todo-due${!t.done && t.due < ctx.today ? ' late' : ''}`}>{shortDate(t.due)}</span>}
+              {edit?.id === t.id ? (
+                <span className="todo-edit">
+                  <input
+                    autoFocus
+                    aria-label="할 일 고치기"
+                    value={edit.text}
+                    onChange={(e) => setEdit({ ...edit, text: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                      if (e.key === 'Enter') (e.preventDefault(), void saveEdit())
+                      if (e.key === 'Escape') (e.preventDefault(), setEdit(undefined))
+                    }}
+                  />
+                  <input type="date" aria-label="마감일" value={edit.due} onChange={(e) => setEdit({ ...edit, due: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), void saveEdit())} />
+                  <button type="button" className="link" onClick={() => void saveEdit()}>저장</button>
+                  <button type="button" className="link" onClick={() => setEdit(undefined)}>취소</button>
+                </span>
+              ) : (
+                <>
+                  <span className="todo-text pii" onDoubleClick={() => setEdit({ id: t.id, text: editText(t.parts, notes, studs), due: t.due ?? '' })}>
+                    {parts.map((p, i) => (p.to ? <Link key={i} to={p.to}>{p.text}</Link> : p.dead ? <span key={i} className="dead" title="지운 노트입니다">{p.text}</span> : <span key={i}>{p.text}</span>))}
+                  </span>
+                  {t.due && <span className={`todo-due${!t.done && t.due < ctx.today ? ' late' : ''}`}>{shortDate(t.due)}</span>}
+                  <button type="button" className="icon-btn row-edit" aria-label={`${label} 고치기`} title="고치기(두 번 눌러도 됨)" onClick={() => setEdit({ id: t.id, text: editText(t.parts, notes, studs), due: t.due ?? '' })}>
+                    <Icon name="pencil" size={13} />
+                  </button>
+                </>
+              )}
               <button type="button" className="icon-btn" aria-label={`${label} 지우기`} onClick={() => deleteTodo(db, t.id)}>×</button>
             </li>
           )
@@ -132,4 +173,13 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
       {err && <p className="error">{err}</p>}
     </section>
   )
+}
+
+/** 고칠 글: 노트 연결은 '@노트제목', 학생 연결은 '@번호'로 되돌린다(저장 때 다시 연결). 지운 노트 연결은 뺀다. */
+function editText(parts: TodoRec['parts'], notes: Map<string, { title: string }>, studs: Map<string, StudentRec>): string {
+  return parts
+    .map((p) => (typeof p === 'string' ? p : 'note' in p ? (notes.get(p.note) ? `@${notes.get(p.note)!.title}` : '') : studs.get(p.student) ? `@${studs.get(p.student)!.number}` : ''))
+    .join('')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }

@@ -7,7 +7,7 @@ const k = (key: string, o: Partial<{ ctrlKey: boolean; altKey: boolean; shiftKey
 
 test('Ctrl+숫자는 메뉴 이동', () => {
   expect(matchShortcut(k('2', { ctrlKey: true }), false)).toEqual({ kind: 'nav', to: '/calendar' })
-  expect(matchShortcut(k('6', { ctrlKey: true }), false)).toEqual({ kind: 'nav', to: '/settings' })
+  expect(matchShortcut(k('6', { ctrlKey: true }), false)).toEqual({ kind: 'nav', to: '/notes' }) // 기본 메뉴 순서의 6번째
   expect(matchShortcut(k('1', { ctrlKey: true }), false)).toEqual({ kind: 'nav', to: '/' })
 })
 
@@ -34,4 +34,12 @@ test('글자 칸에서는 Ctrl/Alt 조합만, 한글 조합 중에는 아무것�
 test('설정 화면용 단축키 표: 앱 7줄 + 노트·전달사항 5줄(노트 Ctrl+Shift 단축키가 보인다)', () => {
   expect(SHORTCUT_TABLE).toHaveLength(12)
   expect(SHORTCUT_TABLE.map((r) => r.keys).join(' ')).toContain('Ctrl+Shift+7 / 8 / 9')
+})
+
+test('Ctrl+숫자는 보이는 메뉴 순서대로(1~9), 설정은 Ctrl+쉼표', () => {
+  const k = (code: string, key = '') => matchShortcut({ key, code, ctrlKey: true, altKey: false, shiftKey: false, metaKey: false, isComposing: false }, false, ['/', '/notes', '/calendar'])
+  expect(k('Digit2', '2')).toEqual({ kind: 'nav', to: '/notes' })
+  expect(k('Digit3', '3')).toEqual({ kind: 'nav', to: '/calendar' })
+  expect(k('Digit4', '4')).toBeNull()
+  expect(k('Comma', ',')).toEqual({ kind: 'nav', to: '/settings' })
 })

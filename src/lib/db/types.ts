@@ -328,6 +328,8 @@ export interface ChatRec extends BaseRecord {
   links: { label: string; to: string }[]
   status: '성공' | '실패' | '확인 필요'
   detail?: string
+  /** 대화 묶음(새 채팅마다). 없으면 '이전 대화' */
+  thread?: string
 }
 
 export interface ReflectionRec extends BaseRecord {

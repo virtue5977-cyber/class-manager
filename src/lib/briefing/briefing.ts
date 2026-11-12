@@ -10,7 +10,7 @@ export type Slot = BriefingRec['slot']
 export const SLOTS: Slot[] = ['조례', '종례']
 
 export const BRIEFING_OUTPUT_FORMAT = `# 출력 형식(앱 고정, 반드시 지킬 것)
-- 학생에게 말할 문장만, 말할 순서대로 배열에 넣는다. 해당 없으면 빈 배열.
+- 배열 한 칸 = 항목 하나(안내 하나). 딸린 내용은 같은 칸 안에서 줄바꿈(\\n)과 "- "로 잇는다. 말할 순서대로, 해당 없으면 빈 배열.
 - 다른 설명 없이 아래 JSON만 출력한다.
 {"조례":["문장"],"종례":["문장"]}`
 

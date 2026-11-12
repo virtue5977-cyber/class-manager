@@ -1,16 +1,19 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDb } from '../../app/context'
 import type { ChatRec } from '../../lib/db/types'
-import { clearChatOn, deleteChat, listChat, schoolYearOf } from '../../lib/command/chatLog'
+import { deleteChat, deleteThread, listChat, schoolYearOf } from '../../lib/command/chatLog'
+import { newThread, useCurrentThread } from '../../lib/command/chatThreads'
 import { createNote, newBlockId } from '../../lib/notes/notes'
 import { useLive } from '../../lib/ui/useLive'
 import { toYmd } from '../../lib/schoolDays'
 import ResultCard from './ResultCard'
 
-/** 대화 기록: 내 입력(오른쪽)과 결과 카드(왼쪽). 이번 학년도만. */
+/** 대화 기록: 지금 대화 묶음의 내 입력(오른쪽)과 결과 카드(왼쪽). 이번 학년도만. 지난 대화는 왼쪽 메뉴 '최근 대화'. */
 export default function ChatLog({ today, onRun }: { today: string; onRun: (input: string) => void }) {
   const db = useDb()
-  const list = useLive<ChatRec[]>(() => listChat(db, schoolYearOf(today)), [db, today], [])
+  const thread = useCurrentThread()
+  const [askClear, setAskClear] = useState(false)
+  const list = useLive<ChatRec[]>(() => listChat(db, schoolYearOf(today), thread), [db, today, thread], [])
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => {
     // 새 Chromium의 scrollIntoView는 Promise를 돌려주므로 효과 함수가 그것을 반환하지 않게 감싼다.
@@ -18,7 +21,7 @@ export default function ChatLog({ today, onRun }: { today: string; onRun: (input
   }, [list.length])
   return (
     <section className="chat-log" aria-label="대화 기록">
-      {list.length === 0 && <p className="muted chat-empty">아래 입력 막대에 /를 쳐 보세요. 예: /출결 @3 결석 질병 감기 · /할일 동의서 걷기 내일 · /찾기 감기</p>}
+      {list.length === 0 && <p className="muted chat-empty">/는 앱에 기록(예: /출결 @3 결석 질병 감기 · /할일 동의서 걷기 내일), !는 AI 글(예: !전달 학부모 …, !일정 …, 공문을 ! 뒤에 붙여 넣으면 추천), 질문은 그냥 쓰세요(예: 오늘 결석한 학생?).</p>}
       {list.map((c, i) => {
         const day = toYmd(new Date(c.at))
         const prev = list[i - 1] ? toYmd(new Date(list[i - 1].at)) : ''
@@ -42,9 +45,17 @@ export default function ChatLog({ today, onRun }: { today: string; onRun: (input
       })}
       <div ref={end} />
       {list.length > 0 && (
-        <button type="button" className="link chat-clear" onClick={() => clearChatOn(db, today)}>
-          오늘 대화 지우기
-        </button>
+        askClear ? (
+          <p className="row chat-clear" role="group" aria-label="이 대화 지우기 확인">
+            <span>이 대화를 지울까요? 되돌릴 수 없습니다.</span>
+            <button type="button" className="link danger-text" onClick={async () => { setAskClear(false); await deleteThread(db, thread); newThread() }}>지우기</button>
+            <button type="button" className="link" onClick={() => setAskClear(false)}>취소</button>
+          </p>
+        ) : (
+          <button type="button" className="link chat-clear" onClick={() => setAskClear(true)}>
+            이 대화 지우기
+          </button>
+        )
       )}
     </section>
   )

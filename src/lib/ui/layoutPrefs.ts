@@ -50,6 +50,20 @@ export const panelPlace = (x: PrefItem): PanelPlace => (x.hidden ? 'hidden' : x.
 export function setPlace<K extends string>(list: PrefItem<K>[], key: K, place: PanelPlace): PrefItem<K>[] {
   return list.map((x) => (x.key === key ? { key: x.key, hidden: place === 'hidden', ...(place === 'tab' ? { place: 'tab' as const } : {}) } : x))
 }
+/** 칸을 place 쪽의 before 칸 앞(null이면 그 쪽 끝)으로 옮긴다. 다른 칸의 자리는 그대로. */
+export function placePanel(list: PrefItem<PanelKey>[], key: PanelKey, place: 'side' | 'tab', before: PanelKey | null): PrefItem<PanelKey>[] {
+  const me = list.find((x) => x.key === key)
+  if (!me || before === key) return list
+  const moved: PrefItem<PanelKey> = { key, hidden: false, ...(place === 'tab' ? { place: 'tab' as const } : {}) }
+  const rest = list.filter((x) => x.key !== key)
+  let at = before ? rest.findIndex((x) => x.key === before) : -1
+  if (at < 0) {
+    // 그 쪽 마지막 칸 뒤(그 쪽에 칸이 없으면 맨 끝)
+    const lastSame = rest.map((x, i) => (panelPlace(x) === place ? i : -1)).filter((i) => i >= 0).pop()
+    at = lastSame === undefined ? rest.length : lastSame + 1
+  }
+  return [...rest.slice(0, at), moved, ...rest.slice(at)]
+}
 const clampH = (h: unknown) => Math.min(900, Math.max(120, Number(h) || 0))
 function readPanelH(v: unknown): LayoutPrefs['panelH'] {
   const out: LayoutPrefs['panelH'] = {}

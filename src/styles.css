@@ -219,7 +219,7 @@ ol.steps li.done .step-no { background: var(--accent); color: #fff; }
 .sidebar .side-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 .class-switch { margin: 0 4px 8px; }
 .class-switch select { width: 100%; font-weight: 600; background: var(--panel); }
-.content { padding: 24px 32px 48px; max-width: 1240px; width: 100%; margin-inline: auto; }
+.content { padding: 24px 32px 48px; max-width: calc(1240px / var(--zoom, 1)); /* 글자를 줄여도(zoom) 화면에서 차지하는 최대 너비는 그대로 → 남는 공간을 씀 */ width: 100%; margin-inline: auto; }
 .content h2 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.02em; }
 .card { border-radius: 8px; padding: 16px; border: 1px solid var(--line); box-shadow: none; }
 .card h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
@@ -900,3 +900,49 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .roster-all td, .roster-all th { padding: 6px 10px; }
 .roster-all tr.inactive td { color: var(--sub); }
 .roster-all td .link { font-weight: 600; }
+
+/* 할 일 고치기 */
+.todo-edit { flex: 1; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.todo-edit input:not([type='date']) { flex: 1; min-width: 120px; }
+.todo-list li .row-edit { opacity: 0; }
+.todo-list li:hover .row-edit, .todo-list li .row-edit:focus-visible { opacity: .7; }
+@media (hover: none) { .todo-list li .row-edit { opacity: .7; } }
+
+/* 홈 탭·칸 끌기 */
+.panel-frame > .panel-grip { position: absolute; top: -9px; left: 12px; z-index: 2; height: 18px; line-height: 16px; padding: 0 7px; font-size: 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--sub); cursor: grab; opacity: 0; pointer-events: none; transition: opacity .12s; touch-action: none; user-select: none; }
+.panel-frame:hover > .panel-grip { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .panel-frame > .panel-grip { opacity: 1; pointer-events: auto; } }
+.home-tabs [role='tab'] { touch-action: none; }
+.home-tabs [role='tab'].dragging, .panel-slot.dragging { opacity: .45; }
+.home-tabs [role='tab'].drop-here { box-shadow: inset 2px 0 0 var(--accent); }
+.home-tabs.drop-here { box-shadow: inset -2px 0 0 var(--accent); }
+.panel-slot.drop-here { box-shadow: 0 -3px 0 var(--accent); border-radius: 8px; }
+.home-side.drop-here { box-shadow: inset 0 -3px 0 var(--accent); }
+
+/* 최근 대화(왼쪽 메뉴 아래) */
+.recent-chats { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; }
+.recent-chats h3 { font-size: 11.5px; color: var(--sub); font-weight: 600; margin: 0 8px 2px; }
+.recent-chats li { display: flex; align-items: center; gap: 2px; border-radius: 6px; padding: 0 2px 0 0; }
+.recent-chats li:hover, .recent-chats li.on { background: var(--hover); }
+.recent-title { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 5px 8px; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-del { opacity: 0; color: var(--sub); }
+.recent-chats li:hover .recent-del, .recent-del:focus-visible { opacity: 1; }
+@media (hover: none) { .recent-del { opacity: .7; } }
+.recent-ask { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; flex-wrap: wrap; padding: 2px 8px; }
+.recent-all { align-self: flex-start; font-size: 12px; margin: 2px 8px; color: var(--sub); }
+.danger-text { color: var(--c-red) !important; }
+.home-tabs .new-chat { margin-left: auto; font-size: 13px; align-self: center; }
+
+.result-list .pii, .notice-text { white-space: pre-line; }
+
+/* 고칠 수 있는 추천 카드 */
+.suggest-card { display: flex; flex-direction: column; gap: 6px; }
+.suggest-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 6px; align-items: start; padding: 4px 0; border-top: 1px solid var(--line); }
+.suggest-row:first-child { border-top: 0; }
+.suggest-row textarea { min-height: 30px; resize: vertical; font-size: 13px; padding: 4px 6px; white-space: pre-wrap; }
+.suggest-row.done { opacity: .55; }
+.suggest-kind { font-size: 11.5px; color: var(--sub); border: 1px solid var(--line); border-radius: 10px; padding: 1px 7px; margin-top: 5px; white-space: nowrap; }
+.suggest-when { display: flex; flex-direction: column; gap: 2px; }
+.suggest-when input { font-size: 12px; padding: 2px 4px; }
+.suggest-all { align-self: flex-end; }
+@container (max-width: 520px) { .suggest-row { grid-template-columns: minmax(0, 1fr) auto; } .suggest-kind { grid-column: 1 / -1; justify-self: start; } }

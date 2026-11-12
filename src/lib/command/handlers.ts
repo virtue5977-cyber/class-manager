@@ -1,3 +1,4 @@
+import { requestExport } from '../ui/exportRequest'
 import type { AppDB } from '../db/schema'
 import type { AiCaller } from '../ai/client'
 import type { StudentRec } from '../db/types'
@@ -37,7 +38,7 @@ export interface RunResult {
   summary: string
   links: { label: string; to: string }[]
   undo?: () => Promise<void>
-  card?: { kind: 'student' | 'search' | 'draft' | 'confirm'; data: unknown }
+  card?: { kind: 'student' | 'search' | 'draft' | 'confirm' | 'suggest'; data: unknown }
   form?: { kind: 'attendance' | 'counsel'; studentId: string; date: string }
   /** 저장하지 않은 결과(확인 필요) */
   pending?: boolean
@@ -184,14 +185,31 @@ export const HANDLERS: Record<string, Handler> = {
     needs: (p) => (!p.sub ? { message: '화면 이름을 쓰세요(예: /내보내기 통계).' } : null),
     async run(p, _ctx, env) {
       const to = EXPORT_ROUTES[p.sub!]
+      // 형식까지 쓰면 바로 저장·인쇄(한글·엑셀·PDF·인쇄), 없으면 메뉴를 연다
+      const f = exportFormatOf(p.rest ?? '')
       env.navigate(to)
+      if (f) {
+        requestExport(to, f)
+        return { summary: `${p.sub} ${f === 'print' ? '인쇄 창을 열었습니다' : `${FORMAT_WORD[f]} 파일로 내보냈습니다`}.`, links: [{ label: p.sub!, to }] }
+      }
       env.openExport?.()
-      return { summary: `${p.sub} 화면의 내보내기 메뉴를 열었습니다.`, links: [{ label: p.sub!, to }] }
+      return { summary: `${p.sub} 화면의 내보내기 메뉴를 열었습니다. 형식도 쓰면 바로 됩니다(예: /내보내기 ${p.sub} 엑셀).`, links: [{ label: p.sub!, to }] }
     },
   },
 }
 
+const FORMAT_WORD = { hwpx: '한글', xlsx: '엑셀', pdf: 'PDF' } as const
+/** 형식 낱말: 한글·hwpx, 엑셀·xlsx, pdf, 인쇄·프린트 */
+export function exportFormatOf(text: string): 'hwpx' | 'xlsx' | 'pdf' | 'print' | null {
+  const t = text.trim().toLowerCase()
+  if (/(^|\s)(한글|hwpx|hwp)(\s|$)/.test(t)) return 'hwpx'
+  if (/(^|\s)(엑셀|xlsx|excel)(\s|$)/.test(t)) return 'xlsx'
+  if (/(^|\s)pdf(\s|$)/.test(t)) return 'pdf'
+  if (/(^|\s)(인쇄|프린트|출력)(\s|$)/.test(t)) return 'print'
+  return null
+}
+
 export const EXPORT_ROUTES: Record<string, string> = {
-  출결: '/attendance', 신고서: '/attendance/reports', 통계: '/attendance/stats', 상담일지: '/counseling',
+  출결: '/attendance/stats', 신고서: '/attendance/reports', 통계: '/attendance/stats', 상담일지: '/counseling',
   명렬표: '/class/sheet', 자리배치: '/class/seating', 청소배치: '/class/cleaning', 달력: '/calendar',
 }

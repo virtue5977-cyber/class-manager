@@ -94,8 +94,11 @@ test('AI 칸 옆에서 용지 크기를 고르고, 바로 인쇄', async () => {
   const size = await screen.findByRole('radiogroup', { name: 'AI로 채울 용지' })
   await user.click(within(size).getByRole('radio', { name: 'A4' }))
   expect(within(screen.getAllByRole('radiogroup', { name: '용지' })[0]).getByRole('radio', { name: 'A4' })).toHaveAttribute('aria-checked', 'true')
-  await user.click(screen.getByRole('button', { name: '바로 인쇄' }))
-  expect(print).toHaveBeenCalled()
+  // 바로 인쇄는 내보내기 메뉴 안으로 합쳤다(16번)
+  expect(screen.queryByRole('button', { name: '바로 인쇄' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: /^내보내기/ }))
+  await user.click(screen.getByRole('menuitem', { name: '바로 인쇄' }))
+  await waitFor(() => expect(print).toHaveBeenCalled())
   expect(document.getElementById('print-page-size')).toBeNull() // 인쇄 뒤 정리
   print.mockRestore()
 })

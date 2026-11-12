@@ -2,6 +2,7 @@ import type { AppDB } from '../db/schema'
 import type { BaseRecord, ChatRec } from '../db/types'
 import { newRecord, save } from '../db/records'
 import { toYmd } from '../schoolDays'
+import { currentThread, LEGACY_THREAD } from './chatThreads'
 
 /** 학년도: 3월 1일 시작 */
 export function schoolYearOf(ymd: string): number {
@@ -10,13 +11,31 @@ export function schoolYearOf(ymd: string): number {
 }
 
 export async function appendChat(db: AppDB, entry: Omit<ChatRec, keyof BaseRecord | 'at' | 'school_year'>, now = new Date()): Promise<ChatRec> {
-  const rec = newRecord({ ...entry, at: now.toISOString(), school_year: schoolYearOf(toYmd(now)) }, now) as ChatRec
+  const thread = entry.thread ?? currentThread()
+  const rec = newRecord({ ...entry, at: now.toISOString(), school_year: schoolYearOf(toYmd(now)), ...(thread !== LEGACY_THREAD ? { thread } : {}) }, now) as ChatRec
   await db.chat_log.add(rec)
   return rec
 }
 
-export async function listChat(db: AppDB, schoolYear: number): Promise<ChatRec[]> {
-  return (await db.chat_log.where('school_year').equals(schoolYear).toArray()).filter((c) => !c.deleted).sort((a, b) => a.at.localeCompare(b.at))
+const threadOf = (c: ChatRec) => c.thread ?? LEGACY_THREAD
+
+/** 이번 학년도 대화(thread를 주면 그 묶음만) */
+export async function listChat(db: AppDB, schoolYear: number, thread?: string): Promise<ChatRec[]> {
+  return (await db.chat_log.where('school_year').equals(schoolYear).toArray()).filter((c) => !c.deleted && (thread === undefined || threadOf(c) === thread)).sort((a, b) => a.at.localeCompare(b.at))
+}
+
+/** 최근 대화 목록: 묶음마다 제목(첫 입력)·마지막 때·개수, 최근 순 */
+export async function listThreads(db: AppDB, schoolYear: number): Promise<{ id: string; title: string; last: string; count: number }[]> {
+  const by = new Map<string, ChatRec[]>()
+  for (const c of await listChat(db, schoolYear)) by.set(threadOf(c), [...(by.get(threadOf(c)) ?? []), c])
+  return [...by.entries()]
+    .map(([id, cs]) => ({ id, title: id === LEGACY_THREAD ? '이전 대화' : cs[0].input.slice(0, 40), last: cs[cs.length - 1].at, count: cs.length }))
+    .sort((a, b) => b.last.localeCompare(a.last))
+}
+
+/** 대화 묶음 지우기(글도 비운다) */
+export async function deleteThread(db: AppDB, thread: string): Promise<void> {
+  for (const c of await db.chat_log.toArray()) if (!c.deleted && threadOf(c) === thread) await deleteChat(db, c.id)
 }
 
 /** 지우면 글(입력·요약·링크)도 비운다 — 건강 사유 같은 내용이 지운 기록·백업에 남지 않게. */

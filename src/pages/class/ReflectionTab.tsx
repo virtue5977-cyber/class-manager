@@ -177,10 +177,8 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           })}>
             노트로 보내기
           </button>
-          <button type="button" onClick={() => printNow(mode)}>
-            바로 인쇄
-          </button>
           <ExportMenu
+            onPrint={() => printNow(mode)}
             items={[
               { format: 'hwpx', run: async () => fs.downloadFile(`${fileStem()}.hwpx`, await buildReflectionHwpx(doc())) },
               { format: 'pdf', run: () => exportPdf(`${fileStem()}.pdf`, { pageSize: mode }) },

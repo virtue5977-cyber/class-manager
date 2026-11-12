@@ -52,3 +52,15 @@ test('마감일 자리에 끼울 때 완료한 할 일도 함께 밀어 순서�
   expect(new Set(orders).size).toBe(orders.length)
   void a
 })
+
+test('할 일 고치기: 글(부분)·마감일을 바꾸고 순서·완료는 그대로', async () => {
+  const { updateTodo } = await import('./todos')
+  const db = createDb('test-' + crypto.randomUUID())
+  const a = await addTodo(db, ['회신 걷기'], '2026-11-13')
+  await updateTodo(db, a.id, { parts: ['동의서 걷기'], due: null })
+  const got = await db.todos.get(a.id)
+  expect(got!.parts).toEqual(['동의서 걷기'])
+  expect(got!.due).toBeNull()
+  expect(got!.order).toBe(a.order)
+  await expect(updateTodo(db, a.id, { parts: ['  '] })).rejects.toThrow('내용')
+})

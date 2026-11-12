@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { closeAllMenus, installMenuAutoClose } from '../lib/ui/autoCloseMenus'
 import { dispatchShortcut, matchShortcut } from '../lib/ui/shortcuts'
+import { useLayoutPrefs } from '../lib/ui/layoutPrefs'
 
 const isField = (t: EventTarget | null) => !!t && t instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)
 
@@ -9,12 +10,16 @@ const isField = (t: EventTarget | null) => !!t && t instanceof HTMLElement && (/
 export default function Shortcuts() {
   const navigate = useNavigate()
   const { pathname, search } = useLocation()
+  // Ctrl+숫자: 보이는 메뉴 순서(설정 > 화면에서 바꾸면 따라 바뀐다)
+  const prefs = useLayoutPrefs()
+  const navOrder = useRef<string[]>([])
+  navOrder.current = prefs.menu.filter((m) => !m.hidden).map((m) => m.key)
   // 펼침 메뉴: 바깥 누르기·Esc·항목 고르기·화면 이동에 닫힌다
   useEffect(() => installMenuAutoClose(document), [])
   useEffect(() => closeAllMenus(document), [pathname, search])
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
-      const a = matchShortcut(e, isField(e.target))
+      const a = matchShortcut(e, isField(e.target), navOrder.current)
       if (!a) return
       if (a.kind === 'nav') navigate(a.to)
       // 명령(Ctrl+K): 홈이면 입력 막대에, 다른 화면이면 W 막대를 연다(각 부품이 듣는다).

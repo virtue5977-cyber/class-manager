@@ -96,3 +96,12 @@ test('되돌리기 기본은 5초(사용자 요청 11/11)', async () => {
   now = 5001
   expect(await u.undo()).toBe(false)
 })
+
+test('내보내기 형식 낱말', async () => {
+  const { exportFormatOf } = await import('./handlers')
+  expect(exportFormatOf('엑셀')).toBe('xlsx')
+  expect(exportFormatOf('한글')).toBe('hwpx')
+  expect(exportFormatOf('PDF')).toBe('pdf')
+  expect(exportFormatOf('인쇄')).toBe('print')
+  expect(exportFormatOf('')).toBeNull()
+})
