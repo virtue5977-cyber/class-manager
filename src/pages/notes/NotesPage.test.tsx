@@ -317,3 +317,29 @@ test('Ctrl+Z는 줄 나누기를 되돌리고 Ctrl+Y는 다시', async () => {
   await user.keyboard('{Control>}y{/Control}')
   await waitFor(() => expect(blocks().map((b) => b.textContent)).toEqual(['가나', '다라']))
 })
+
+test('한글로 복사: 제목 줄 오른쪽 단추, HTML과 글을 함께 클립보드에', async () => {
+  const user = userEvent.setup()
+  const got: Record<string, Blob>[] = []
+  class FakeItem {
+    constructor(public items: Record<string, Blob>) {
+      got.push(items)
+    }
+  }
+  vi.stubGlobal('ClipboardItem', FakeItem)
+  const write = vi.fn(async () => {})
+  Object.defineProperty(navigator, 'clipboard', { value: { write }, configurable: true })
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('안내문')
+  const head = screen.getByDisplayValue('회의록').closest('.note-head') as HTMLElement
+  expect(within(head).getByRole('button', { name: '노트 전체를 전달사항으로' })).toBeInTheDocument()
+  await user.click(within(head).getByRole('button', { name: '한글로 복사' }))
+  await waitFor(() => expect(write).toHaveBeenCalled())
+  expect(Object.keys(got[0])).toEqual(['text/html', 'text/plain'])
+  const html = await new Promise<string>((r) => { const f = new FileReader(); f.onload = () => r(String(f.result)); f.readAsText(got[0]['text/html']) })
+  expect(html).toContain('안내문')
+  expect(await screen.findByText(/한글에서 Ctrl\+V/)).toBeInTheDocument()
+  vi.unstubAllGlobals()
+})

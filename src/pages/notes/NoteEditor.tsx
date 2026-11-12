@@ -8,6 +8,7 @@ import RichLine, { type LineHandle, type LineValue } from './RichLine'
 import FormatBar from './FormatBar'
 import { applyStyle, styleAt } from '../../lib/notes/marks'
 import { getSel } from '../../lib/notes/richDom'
+import { copyRich, noteToHtml, noteToPlain } from '../../lib/notes/toHtml'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
@@ -373,6 +374,15 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     }
   }
 
+  /** 노트 전체를 서식째 복사(한글에 붙여 넣기) */
+  async function copyForHwp() {
+    const names = new Map<string, string>()
+    for (const b of blocks) if (b.type === 'file' && b.file_id) names.set(b.file_id, fileInfo[b.file_id]?.name ?? '파일')
+    const n = { title, blocks }
+    const ok = await copyRich(noteToHtml(n, { files: names }), noteToPlain(n))
+    setMsg(ok ? '복사했습니다. 한글에서 Ctrl+V로 붙여 넣으세요.' : '복사하지 못했습니다. 글을 골라 Ctrl+C를 눌러 보세요.')
+  }
+
   const onDrop = (e: DragEvent) => {
     if (dragId) return
     const files = Array.from(e.dataTransfer?.files ?? [])
@@ -384,11 +394,14 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const marks = outlineMarks(blocks)
   return (
     <section className="note-editor" aria-label="노트 편집" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
-      <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
-      {msg && <p className="notice" role="status">{msg}</p>}
-      <div className="row note-tools">
-        <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+      <div className="note-head">
+        <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
+        <div className="row note-tools">
+          <button type="button" className="link" title="서식을 살려 복사합니다. 한글·워드에 붙여 넣으세요." onClick={copyForHwp}>한글로 복사</button>
+          <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+        </div>
       </div>
+      {msg && <p className="notice" role="status">{msg}</p>}
       {sendFor && (
         <div className="row card send-range" role="group" aria-label="전달사항 기간">
           <span>{sendFor === 'all' ? '노트 전체(글 블록마다 한 항목)' : '이 블록'}을 전달사항으로:</span>

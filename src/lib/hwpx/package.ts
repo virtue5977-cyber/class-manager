@@ -22,6 +22,8 @@ export interface HwpxDoc {
   charPrXml: string[]
   previewText: string
   title: string
+  /** 글꼴·문단 모양을 더한 header(없으면 기본 양식) */
+  headerXml?: string
 }
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
@@ -41,9 +43,9 @@ function sectionXml(doc: HwpxDoc): string {
   )
 }
 
-function headerWith(charPrXml: string[]): string {
-  if (!charPrXml.length) return headerXml
-  return headerXml
+function headerWith(charPrXml: string[], base = headerXml): string {
+  if (!charPrXml.length) return base
+  return base
     .replace(/<hh:charProperties itemCnt="\d+"/, `<hh:charProperties itemCnt="${BASE_CHARPR_COUNT + charPrXml.length}"`)
     .replace('</hh:charProperties>', charPrXml.join('') + '</hh:charProperties>')
 }
@@ -55,7 +57,7 @@ export async function buildHwpx(doc: HwpxDoc, now: Date = new Date()): Promise<U
   const add = (name: string, body: string) => zip.file(name, body, { createFolders: false })
   zip.file('mimetype', 'application/hwp+zip', { compression: 'STORE', createFolders: false })
   add('version.xml', versionXml)
-  add('Contents/header.xml', headerWith(doc.charPrXml))
+  add('Contents/header.xml', headerWith(doc.charPrXml, doc.headerXml))
   add('Contents/section0.xml', sectionXml(doc))
   add('Preview/PrvText.txt', doc.previewText)
   add('settings.xml', settingsXml)

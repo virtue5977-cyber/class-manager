@@ -1,6 +1,8 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, type KeyboardEvent } from 'react'
 import { applyStyle, shiftLinks, shiftMarks, type Mark, type NoteLink } from '../../lib/notes/marks'
 import { atLineEdge, getSel, readText, renderHtml, setSel } from '../../lib/notes/richDom'
+import { lineHtml } from '../../lib/notes/toHtml'
+import { splitLinks, splitRanges } from '../../lib/notes/marks'
 
 /** 노트 편집기가 쓰는 한 줄 손잡이(예전 textarea와 같은 이름) */
 export interface LineHandle {
@@ -144,6 +146,21 @@ const RichLine = forwardRef<LineHandle, Props>(function RichLine(p, ref) {
         const t = (e.nativeEvent as InputEvent).inputType
         // 브라우저의 굵게·기울임 등(태그를 넣는다)은 막고 우리 서식으로
         if (t && t.startsWith('format')) e.preventDefault()
+      }}
+      onCopy={(e) => {
+        // 고른 글을 서식째(한글에 붙여 넣기 좋게)
+        const d = el.current
+        const sel = d && getSel(d)
+        if (!sel || sel.start === sel.end) return
+        const cur = props.current
+        const a = Math.min(sel.start, sel.end)
+        const z = Math.max(sel.start, sel.end)
+        const m = splitRanges(splitRanges(cur.marks, z)[0], a)[1]
+        const l = splitLinks(splitLinks(cur.links, z)[0], a)[1]
+        const t = cur.text.slice(a, z)
+        e.preventDefault()
+        e.clipboardData.setData('text/plain', t)
+        e.clipboardData.setData('text/html', `<html><body><!--StartFragment--><span style="font-size:10pt">${lineHtml(t, m, l)}</span><!--EndFragment--></body></html>`)
       }}
       onPaste={(e) => {
         e.preventDefault()
