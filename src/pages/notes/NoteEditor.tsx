@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
-import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
+import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent, setNotePage } from '../../lib/notes/notes'
 import { filterSlash, indentBlock, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
 import { caretNav, placeCaret } from '../../lib/ui/caretNav'
 import RichLine, { type LineHandle, type LineValue } from './RichLine'
 import NoteToolbar, { type InsertKind, type MarkKey } from './NoteToolbar'
 import NoteTable from './NoteTable'
 import NoteImage from './NoteImage'
+import { DEFAULT_PAGE, PageGap, PageMenu, usePageStarts } from './NotePageView'
+import { fillHeaderFooter, MARGINS } from '../../lib/notes/paginate'
+import { Fragment } from 'react'
 import { imageMime, isImageName, MAX_IMAGE, shrinkImage } from '../../lib/notes/images'
 import { newTable } from '../../lib/notes/tableOps'
 import { applyStyle, forceStyle, styleAt, type Style } from '../../lib/notes/marks'
@@ -223,6 +226,14 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   useEffect(() => () => persist(latest.current.title, latest.current.blocks), [persist])
   // 다른 곳(전달사항 칸 등)에서 노트가 바뀌면 받아 온다(내가 저장한 것과 다를 때만)
   const live = useLive<NoteRec | undefined>(() => db.notes.get(note.id), [db, note.id], note)
+  // 쪽 보기 설정(바꾸면 바로 보이고 저장)
+  const [page, setPage] = useState(note.page ?? DEFAULT_PAGE)
+  const changePage = (p: typeof page) => {
+    setPage(p)
+    void setNotePage(db, note.id, p)
+  }
+  const probe = useRef<HTMLDivElement>(null)
+  const pg = usePageStarts(page.view, blocksBox, probe, blocks, page.margin)
   useEffect(() => {
     if (!live || live.deleted) return
     const j = JSON.stringify(live.blocks)
@@ -734,6 +745,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         onInsert={tbInsert}
         onUndo={() => stepHistory(-1, cur?.id ?? '')}
         onRedo={() => stepHistory(1, cur?.id ?? '')}
+        extra={<PageMenu page={page} onChange={changePage} />}
       />
       {msg && <p className="notice" role="status">{msg}</p>}
       {sendFor === 'all' && (
@@ -762,12 +774,21 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           <button type="button" className="link" onClick={() => setSendFor(undefined)}>취소</button>
         </div>
       )}
+      <div className={page.view ? `note-paper-wrap${page.grid ? ' grid' : ''}` : 'note-flow'} style={page.view && page.zoom ? { zoom: page.zoom / 100 } : undefined}>
+      <div
+        className={page.view ? 'note-paper' : undefined}
+        style={page.view ? { padding: `${MARGINS[page.margin].top}mm ${MARGINS[page.margin].right}mm 0 ${MARGINS[page.margin].left}mm` } : undefined}
+      >
+      {page.view && <div className="pg-probe" ref={probe} aria-hidden="true" />}
+      {page.view && page.header && <div className="pg-first-head" style={{ top: 0, height: `${MARGINS[page.margin].top}mm` }} aria-hidden="true"><span>{fillHeaderFooter(page.header, 1, pg.starts.length, today)}</span></div>}
       <div className="note-blocks" ref={blocksBox} onPointerDown={startLineSelect}>
         {blocks.map((b, i) => {
           const lv = b.indent ?? 0
           const q = slashOf(b)
           const items = q !== null ? filterSlash(q) : []
           return (
+            <Fragment key={b.id}>
+            {page.view && i > 0 && pg.starts.includes(i) && <PageGap fill={pg.pageH - (pg.used[pg.starts.indexOf(i) - 1] ?? 0)} page={page} n={pg.starts.indexOf(i)} total={pg.starts.length} today={today} />}
             <div
               key={b.id}
               className={`nb nb-${b.type} nb-l${lv}${b.align ? ` al-${b.align}` : ''}${b.line ? ` ln-${b.line}` : ''}${dragId === b.id ? ' dragging' : ''}${inSel(i) ? ' nb-selected' : ''}`}
@@ -858,8 +879,12 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                 </>
               )}
             </div>
+            </Fragment>
           )
         })}
+      </div>
+      {page.view && <PageGap last fill={pg.pageH - (pg.used[pg.used.length - 1] ?? 0)} page={page} n={pg.starts.length} total={pg.starts.length} today={today} />}
+      </div>
       </div>
 
       <p className="muted nb-hint">파일을 끌어다 놓으면 붙습니다(50MB까지).</p>

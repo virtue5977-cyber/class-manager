@@ -313,6 +313,15 @@ export interface NoteBlock {
   /** @노트 링크(text 안 위치) */
   links?: import('../notes/marks').NoteLink[]
 }
+export interface NotePage {
+  view: boolean
+  margin: 'narrow' | 'normal' | 'wide'
+  grid: boolean
+  /** 확대 %(50~200) */
+  zoom?: number
+  header?: string
+  footer?: string
+}
 export interface NoteRec extends BaseRecord {
   title: string
   blocks: NoteBlock[]
@@ -323,6 +332,8 @@ export interface NoteRec extends BaseRecord {
   order?: number
   /** 이 날짜 전달사항과 짝인 노트(YYYY-MM-DD) */
   notice_date?: string
+  /** 쪽 보기·여백·격자·확대·머리말·꼬리말(없으면 화면 너비 보기) */
+  page?: NotePage
 }
 /** 노트 첨부(내용은 base64, 50MB까지) */
 export interface NoteFileRec extends BaseRecord {

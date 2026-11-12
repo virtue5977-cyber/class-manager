@@ -2,10 +2,12 @@
 import type { NoteBlock, NoteRec } from '../db/types'
 import { buildHwpx, BASE_CHARPR_COUNT, BASE_HEADER_XML } from '../hwpx/package'
 import { escapeXml } from '../hwpx/xml'
-import { tableXml, PARA_JUSTIFY } from '../hwpx/xml'
+import { tableXml, PARA_CENTER, PARA_JUSTIFY } from '../hwpx/xml'
 import { outlineMarks } from '../notes/blocks'
 import { tableWidths } from '../notes/tableOps'
 import { imageExt, imageMime, imageSize } from '../notes/images'
+import { fillHeaderFooter, MARGINS } from '../notes/paginate'
+import { toYmd } from '../schoolDays'
 import { ptOf, segments, type Style } from '../notes/marks'
 import { A4_PORTRAIT_BODY_WIDTH } from './roster-doc'
 import { tableColWidths } from './table-doc'
@@ -118,7 +120,7 @@ function picXml(binId: string, w: number, h: number): string {
 }
 
 /** images: 그림 블록 file_id → 그림 바이트 */
-export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, files: Map<string, string> = new Map(), now?: Date, images: Map<string, Uint8Array> = new Map()): Promise<Uint8Array> {
+export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks' | 'page'>, files: Map<string, string> = new Map(), now?: Date, images: Map<string, Uint8Array> = new Map()): Promise<Uint8Array> {
   const bins: { id: string; ext: string; mime: string; bytes: Uint8Array }[] = []
   const reg = new Registry()
   const marks = outlineMarks(note.blocks)
@@ -204,5 +206,32 @@ export async function buildNoteHwpx(note: Pick<NoteRec, 'title' | 'blocks'>, fil
   })
   if (breakNext) body.push(para(PARA_JUSTIFY, '<hp:run charPrIDRef="0"/>', true))
   const previewText = [note.title, ...note.blocks.map((b) => b.text ?? '')].join('\n').slice(0, 2000)
-  return buildHwpx({ landscape: false, bodyXml: body.join(''), charPrXml: reg.charPrXml(), previewText, title: note.title || '노트', headerXml: reg.header(), bins }, now)
+  return buildHwpx({ landscape: false, bodyXml: body.join(''), charPrXml: reg.charPrXml(), previewText, title: note.title || '노트', headerXml: reg.header(), bins, ...pageSetup(note.page, reg, now) }, now)
+}
+
+const MM = 283.465
+/** 쪽 여백·머리말·꼬리말: secPr 여백을 바꾸고, 첫 문단에 머리말·꼬리말 컨트롤을 넣는다 */
+function pageSetup(page: NoteRec['page'], reg: Registry, now?: Date): { secPr?: (x: string) => string; firstRunExtra?: string } {
+  if (!page) return {}
+  const m = MARGINS[page.margin] ?? MARGINS.normal
+  const u = (mm: number) => Math.round(mm * MM)
+  const secPr = (x: string) => x.replace(/<hp:margin [^>]*\/>/, `<hp:margin header="${u(Math.min(10, m.top / 2))}" footer="${u(Math.min(10, m.bottom / 2))}" gutter="0" left="${u(m.left)}" right="${u(m.right)}" top="${u(m.top)}" bottom="${u(m.bottom)}"/>`)
+  const today = toYmd(now ?? new Date())
+  const cp = reg.cp({ pt: 9, color: '#555555' })
+  const width = u(210 - m.left - m.right)
+  /** 글 + {쪽}·{전체쪽}은 쪽 번호 컨트롤로 */
+  const runs = (t: string) =>
+    t
+      .split(/(\{쪽\}|\{전체쪽\})/)
+      .filter(Boolean)
+      .map((part) =>
+        part === '{쪽}' || part === '{전체쪽}'
+          ? `<hp:run charPrIDRef="${cp}"><hp:ctrl><hp:autoNum num="1" numType="${part === '{쪽}' ? 'PAGE' : 'TOTAL_PAGE'}"><hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/></hp:autoNum></hp:ctrl></hp:run>`
+          : `<hp:run charPrIDRef="${cp}">${tx(fillHeaderFooter(part, 1, 1, today))}</hp:run>`,
+      )
+      .join('')
+  const box = (tag: 'header' | 'footer', id: number, t: string) =>
+    `<hp:ctrl><hp:${tag} id="${id}" applyPageType="BOTH"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="${tag === 'header' ? 'TOP' : 'BOTTOM'}" linkListIDRef="0" linkListNextIDRef="0" textWidth="${width}" textHeight="${u(8)}" hasTextRef="0" hasNumRef="0"><hp:p id="0" paraPrIDRef="${PARA_CENTER}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${runs(t)}</hp:p></hp:subList></hp:${tag}></hp:ctrl>`
+  const extra = [page.header?.trim() ? box('header', 1, page.header) : '', page.footer?.trim() ? box('footer', 2, page.footer) : ''].join('')
+  return { secPr, firstRunExtra: extra || undefined }
 }

@@ -28,6 +28,8 @@ export interface HwpxDoc {
   bins?: { id: string; ext: string; mime: string; bytes: Uint8Array }[]
   /** secPr 바꾸기(여백 등) */
   secPr?: (xml: string) => string
+  /** 첫 문단 secPr 뒤에 넣을 것(머리말·꼬리말 컨트롤 등) */
+  firstRunExtra?: string
 }
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
@@ -42,7 +44,9 @@ function sectionXml(doc: HwpxDoc): string {
     sectionOpen +
     '<hp:p id="0" paraPrIDRef="13" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="0">' +
     secPr +
-    '</hp:run></hp:p>' +
+    '</hp:run>' +
+    (doc.firstRunExtra ? `<hp:run charPrIDRef="0">${doc.firstRunExtra}</hp:run>` : '') +
+    '</hp:p>' +
     doc.bodyXml +
     '</hs:sec>'
   )
