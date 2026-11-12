@@ -14,7 +14,8 @@ import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
 import { deleteLog, KINDS, kindOf, listAllLogs, listLogsByStudent, listLogsByStudents, logTags, METHODS, nugaCopyText, nugaHead, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
 import { runNuga } from '../../lib/counseling/nuga'
-import { getSettings } from '../../lib/settings'
+import { getSettings, updateSettings } from '../../lib/settings'
+import { APP_SETTINGS_ID } from '../../lib/backup/service'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import { hashParam, ymdParam } from '../../lib/ui/hashParam'
@@ -186,7 +187,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
             const stale = !!last && last < addDays(today, -30)
             return (
               <li key={s.id}>
-                <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(s.id); setMessages([]); setEditing(undefined); setAdding(false) }}>
+                <button type="button" className={`student-row${selected === s.id ? ' active' : ''}`} onClick={() => { setSelected(selected === s.id ? undefined : s.id); setMessages([]); setEditing(undefined); setAdding(false) }} aria-pressed={selected === s.id} title={selected === s.id ? '다시 누르면 전체 기록' : undefined}>
                   <span className="num pii">{`${s.number}번 ${s.name}`}</span>
                   <span className={`att${stale ? ' stale' : ''}`}>
                     {last ? `${counts[s.id]}건 · ${Number(last.slice(5, 7))}/${Number(last.slice(8))}${stale ? ' · 한 달 넘음' : ''}` : ''}
@@ -331,11 +332,12 @@ export function LogFieldsForm({ initial, submitLabel, onSubmit, onCancel, onCanc
       <Choice label="종류" options={KINDS} value={f.kind ?? '상담'} onChange={(v) => setF({ ...f, kind: v as '상담' | '관찰' })} />
       {(f.kind ?? '상담') === '상담' && (
         <>
-          <Choice label="대상" options={TARGETS} value={f.target || '학생'} onChange={(v) => setF({ ...f, target: v })} />
+          {/* 교사는 대상에서 뺐다(예전 기록의 '교사'는 그대로 보인다) */}
+          <Choice label="대상" options={TARGETS.filter((t) => t !== '교사' || f.target === '교사')} value={f.target || '학생'} onChange={(v) => setF({ ...f, target: v })} />
           <Choice label="방법" options={METHODS} value={f.method || '대면'} onChange={(v) => setF({ ...f, method: v })} />
-          <Choice label="분야" options={TOPICS} value={f.topic} onChange={(v) => setF({ ...f, topic: v })} allowEmpty />
         </>
       )}
+      <Choice label="분야" options={TOPICS} value={f.topic} onChange={(v) => setF({ ...f, topic: v })} allowEmpty />
       <AudioDrop onText={(t) => setF((cur) => ({ ...cur, content: appendTranscript(cur.content, t) }))} />
       <label className="wide">
         내용(개조식 메모나 녹음 글)
@@ -453,6 +455,8 @@ type StatusFilter = '전체' | '미정리' | '정리됨' | '나이스 입력 완
 /** 기본 화면: 학급 전체 누가기록(최근 먼저). 종류·학생·기간·정리 상태로 거른다. 줄을 누르면 그 학생 화면. */
 function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: string; onOpen: (sid: string) => void }) {
   const db = useDb()
+  const fs = useFs()
+  const alertOff = useLive<boolean>(async () => !!(await db.app_settings.get(APP_SETTINGS_ID))?.nuga_alert_off, [db], false)
   const ids = students.map((s) => s.id)
   const all = useLive<CounselingLogRec[]>(() => listAllLogs(db, ids), [db, ids.join(',')], [])
   const [kind, setKind] = useState<KindFilter>('전체')
@@ -463,6 +467,18 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
   const byId = new Map(students.map((s) => [s.id, s]))
   const shown = all.filter((l) => (kind === '전체' || kindOf(l) === kind) && (!sid || l.student_id === sid) && (!from || l.date >= from) && (!to || l.date <= to) && (status === '전체' || l.nuga_status === status))
   void today
+  /** 파일 이름: 이름 가림과 상관없이 '누가기록_전체'(걸러 본 목록 그대로) */
+  const allStem = () => '누가기록_전체'
+  async function exportAll(kind: 'hwpx' | 'xlsx') {
+    const who = (sid: string) => {
+      const st = byId.get(sid)
+      return st ? (isHideNames() ? `${st.number}번` : `${st.number}번 ${st.name}`) : ''
+    }
+    const header = ['날짜', '종류', '학생', '장소', '대상·방법·분야', '누가기록(정리본 또는 원문)', '상태']
+    const rows = shown.map((l) => [[nugaHeader(l.date, ''), l.time].filter(Boolean).join(' '), kindOf(l), who(l.student_id), l.place, [l.target, l.method, l.topic].filter(Boolean).join(' · '), l.nuga_text || l.content, l.nuga_status])
+    const bytes = kind === 'hwpx' ? await buildTableHwpx({ title: '누가기록', header, rows, colRatios: [3, 2, 3, 3, 3, 10, 3], fontSizePt: 9 }) : await writeSimpleXlsx('누가기록', [header, ...rows])
+    fs.downloadFile(`${allStem()}.${kind}`, bytes)
+  }
   return (
     <section className="stack wide all-logs" aria-label="전체 누가기록">
       <div className="row log-toolbar">
@@ -499,6 +515,12 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
           </select>
         </label>
         <span className="muted">{`${shown.length}건`}</span>
+        <span className="spacer" />
+        <label className="inline" title="왼쪽 메뉴의 '미정리' 숫자">
+          <input type="checkbox" checked={!alertOff} onChange={(e) => void updateSettings(db, { nuga_alert_off: !e.target.checked })} />
+          미정리 알림
+        </label>
+        {shown.length > 0 && <ExportMenu items={[{ format: 'hwpx', run: () => exportAll('hwpx') }, { format: 'xlsx', run: () => exportAll('xlsx') }, { format: 'pdf', run: () => exportPdf(`${allStem()}.pdf`) }]} />}
       </div>
       {shown.length === 0 ? (
         <p className="muted">{all.length ? '해당하는 기록이 없습니다.' : '아직 기록이 없습니다. 왼쪽에서 학생을 골라 새 기록을 쓰거나 /상담 · /관찰 명령을 쓰세요.'}</p>

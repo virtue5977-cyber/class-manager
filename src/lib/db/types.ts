@@ -205,6 +205,8 @@ export interface HwpxTemplateRec extends BaseRecord {
 
 /** 동기화·백업 대상 설정. 기기 전용 값은 DeviceLocalRec에 둔다. */
 export interface AppSettingsRec extends BaseRecord {
+  /** 누가기록 '미정리' 알림(메뉴 숫자) 끄기 */
+  nuga_alert_off?: boolean
   teacher_name: string
   school_name: string
   neis_office_code: string

@@ -4,6 +4,7 @@ import type { AppDB } from '../db/schema'
 import { listReportsForMonth } from '../absenceReports/list'
 import { listLogsByStudents } from '../counseling/counseling'
 import { getCurrentClassId } from '../roster/roster'
+import { APP_SETTINGS_ID } from '../backup/service'
 import { toYmd } from '../schoolDays'
 import { useDb } from '../../app/context'
 
@@ -16,6 +17,9 @@ export interface Badges {
 export async function countBadges(db: AppDB, classId: string, month: string): Promise<Badges> {
   const openReports = (await listReportsForMonth(db, classId, month)).filter((r) => !r.report.submitted).length
   const ids = (await db.students.where('class_id').equals(classId).toArray()).filter((s) => !s.deleted).map((s) => s.id)
+  // 알림을 끄면 세지 않는다(liveQuery 안이라 읽기만)
+  const off = (await db.app_settings.get(APP_SETTINGS_ID))?.nuga_alert_off
+  if (off) return { openReports, unorganizedLogs: 0 }
   const logs = Object.values(await listLogsByStudents(db, ids)).flat()
   return { openReports, unorganizedLogs: logs.filter((l) => l.nuga_status === '미정리').length }
 }

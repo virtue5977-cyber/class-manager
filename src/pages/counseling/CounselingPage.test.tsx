@@ -233,3 +233,35 @@ test('기본 화면은 학급 전체 누가기록(종류·학생 거르기), 관
   await user.click(within(within(form).getByRole('radiogroup', { name: '종류' })).getByRole('radio', { name: '관찰' }))
   expect(within(form).queryByRole('radiogroup', { name: '대상' })).toBeNull()
 })
+
+test('0.14: 전체 목록 내보내기, 대상에 교사 없음, 관찰도 분야, 고른 학생 다시 누르면 전체로, 미정리 알림 끄기', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const s = await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  await saveLog(db, { student_id: s.id, date: '2026-11-03', place: '교실', content: '진로 상담' })
+  const fs = createMemoryFsAdapter()
+  render(
+    <AppProviders db={db} fs={fs}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  const all = await screen.findByRole('region', { name: '전체 누가기록' })
+  await waitFor(() => expect(within(all).getAllByRole('row')).toHaveLength(2))
+  await pickExport(user, '엑셀(xlsx)')
+  await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['누가기록_전체.xlsx']))
+  // 미정리 알림 끄기(설정에 저장)
+  await user.click(within(all).getByRole('checkbox', { name: '미정리 알림' }))
+  const { getSettings } = await import('../../lib/settings')
+  await waitFor(async () => expect((await getSettings(db)).nuga_alert_off).toBe(true))
+  // 학생 고르기 → 다시 누르면 전체
+  await user.click(within(screen.getByRole('list', { name: '학생 목록' })).getByRole('button', { name: /^1번 김지훈/ }))
+  expect(await screen.findByRole('button', { name: '← 전체 기록' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '+ 새 기록' }))
+  const form = screen.getByLabelText('새 기록')
+  expect(within(within(form).getByRole('radiogroup', { name: '대상' })).queryByRole('radio', { name: '교사' })).toBeNull()
+  await user.click(within(within(form).getByRole('radiogroup', { name: '종류' })).getByRole('radio', { name: '관찰' }))
+  expect(within(form).getByRole('radiogroup', { name: '분야' })).toBeInTheDocument()
+  await user.click(within(screen.getByRole('list', { name: '학생 목록' })).getByRole('button', { name: /^1번 김지훈/ }))
+  expect(await screen.findByRole('region', { name: '전체 누가기록' })).toBeInTheDocument()
+})
