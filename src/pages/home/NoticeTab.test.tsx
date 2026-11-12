@@ -37,7 +37,7 @@ test('기간 안 항목이 보이고, 고정하면 맨 위, 체크·지우기·�
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).find((n) => n.text === '동의서 걷기')!.done).toBe(true))
   await user.click(within(rows()[0]).getByRole('button', { name: '체육복 지우기' }))
   await waitFor(() => expect(rows()).toHaveLength(1))
-  await user.click(screen.getByRole('button', { name: /되돌리기/ }))
+  await user.click(await screen.findByRole('button', { name: /되돌리기/ }))
   await waitFor(() => expect(rows()).toHaveLength(2))
 })
 
@@ -123,7 +123,7 @@ test('머리 아이콘의 전체 지우기: 한 번 더 묻고, 되돌리기로 
   await user.click(screen.getByRole('button', { name: '전체 지우기' }))
   await user.click(screen.getByRole('button', { name: '모두 지우기' }))
   await waitFor(async () => expect(await noticesOn(db, '2026-11-11')).toEqual([]))
-  await user.click(screen.getByRole('button', { name: /되돌리기/ }))
+  await user.click(await screen.findByRole('button', { name: /되돌리기/ }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).length).toBe(2))
 })
 
