@@ -16,6 +16,7 @@ import ExportMenu from '../../components/ExportMenu'
 import { buildNoteHwpx } from '../../lib/docs/note-doc'
 import PageHead from '../../components/PageHead'
 import NoteEditor from './NoteEditor'
+import NoticeTag from './NoticeTag'
 
 /** 노트함: 왼쪽 목록(찾기·고정·지우기) + 오른쪽 편집. */
 export default function NotesPage({ today = toYmd(new Date()) }: { today?: string }) {
@@ -151,6 +152,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
     <li key={n.id} data-kind="note" data-id={n.id} data-parent={parent ?? ''} className={`note-item tree-row${n.id === id ? ' on' : ''}${drag?.id === n.id ? ' dragging' : ''}${lineCls(n.id)}`} style={{ paddingLeft: 4 + depth * 16 }} onPointerDown={(e) => !q.trim() && beginDrag(e, 'note', n.id)}>
       <span className="tree-twisty" aria-hidden="true" />
       <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>
+      <NoticeTag note={n} />
       <Link to={`/notes?id=${n.id}`} draggable={false}>{n.title || '제목 없음'}</Link>
       {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
       <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.title} 고정`} aria-pressed={n.pinned} onClick={() => setPinned(db, n.id, !n.pinned)}>

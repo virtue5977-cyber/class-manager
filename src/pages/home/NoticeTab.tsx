@@ -5,20 +5,20 @@ import { useAi, useDb, useFs } from '../../app/context'
 import type { NoticeItemRec } from '../../lib/db/types'
 import { addNotice, clearNoticesOn, deleteNotice, moveNotice, noticesOn, updateNotice } from '../../lib/notices/notices'
 import { splitNoticesByAi } from '../../lib/notices/aiSplit'
-import { createNote, newBlockId } from '../../lib/notes/notes'
+import { openNoticeNote } from '../../lib/notices/noteSync'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { buildTableHwpx } from '../../lib/docs/table-doc'
 import { writeSimpleXlsx } from '../../lib/xlsx/simple'
 import { exportPdf } from '../../lib/export/pdf'
 import { useLive } from '../../lib/ui/useLive'
 import ExportMenu from '../../components/ExportMenu'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 const DRAFT = '__draft'
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
 const period = (n: NoticeItemRec) => (n.start_date === n.end_date ? md(n.start_date) : `${md(n.start_date)}~${md(n.end_date)}`)
 
-/** 그날 전달사항: 체크 · 고정 · 순서 · 기간 · 지우기(되돌리기) · 직접 추가 · AI로 나누기 · 노트로 보내기 · 내보내기. */
+/** 그날 전달사항: 체크 · 고정 · 순서 · 기간 · 지우기(되돌리기) · 직접 추가 · AI로 나누기 · 노트로 열기(짝 노트) · 내보내기. */
 /** 글 길이에 맞춰 칸 높이를 늘린다(잘리지 않게) */
 const grow = (el: HTMLTextAreaElement | null) => {
   if (!el) return
@@ -28,6 +28,7 @@ const grow = (el: HTMLTextAreaElement | null) => {
 
 export default function NoticeTab({ date }: { date: string }) {
   const db = useDb()
+  const navigate = useNavigate()
   const fs = useFs()
   const ai = useAi()
   const list = useLive<NoticeItemRec[]>(() => noticesOn(db, date), [db, date], [])
@@ -116,12 +117,11 @@ export default function NoticeTab({ date }: { date: string }) {
           <button
             type="button"
             className="icon-btn tool-ico"
-            aria-label="노트로 보내기"
-            title="노트로 보내기"
-            disabled={!list.length}
+            aria-label="노트로 열기"
+            title="노트로 열기 — 이날 전달사항이 노트 한 장과 이어집니다(어느 쪽에서 고쳐도 같이 바뀜)"
             onClick={() => act(async () => {
-              const n = await createNote(db, `${md(date)} 전달사항`, list.map((x) => ({ id: newBlockId(), type: 'check' as const, text: x.text, checked: x.done })))
-              setMsg(`노트 '${n.title}'로 보냈습니다.`)
+              const n = await openNoticeNote(db, date)
+              navigate(`/notes?id=${n.id}`)
             })}
           >
             <Icon name="noteAdd" size={16} />

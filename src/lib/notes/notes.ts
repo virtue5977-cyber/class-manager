@@ -1,6 +1,8 @@
 import type { AppDB } from '../db/schema'
 import type { NoteFileRec, NoteRec } from '../db/types'
 import { newRecord, save, scrubDelete } from '../db/records'
+import { syncNoteToNotices, unlinkNoticeNote } from '../notices/noteSync'
+import { toYmd } from '../schoolDays'
 
 export const MAX_FILE = 50 * 1024 * 1024
 /** 모든 노트 첨부 합계 한도(브라우저 저장 공간·백업 크기 보호) */
@@ -18,11 +20,15 @@ export const saveNote = (db: AppDB, rec: NoteRec) => save(db.notes, rec)
 
 /** 편집 저장: 최신 노트에 제목·블록만 바꾼다(그사이 바뀐 고정 표시는 지키고, 지운 노트는 되살리지 않음). */
 export async function saveNoteContent(db: AppDB, id: string, content: Pick<NoteRec, 'title' | 'blocks'>, now = Date.now()): Promise<void> {
+  let paired = false
   await db.transaction('rw', db.notes, async () => {
     const cur = await db.notes.get(id)
     if (!cur || cur.deleted) return
+    paired = !!cur.notice_date
     await save(db.notes, { ...cur, title: content.title, blocks: content.blocks })
   })
+  // 그날 전달사항과 짝인 노트면 전달사항도 맞춘다
+  if (paired) await syncNoteToNotices(db, id)
   // 블록에서 빠진 지 1분 넘은 첨부는 내용을 비운다(백업이 커지지 않게). 막 붙인 파일은 블록이 저장되기 전일 수 있어 기다린다.
   const used = new Set(content.blocks.filter((b) => b.file_id).map((b) => b.file_id))
   for (const f of await db.note_files.where('note_id').equals(id).toArray())
@@ -37,10 +43,13 @@ export async function setPinned(db: AppDB, id: string, pinned: boolean): Promise
   })
 }
 
-/** 고정 먼저, 그다음 순서 없는 노트(최근에 고친 순), 그다음 끌어서 정한 순서 */
-export async function listNotes(db: AppDB): Promise<NoteRec[]> {
+/** 오늘·앞날짜 전달사항 노트(가까운 날 먼저) → 고정 → 순서 없는 노트(최근에 고친 순) → 끌어서 정한 순서 */
+export async function listNotes(db: AppDB, today: string = toYmd(new Date())): Promise<NoteRec[]> {
   const ord = (n: NoteRec) => (n.order === undefined ? -1 : n.order)
-  return (await db.notes.toArray()).filter((n) => !n.deleted).sort((a, b) => Number(b.pinned) - Number(a.pinned) || ord(a) - ord(b) || b.updated_at.localeCompare(a.updated_at))
+  const ahead = (n: NoteRec) => (n.notice_date && n.notice_date >= today ? n.notice_date : '')
+  return (await db.notes.toArray())
+    .filter((n) => !n.deleted)
+    .sort((a, b) => Number(!!ahead(b)) - Number(!!ahead(a)) || ahead(a).localeCompare(ahead(b)) || Number(b.pinned) - Number(a.pinned) || ord(a) - ord(b) || b.updated_at.localeCompare(a.updated_at))
 }
 
 /** 첨부 지우기: 삭제 표시와 함께 내용(base64)을 비운다. */
@@ -50,6 +59,8 @@ async function dropFile(db: AppDB, fileId: string): Promise<void> {
 }
 
 export async function deleteNote(db: AppDB, id: string): Promise<void> {
+  // 짝 전달사항은 남기고 연결만 끊는다
+  await unlinkNoticeNote(db, id)
   await db.transaction('rw', db.notes, db.note_files, async () => {
     await scrubDelete(db.notes, id, { title: '', blocks: [] })
     for (const f of await db.note_files.where('note_id').equals(id).toArray()) if (!f.deleted || f.data) await dropFile(db, f.id)

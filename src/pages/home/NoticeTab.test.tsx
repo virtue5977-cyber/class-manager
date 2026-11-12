@@ -74,12 +74,13 @@ test('줄에서 Enter는 저장하고 다음 줄로, 마지막 줄이면 새 빈
   await waitFor(() => expect(screen.getByRole('textbox', { name: '새 전달사항 줄' })).toHaveFocus())
 })
 
-test('노트로 보내기 → 체크 블록 노트, 내보내기 엑셀', async () => {
+test('노트로 열기 → 이날 짝 노트(체크 줄), 내보내기 엑셀', async () => {
   const user = userEvent.setup()
   const { db, fs } = await setup()
   await waitFor(() => expect(rows()).toHaveLength(2))
-  await user.click(screen.getByRole('button', { name: '노트로 보내기' }))
-  await waitFor(async () => expect((await listNotes(db))[0].blocks.map((b) => [b.type, b.text])).toEqual([['check', '동의서 걷기'], ['check', '체육복']]))
+  await user.click(screen.getByRole('button', { name: '노트로 열기' }))
+  await waitFor(async () => expect((await listNotes(db, '2026-11-11'))[0]).toMatchObject({ title: '[전달사항] 11/11(수)', notice_date: '2026-11-11' }))
+  expect((await listNotes(db, '2026-11-11'))[0].blocks.map((b) => [b.type, b.text])).toEqual([['check', '체육복']]) // 여러 날 전달사항(동의서 걷기)은 노트에 넣지 않는다
   await pickExport(user, '엑셀(xlsx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['전달사항_2026-11-11.xlsx']))
 })

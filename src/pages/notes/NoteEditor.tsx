@@ -9,6 +9,8 @@ import FormatBar from './FormatBar'
 import { applyStyle, styleAt } from '../../lib/notes/marks'
 import { getSel } from '../../lib/notes/richDom'
 import { copyRich, noteToHtml, noteToPlain } from '../../lib/notes/toHtml'
+import { useLive } from '../../lib/ui/useLive'
+import { linkNoteToDate, noticeNoteOf, unlinkNoticeNote } from '../../lib/notices/noteSync'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
@@ -101,19 +103,30 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   latest.current = { title, blocks }
 
   // 입력이 멈추면 저장(바뀐 것이 있을 때만). 화면을 떠날 때도 저장.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (title !== note.title || JSON.stringify(blocks) !== JSON.stringify(note.blocks)) saveNoteContent(db, note.id, { title, blocks })
-    }, 500)
-    return () => clearTimeout(t)
-  }, [db, note, title, blocks])
-  useEffect(
-    () => () => {
-      const l = latest.current
-      if (l.title !== note.title || JSON.stringify(l.blocks) !== JSON.stringify(note.blocks)) saveNoteContent(db, note.id, l)
+  const saved = useRef({ title: note.title, blocks: JSON.stringify(note.blocks) })
+  const persist = useCallback(
+    (t: string, bs: NoteBlock[]) => {
+      const j = JSON.stringify(bs)
+      if (t === saved.current.title && j === saved.current.blocks) return
+      saved.current = { title: t, blocks: j }
+      void saveNoteContent(db, note.id, { title: t, blocks: bs })
     },
-    [db, note],
+    [db, note.id],
   )
+  useEffect(() => {
+    const t = setTimeout(() => persist(title, blocks), 500)
+    return () => clearTimeout(t)
+  }, [persist, title, blocks])
+  useEffect(() => () => persist(latest.current.title, latest.current.blocks), [persist])
+  // 다른 곳(전달사항 칸 등)에서 노트가 바뀌면 받아 온다(내가 저장한 것과 다를 때만)
+  const live = useLive<NoteRec | undefined>(() => db.notes.get(note.id), [db, note.id], note)
+  useEffect(() => {
+    if (!live || live.deleted) return
+    const j = JSON.stringify(live.blocks)
+    if (j === saved.current.blocks || j === JSON.stringify(latest.current.blocks)) return
+    saved.current = { ...saved.current, blocks: j }
+    setBlocks(live.blocks.length ? live.blocks : [{ id: newBlockId(), type: 'p', text: '' }])
+  }, [live])
   useEffect(() => {
     const f = focusNext.current
     if (!f) return
@@ -362,9 +375,27 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     } else setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))
   }
 
-  /** 기간을 정해 보내기: 블록 하나 또는 노트 전체(글이 있는 블록마다 한 항목) */
+  /** 노트 전체를 그날 전달사항과 잇기(이미 다른 노트가 이어져 있으면 합치기·바꾸기를 묻는다) */
+  const [clash, setClash] = useState<string>()
+  async function linkAll(mode?: 'merge' | 'replace') {
+    try {
+      if (!mode) {
+        const other = await noticeNoteOf(db, range.start)
+        if (other && other.id !== note.id) return setClash(other.title || '제목 없음')
+      }
+      persist(title, blocks)
+      await linkNoteToDate(db, note.id, range.start, mode ?? 'merge')
+      setSendFor(undefined)
+      setClash(undefined)
+      setMsg(`${+range.start.slice(5, 7)}/${+range.start.slice(8)} 전달사항과 이었습니다. 여기서 고치면 전달사항도 바뀝니다.`)
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  /** 기간을 정해 블록 하나를 전달사항으로 보내기 */
   async function sendNotices() {
-    const targets = sendFor === 'all' ? blocks.filter((x) => (x.text ?? '').trim() && x.type !== 'h1' && x.type !== 'h2') : blocks.filter((x) => x.id === sendFor)
+    const targets = blocks.filter((x) => x.id === sendFor)
     try {
       for (const x of targets) await addNotice(db, { text: x.text!.trim(), start_date: range.start, end_date: range.end })
       setMsg(`전달사항 ${targets.length}개를 보냈습니다.`)
@@ -398,13 +429,36 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
         <div className="row note-tools">
           <button type="button" className="link" title="서식을 살려 복사합니다. 한글·워드에 붙여 넣으세요." onClick={copyForHwp}>한글로 복사</button>
-          <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+          {live?.notice_date ? (
+            <>
+              <span className="badge notice-badge" title="이날 전달사항과 이어진 노트입니다. 글 줄 하나가 전달사항 한 항목입니다.">{`[전달사항] ${+live.notice_date.slice(5, 7)}/${+live.notice_date.slice(8)}`}</span>
+              <button type="button" className="link" onClick={() => void unlinkNoticeNote(db, note.id).then(() => setMsg('전달사항과 연결을 끊었습니다. 전달사항은 그대로 남습니다.'))}>연결 끊기</button>
+            </>
+          ) : (
+            <button type="button" className="link" onClick={() => { setRange({ start: today, end: today }); setSendFor('all') }}>노트 전체를 전달사항으로</button>
+          )}
         </div>
       </div>
       {msg && <p className="notice" role="status">{msg}</p>}
-      {sendFor && (
+      {sendFor === 'all' && (
+        <div className="row card send-range" role="group" aria-label="전달사항 날짜">
+          <span>이 노트를 이날 전달사항으로(글 줄 하나 = 한 항목, 서로 이어짐):</span>
+          <input type="date" aria-label="날짜" value={range.start} onChange={(e) => setRange({ start: e.target.value, end: e.target.value })} />
+          {clash ? (
+            <>
+              <span className="muted">{`이날 이미 '${clash}' 노트가 이어져 있습니다.`}</span>
+              <button type="button" className="primary" onClick={() => linkAll('merge')}>합치기</button>
+              <button type="button" onClick={() => linkAll('replace')}>바꾸기</button>
+            </>
+          ) : (
+            <button type="button" className="primary" onClick={() => linkAll()}>잇기</button>
+          )}
+          <button type="button" className="link" onClick={() => (setSendFor(undefined), setClash(undefined))}>취소</button>
+        </div>
+      )}
+      {sendFor && sendFor !== 'all' && (
         <div className="row card send-range" role="group" aria-label="전달사항 기간">
-          <span>{sendFor === 'all' ? '노트 전체(글 블록마다 한 항목)' : '이 블록'}을 전달사항으로:</span>
+          <span>이 블록을 전달사항으로:</span>
           <input type="date" aria-label="시작" value={range.start} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
           ~
           <input type="date" aria-label="끝" value={range.end} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
