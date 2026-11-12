@@ -84,3 +84,18 @@ test('노트함 정렬: 오늘·앞날짜 짝 노트가 고정보다 먼저, 지
   expect(list[0].id).toBe(today.id)
   expect(list[1].id).toBe(p.id)
 })
+
+test('@노트 링크: 전달사항 parts ↔ 짝 노트 줄 links', async () => {
+  const db = createDb('t-' + crypto.randomUUID())
+  const ref = await createNote(db, '회의록')
+  await addNotice(db, { text: '보기 @회의록 끝', start_date: D, parts: ['보기 ', { note: ref.id }, ' 끝'] })
+  const n = await openNoticeNote(db, D)
+  const b = (await db.notes.get(n.id))!.blocks[0]
+  expect(b.links).toEqual([{ from: 3, to: 7, note: ref.id }])
+  // 노트에서 링크를 지우면(글 고침) 전달사항 parts도 없어진다
+  await saveNoteContent(db, n.id, { title: n.title, blocks: [{ ...b, text: '보기 끝', links: undefined }] })
+  expect((await noticesOn(db, D))[0].parts).toBeUndefined()
+  // 노트에서 링크를 넣으면 parts가 생긴다
+  await saveNoteContent(db, n.id, { title: n.title, blocks: [{ ...b, text: '@회의록 보기', links: [{ from: 0, to: 4, note: ref.id }] }] })
+  expect((await noticesOn(db, D))[0].parts).toEqual([{ note: ref.id }, ' 보기'])
+})

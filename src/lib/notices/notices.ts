@@ -9,7 +9,7 @@ const resync = async (db: AppDB, ...recs: (NoticeItemRec | undefined)[]) => {
   for (const d of days) await syncNoticesToNote(db, d)
 }
 
-type Patch = Partial<Pick<NoticeItemRec, 'text' | 'start_date' | 'end_date' | 'done' | 'pinned' | 'order'>>
+type Patch = Partial<Pick<NoticeItemRec, 'text' | 'start_date' | 'end_date' | 'done' | 'pinned' | 'order' | 'parts'>>
 
 function checkRange(start: string, end: string) {
   const ok = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d)
@@ -22,12 +22,12 @@ async function nextOrder(db: AppDB): Promise<number> {
   return all.reduce((m, n) => Math.max(m, n.order), -1) + 1
 }
 
-export async function addNotice(db: AppDB, input: { text: string; start_date: string; end_date?: string }): Promise<NoticeItemRec> {
+export async function addNotice(db: AppDB, input: { text: string; start_date: string; end_date?: string; parts?: NoticeItemRec['parts'] }): Promise<NoticeItemRec> {
   const text = input.text.trim()
   if (!text) throw new Error('내용을 입력하세요.')
   const end = input.end_date || input.start_date
   checkRange(input.start_date, end)
-  const rec = newRecord({ text, start_date: input.start_date, end_date: end, done: false, pinned: false, order: await nextOrder(db) }) as NoticeItemRec
+  const rec = newRecord({ text, start_date: input.start_date, end_date: end, done: false, pinned: false, order: await nextOrder(db), ...(input.parts ? { parts: input.parts } : {}) }) as NoticeItemRec
   await db.notice_items.add(rec)
   await resync(db, rec)
   return (await db.notice_items.get(rec.id)) ?? rec

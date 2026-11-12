@@ -365,3 +365,18 @@ test('노트 전체를 전달사항으로: 날짜를 골라 잇고, [전달사�
   await user.click(screen.getByRole('button', { name: '연결 끊기' }))
   await waitFor(async () => expect((await db.notes.get(n.id))!.notice_date).toBeUndefined())
 })
+
+test('노트 글에서 @를 치면 다른 노트 후보, 고르면 링크로 저장(Ctrl+클릭하면 그 노트로)', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('참고 @다른')
+  expect(await screen.findByRole('option', { name: /다른 노트/ })).toBeInTheDocument()
+  expect(screen.queryByRole('option', { name: /회의록/ })).toBeNull() // 자기 자신은 빼고
+  await user.keyboard('{Enter}끝')
+  const other = (await db.notes.toArray()).find((x) => x.title === '다른 노트')!
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ text: '참고 @다른 노트 끝', links: [{ from: 3, to: 9, note: other.id }] }), { timeout: 3000 })
+  const link = blocks()[0].querySelector('.nl') as HTMLElement
+  expect(link.textContent).toBe('@다른 노트')
+})

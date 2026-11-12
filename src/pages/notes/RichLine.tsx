@@ -36,6 +36,7 @@ interface Props {
   onOpenLink?(noteId: string): void
   onSelect?(): void
   onFocus?(): void
+  onBlur?(): void
 }
 
 const SHORT: Record<string, 'b' | 'u' | 'i'> = { KeyB: 'b', KeyU: 'u', KeyI: 'i' }
@@ -172,6 +173,7 @@ const RichLine = forwardRef<LineHandle, Props>(function RichLine(p, ref) {
         if (!e.dataTransfer?.files?.length) e.preventDefault()
       }}
       onFocus={() => p.onFocus?.()}
+      onBlur={() => p.onBlur?.()}
       onSelect={() => p.onSelect?.()}
       onKeyUp={() => p.onSelect?.()}
       onMouseUp={() => p.onSelect?.()}

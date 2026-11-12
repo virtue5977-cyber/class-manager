@@ -978,3 +978,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .note-head .note-title { flex: 1 1 240px; min-width: 0; }
 .note-head .note-tools { margin: 0; gap: 14px; flex: none; }
 .notice-badge { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft, rgba(37, 99, 235, .1)); color: var(--accent); white-space: nowrap; }
+
+.notice-box { position: relative; }
+.mention-list { position: absolute; top: 100%; left: 0; z-index: 30; min-width: 220px; }
+.notice-links { display: inline-flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.notice-link { white-space: nowrap; }
+.nb .mention-list { left: 36px; }

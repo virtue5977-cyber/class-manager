@@ -6,7 +6,8 @@
 import type { AppDB } from '../db/schema'
 import type { NoteBlock, NoteRec, NoticeItemRec, TodoPart } from '../db/types'
 import { newRecord, save } from '../db/records'
-import { shiftLinks, shiftMarks } from '../notes/marks'
+import { shiftMarks } from '../notes/marks'
+import { linksFromParts } from '../notes/noteLinks'
 
 const newBlockId = () => crypto.randomUUID().slice(0, 8)
 const LINE_TYPES = new Set<NoteBlock['type']>(['p', 'bullet', 'number', 'check'])
@@ -84,15 +85,19 @@ export async function syncNoticesToNote(db: AppDB, date: string): Promise<void> 
     for (const n of items) if (!n.deleted && n.note_id === note.id && n.block_id && !oneDay(n, date)) gone.add(n.block_id)
     let blocks = note.blocks.filter((b) => !gone.has(b.id))
     const byId = new Map(blocks.map((b) => [b.id, b]))
-    // 고치기·체크
+    // 고치기·체크·@노트 링크
+    const allNotes = await db.notes.toArray()
+    const titleOf = (id: string) => allNotes.find((x) => x.id === id && !x.deleted)?.title
+    const linksOf = (n: NoticeItemRec) => linksFromParts(n.text, n.parts, titleOf)
     for (const n of live) {
       const b = n.block_id ? byId.get(n.block_id) : undefined
       if (!b) continue
       const t = b.text ?? ''
-      if (t.trim() !== n.text) {
-        const nb = { ...b, text: n.text, marks: shiftMarks(b.marks, t, n.text), links: shiftLinks(b.links, t, n.text) }
-        if (!nb.marks.length) delete (nb as Partial<NoteBlock>).marks
-        if (!nb.links.length) delete (nb as Partial<NoteBlock>).links
+      const links = linksOf(n)
+      if (t.trim() !== n.text || JSON.stringify(b.links ?? []) !== JSON.stringify(links)) {
+        const nb: NoteBlock = { ...b, text: n.text, marks: t.trim() !== n.text ? shiftMarks(b.marks, t, n.text) : b.marks, links }
+        if (!nb.marks?.length) delete nb.marks
+        if (!nb.links?.length) delete nb.links
         byId.set(b.id, nb)
       }
       if (b.type === 'check' && !!b.checked !== n.done) byId.set(b.id, { ...byId.get(b.id)!, checked: n.done })
@@ -108,7 +113,8 @@ export async function syncNoticesToNote(db: AppDB, date: string): Promise<void> 
     const fresh = live.filter((n) => !(n.block_id && byId.has(n.block_id)))
     if (fresh.length && blocks.length === 1 && blocks[0].type === 'p' && !(blocks[0].text ?? '').trim()) blocks = []
     for (const n of fresh) {
-      const b: NoteBlock = { id: newBlockId(), type: 'check', text: n.text, checked: n.done }
+      const links = linksOf(n)
+      const b: NoteBlock = { id: newBlockId(), type: 'check', text: n.text, checked: n.done, ...(links.length ? { links } : {}) }
       blocks = [...blocks, b]
       await save(db.notice_items, { ...n, note_id: note.id, block_id: b.id })
     }

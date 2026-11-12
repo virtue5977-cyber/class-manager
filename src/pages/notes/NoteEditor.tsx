@@ -11,6 +11,11 @@ import { getSel } from '../../lib/notes/richDom'
 import { copyRich, noteToHtml, noteToPlain } from '../../lib/notes/toHtml'
 import { useLive } from '../../lib/ui/useLive'
 import { linkNoteToDate, noticeNoteOf, unlinkNoticeNote } from '../../lib/notices/noteSync'
+import { listNotes } from '../../lib/notes/notes'
+import { matchNotes, mentionAt, type NoteTitle } from '../../lib/notes/noteLinks'
+import { shiftLinks, shiftMarks } from '../../lib/notes/marks'
+import NoteMentionList from '../../components/NoteMentionList'
+import { useNavigate } from 'react-router-dom'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
@@ -31,6 +36,12 @@ const fmtSize = (n: number) => (n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024)
 export default function NoteEditor({ note, today }: { note: NoteRec; today: string }) {
   const db = useDb()
   const fs = useFs()
+  const navigate = useNavigate()
+  // '@'로 다른 노트 연결
+  const allNotes = useLive<NoteRec[]>(() => listNotes(db), [db], [])
+  const [men, setMen] = useState<{ id: string; start: number; q: string; caret: number }>()
+  const [menSel, setMenSel] = useState(0)
+  const menItems: NoteTitle[] = men ? matchNotes(allNotes, men.q, note.id) : []
   const [title, setTitle] = useState(note.title)
   const [blocks, setBlocks] = useState<NoteBlock[]>(note.blocks.length ? note.blocks : [{ id: newBlockId(), type: 'p', text: '' }])
   const [slashSel, setSlashSel] = useState(0)
@@ -248,8 +259,24 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       return
     }
     update(b.id, { text: v.text, marks: v.marks?.length ? v.marks : undefined, links: v.links?.length ? v.links : undefined })
+    const m = mentionAt(v.text, at)
+    setMen(m ? { id: b.id, ...m, caret: at } : undefined)
+    setMenSel(0)
     setSlashSel(0)
     if (slashOff === b.id && !v.text.startsWith('/')) setSlashOff(undefined)
+  }
+
+  /** '@제목'을 넣고 그 자리를 노트 링크로 */
+  function pickMention(b: NoteBlock, n: NoteTitle) {
+    if (!men) return
+    const old = b.text ?? ''
+    const ins = `@${n.title}`
+    const text = `${old.slice(0, men.start)}${ins} ${old.slice(men.caret)}`
+    const links = [...shiftLinks(b.links, old, text).filter((l) => l.to <= men.start || l.from >= men.start + ins.length), { from: men.start, to: men.start + ins.length, note: n.id }].sort((x, y) => x.from - y.from)
+    const marks = shiftMarks(b.marks, old, text)
+    update(b.id, { text, links, marks: marks.length ? marks : undefined })
+    focusNext.current = { id: b.id, caret: men.start + ins.length + 1 }
+    setMen(undefined)
   }
 
   /** 글자를 고르면 서식 막대를 띄운다 */
@@ -285,6 +312,21 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       e.preventDefault()
       const redo = e.code === 'KeyY' || e.key.toLowerCase() === 'y' || e.shiftKey
       return stepHistory(redo ? 1 : -1, b.id)
+    }
+    if (men && men.id === b.id && menItems.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMenSel((i) => (i + (e.key === 'ArrowDown' ? 1 : menItems.length - 1)) % menItems.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        return pickMention(b, menItems[Math.min(menSel, menItems.length - 1)])
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        return setMen(undefined)
+      }
     }
     const q = slashOf(b)
     const items = q !== null ? filterSlash(q) : []
@@ -534,7 +576,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                     onChange={(v, at) => onLineChange(b, v, at)}
                     onKeyDown={(e, h) => onKey(e, b, h)}
                     onSelect={trackSel}
+                    onOpenLink={(id) => navigate(`/notes?id=${id}`)}
+                    onBlur={() => setMen((m) => (m?.id === b.id ? undefined : m))}
                   />
+                  {men?.id === b.id && <NoteMentionList items={menItems} sel={menSel} onPick={(x) => pickMention(b, x)} />}
                   {items.length > 0 && (
                     <ul className="suggest nb-slash" role="listbox" aria-label="블록 고르기">
                       {items.map((it, k) => (

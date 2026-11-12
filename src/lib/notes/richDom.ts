@@ -13,7 +13,7 @@ export function renderHtml(text: string, marks?: Mark[], links?: NoteLink[]): st
   for (const s of segments(text, marks, links)) {
     const css = cssText(styleCss(s.style))
     const body = esc(s.text)
-    if (s.link) out += `<span class="nl" data-note="${s.link}"${css ? ` style="${css}"` : ''}>${body}</span>`
+    if (s.link) out += `<span class="nl" data-note="${s.link}" title="Ctrl+클릭: 노트 열기"${css ? ` style="${css}"` : ''}>${body}</span>`
     else if (css) out += `<span style="${css}">${body}</span>`
     else out += body
   }
