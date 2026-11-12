@@ -78,11 +78,27 @@ export async function appContext(env: RunEnv, studentIds: string[] = []): Promis
     const st = await listStudents(env.db, cid)
     const by = new Map(st.map((s) => [s.id, s]))
     const who = (id: string) => `${by.get(id)?.number}번 ${by.get(id)?.name}`
-    const month = (await env.db.attendance.where('date').between(`${env.today.slice(0, 7)}-01`, `${env.today.slice(0, 7)}-31`, true, true).toArray()).filter((a) => !a.deleted && by.has(a.student_id))
+    // 학년도는 3월부터, 2학기는 8월부터
+    const y = Number(env.today.slice(0, 4)) - (Number(env.today.slice(5, 7)) < 3 ? 1 : 0)
+    const yearFrom = `${y}-03-01`
+    const sem2 = env.today >= `${y}-08-01`
+    const all = (await env.db.attendance.where('date').between(yearFrom, env.today.slice(0, 10) + '\uffff', true, true).toArray()).filter((a) => !a.deleted && by.has(a.student_id))
+    const month = all.filter((a) => a.date.slice(0, 7) === env.today.slice(0, 7))
+    /** 종류마다 '번호 이름 n건'(많은 순, 같으면 번호 순) */
+    const byKind = (list: typeof all) => {
+      const m = new Map<string, Map<string, number>>()
+      for (const a of list) {
+        const k = `${a.kind}(${a.category})`
+        const inner = m.get(k) ?? new Map<string, number>()
+        inner.set(a.student_id, (inner.get(a.student_id) ?? 0) + 1)
+        m.set(k, inner)
+      }
+      return [...m.entries()].map(([k, inner]) => `${k}: ${[...inner.entries()].sort((p, q) => q[1] - p[1] || (by.get(p[0])!.number - by.get(q[0])!.number)).map(([id, n]) => `${who(id)} ${n}건`).join(', ')}`)
+    }
     out.push(sec('오늘 출결', month.filter((a) => a.date === env.today).map((a) => `${who(a.student_id)} ${a.kind}(${a.category})`)))
-    const cnt = new Map<string, number>()
-    for (const a of month) cnt.set(`${a.kind}(${a.category})`, (cnt.get(`${a.kind}(${a.category})`) ?? 0) + 1)
-    out.push(sec('이번 달 출결 요약', [...cnt.entries()].map(([k, n]) => `${k} ${n}건`)))
+    out.push(sec(`이번 달 출결(${Number(env.today.slice(5, 7))}월)`, byKind(month)))
+    out.push(sec(`${sem2 ? 2 : 1}학기 출결`, byKind(all.filter((a) => (a.date >= `${y}-08-01`) === sem2))))
+    out.push(sec(`올해(${y}학년도) 출결`, byKind(all)))
     for (const id of studentIds.filter((x) => by.has(x))) {
       out.push(sec(`${who(id)} 이번 달 출결`, month.filter((a) => a.student_id === id).map((a) => `${a.date} ${a.kind}(${a.category})${a.reason ? ` ${a.reason}` : ''}`)))
       const logs = (await listLogsByStudent(env.db, id)).slice(0, 5)
