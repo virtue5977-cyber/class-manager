@@ -35,3 +35,19 @@ test('글 안 줄바꿈과 꺾쇠는 안전하게', () => {
 test('서식 없는 글', () => {
   expect(noteToPlain({ title: '회의', blocks: blocks.slice(2, 7) })).toBe('회의\n1. 첫째\n  가. 둘째\n• 점\n☑ 동의서\n☐ 회신')
 })
+
+test('정렬·줄 간격·pt가 한글용 HTML에', () => {
+  const h = noteToHtml({ title: '', blocks: [{ id: 'a', type: 'p', text: '가운데 큰', align: 'center', line: 200, marks: [{ from: 4, to: 5, pt: 14 }] }] })
+  expect(h).toContain('text-align:center')
+  expect(h).toContain('line-height:200%')
+  expect(h).toContain('font-size:14pt')
+})
+
+test('표 블록 → 테두리 표(머리 줄 굵게·칸 너비), 쪽 나누기 → 쪽 나눔', () => {
+  const h = noteToHtml({ title: '', blocks: [{ id: 't', type: 'table', cells: [['이름', '확인'], ['가상일', '✔']], widths: [70, 30], head: true }, { id: 'pb', type: 'pagebreak' }] })
+  expect(h).toMatch(/<table[^>]*border-collapse:collapse/)
+  expect(h).toContain('width:70%')
+  expect(h).toMatch(/<th[^>]*>이름<\/th>/)
+  expect(h).toContain('<td')
+  expect(h).toContain('page-break-before:always')
+})

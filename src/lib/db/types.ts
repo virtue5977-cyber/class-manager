@@ -279,7 +279,7 @@ export interface NoticeItemRec extends BaseRecord {
   parts?: TodoPart[]
 }
 
-export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder' | 'roster'
+export type NoteBlockType = 'p' | 'h1' | 'h2' | 'check' | 'bullet' | 'number' | 'divider' | 'file' | 'folder' | 'roster' | 'table' | 'image' | 'pagebreak'
 export interface NoteBlock {
   id: string
   type: NoteBlockType
@@ -289,6 +289,10 @@ export interface NoteBlock {
   path?: string
   /** 개요 깊이 0~4 */
   indent?: number
+  /** 문단 정렬(없으면 양쪽) */
+  align?: 'left' | 'center' | 'right' | 'justify'
+  /** 줄 간격 %(없으면 160) */
+  line?: 130 | 160 | 200
   /** 학생 체크 표(roster): 만든 때의 학생(번호 이름)과 체크. text는 표 제목 */
   rows?: { sid: string; label: string; checked: boolean }[]
   /** 학생 체크 표 크기(작게 = 여러 칸 격자, 기본 보통) */
@@ -297,10 +301,28 @@ export interface NoteBlock {
   hide_done?: boolean
   /** 표 접기 */
   collapsed?: boolean
+  /** 표(table): 칸 글[줄][칸], 칸 너비 %, 첫 줄 머리 */
+  cells?: string[][]
+  widths?: number[]
+  head?: boolean
+  /** 그림(image): 너비 %(기본 100), 설명 */
+  width?: number
+  caption?: string
   /** 글자 서식(text 안 위치 [from,to)). 없으면 서식 없음 */
   marks?: import('../notes/marks').Mark[]
   /** @노트 링크(text 안 위치) */
   links?: import('../notes/marks').NoteLink[]
+}
+export interface NotePage {
+  view: boolean
+  margin: 'narrow' | 'normal' | 'wide'
+  grid: boolean
+  /** 확대 %(50~200) */
+  zoom?: number
+  header?: string
+  footer?: string
+  /** 쪽 보기에서 센 쪽 수(한글 내보내기의 {전체쪽}) */
+  pages?: number
 }
 export interface NoteRec extends BaseRecord {
   title: string
@@ -312,6 +334,8 @@ export interface NoteRec extends BaseRecord {
   order?: number
   /** 이 날짜 전달사항과 짝인 노트(YYYY-MM-DD) */
   notice_date?: string
+  /** 쪽 보기·여백·격자·확대·머리말·꼬리말(없으면 화면 너비 보기) */
+  page?: NotePage
 }
 /** 노트 첨부(내용은 base64, 50MB까지) */
 export interface NoteFileRec extends BaseRecord {

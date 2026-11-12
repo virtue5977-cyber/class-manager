@@ -11,7 +11,10 @@ export interface Style {
   bg?: string
   /** 글꼴 이름(FONTS 중 하나) */
   font?: string
+  /** 예전 글자 크기(0.14까지). 새 값은 pt */
   size?: 'sm' | 'lg'
+  /** 글자 크기 pt(8~32) */
+  pt?: number
 }
 export interface Mark extends Style {
   from: number
@@ -27,7 +30,11 @@ export const FONTS = ['맑은 고딕', '함초롬바탕', '함초롬돋움', '�
 export const COLORS = ['#000000', '#c0392b', '#d35400', '#b7950b', '#1e8449', '#1f618d', '#7d3c98', '#7f8c8d'] as const
 export const HIGHLIGHTS = ['#fff59d', '#c8e6c9', '#bbdefb', '#f8bbd0', '#ffe0b2'] as const
 
-const KEYS = ['b', 'u', 'i', 's', 'color', 'bg', 'font', 'size'] as const
+const KEYS = ['b', 'u', 'i', 's', 'color', 'bg', 'font', 'size', 'pt'] as const
+export const PT_MIN = 8
+export const PT_MAX = 32
+/** 글자 크기(pt): pt가 있으면 그것, 예전 size면 base의 0.85·1.25배, 없으면 base */
+export const ptOf = (s: Style, base: number): number => s.pt ?? (s.size ? Math.round(base * (s.size === 'sm' ? 0.85 : 1.25) * 10) / 10 : base)
 type Key = (typeof KEYS)[number]
 
 const HEX = /^#[0-9a-fA-F]{3,8}$/
@@ -36,6 +43,7 @@ const okValue = (k: Key, v: unknown): boolean =>
   k === 'color' || k === 'bg' ? typeof v === 'string' && HEX.test(v)
   : k === 'font' ? (FONTS as readonly unknown[]).includes(v)
   : k === 'size' ? v === 'sm' || v === 'lg'
+  : k === 'pt' ? typeof v === 'number' && v >= PT_MIN && v <= PT_MAX
   : v === true
 const clean = (s: Style): Style => {
   const o: Style = {}
@@ -65,7 +73,7 @@ export function fromChars(chars: Style[]): Mark[] {
 }
 
 /** [from,to) 서식 바꾸기. 켜고 끄는 것(b u i s)은 모두 켜져 있으면 끄고 아니면 켠다. 값(color 등)은 같은 값이면 끄고, 아니면 그 값으로. */
-export function applyStyle(marks: Mark[] | undefined, len: number, from: number, to: number, key: Key, value?: string): Mark[] {
+export function applyStyle(marks: Mark[] | undefined, len: number, from: number, to: number, key: Key, value?: string | number): Mark[] {
   const chars = toChars(marks, len)
   const a = Math.max(0, Math.min(from, to))
   const z = Math.min(len, Math.max(from, to))
@@ -76,6 +84,21 @@ export function applyStyle(marks: Mark[] | undefined, len: number, from: number,
     const c = { ...chars[i] } as Record<string, unknown>
     if (all) delete c[key]
     else c[key] = value === undefined ? true : value
+    // pt를 정하면 예전 size는 지운다
+    if (key === 'pt') delete c.size
+    chars[i] = c as Style
+  }
+  return fromChars(chars)
+}
+
+/** [from,to)의 한 서식을 값으로 정한다(undefined·false면 없앤다). 켜고 끄기가 아닌 '그 값으로'. */
+export function forceStyle(marks: Mark[] | undefined, len: number, from: number, to: number, key: Key, value: string | number | boolean | undefined): Mark[] {
+  const chars = toChars(marks, len)
+  for (let i = Math.max(0, from); i < Math.min(len, to); i++) {
+    const c = { ...chars[i] } as Record<string, unknown>
+    if (value === undefined || value === false) delete c[key]
+    else c[key] = value
+    if (key === 'pt') delete c.size
     chars[i] = c as Style
   }
   return fromChars(chars)
@@ -184,6 +207,7 @@ export function styleCss(s: Style, unit: 'em' | 'pt' = 'em', base = 11): Record<
   if (s.bg) css['background-color'] = s.bg
   const f = fontStack(s.font)
   if (f) css['font-family'] = f
-  if (s.size) css['font-size'] = unit === 'em' ? (s.size === 'sm' ? '0.85em' : '1.25em') : `${Math.round(base * (s.size === 'sm' ? 0.85 : 1.25))}pt`
+  if (s.pt) css['font-size'] = unit === 'em' ? `calc(var(--pt, 1.5px) * ${s.pt})` : `${s.pt}pt`
+  else if (s.size) css['font-size'] = unit === 'em' ? (s.size === 'sm' ? '0.85em' : '1.25em') : `${Math.round(base * (s.size === 'sm' ? 0.85 : 1.25))}pt`
   return css
 }

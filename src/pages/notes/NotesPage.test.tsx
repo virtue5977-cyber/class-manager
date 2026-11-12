@@ -11,17 +11,18 @@ import NotesPage from './NotesPage'
 
 async function setup() {
   const db = createDb('test-' + crypto.randomUUID())
+  const fs = createMemoryFsAdapter()
   const n = await createNote(db, '회의록')
   await createNote(db, '다른 노트')
   await addTodo(db, ['회신 ', { note: n.id }])
   render(
     <MemoryRouter initialEntries={[`/notes?id=${n.id}`]}>
-      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <AppProviders db={db} fs={fs}>
         <NotesPage today="2026-11-10" />
       </AppProviders>
     </MemoryRouter>,
   )
-  return { db, n }
+  return { db, n, fs }
 }
 const blocks = () => screen.getAllByRole('textbox', { name: /블록/ })
 
@@ -100,7 +101,7 @@ test('/ 메뉴는 띄어쓴 이름(제목 1)도 거르고, Esc로 닫으면 글�
   await screen.findByDisplayValue('회의록')
   await user.click(blocks()[0])
   await user.keyboard('/제목 1')
-  expect(await screen.findByRole('option', { name: '제목 1' })).toBeInTheDocument()
+  expect(await within(await screen.findByRole('listbox', { name: '블록 고르기' })).findByRole('option', { name: '제목 1' })).toBeInTheDocument()
   await user.keyboard('{Enter}')
   expect(blocks()[0].textContent).toBe('')
   expect(blocks()[0].closest('.nb')).toHaveClass('nb-h1')
@@ -270,7 +271,7 @@ test('노트 안 Ctrl+2는 제목 1, Ctrl+6은 체크, Ctrl+Enter로 체크 켜�
   expect(await screen.findByRole('checkbox', { name: '체크' })).toBeChecked()
 })
 
-test('글자를 골라 Ctrl+B면 굵게 저장되고, 서식 막대로 글자색을 준다', async () => {
+test('글자를 골라 Ctrl+B면 굵게 저장되고, 도구 막대로 글자색을 준다', async () => {
   const user = userEvent.setup()
   const { db, n } = await setup()
   await screen.findByDisplayValue('회의록')
@@ -283,7 +284,7 @@ test('글자를 골라 Ctrl+B면 굵게 저장되고, 서식 막대로 글자색
   await user.keyboard('{Control>}b{/Control}')
   await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].marks).toEqual([{ b: true, from: 1, to: 3 }]), { timeout: 3000 })
   expect(b1.querySelector('span[style*="bold"]')?.textContent).toBe('나다')
-  const bar = await screen.findByRole('toolbar', { name: '글자 서식' })
+  const bar = await screen.findByRole('toolbar', { name: '노트 도구' })
   expect(within(bar).getByRole('button', { name: '굵게(Ctrl+B)' })).toHaveAttribute('aria-pressed', 'true')
   await user.click(within(bar).getByRole('button', { name: '글자색' }))
   await user.click(within(bar).getByRole('menuitem', { name: '글자색 #c0392b' }))
@@ -460,4 +461,102 @@ test('여러 줄을 고른 채 다른 입력칸에서 Backspace·Ctrl+C를 눌�
   expect(blocks().map((x) => x.textContent)).toEqual(['하나', '둘', '셋'])
   expect(document.querySelectorAll('.nb-selected')).toHaveLength(0) // 다른 칸으로 가면 풀린다
   other.remove()
+})
+
+test('도구 막대: 줄 정렬·줄 간격·문단 모양, 글을 골라 pt·굵게, 상태 표시', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await saveNoteContent(db, n.id, { title: '회의록', blocks: [{ id: 'a', type: 'p', text: '가운데 둘 글' }] })
+  await waitFor(() => expect(blocks()[0]).toHaveTextContent('가운데 둘 글'))
+  const tb = screen.getByRole('toolbar', { name: '노트 도구' })
+  await user.click(blocks()[0])
+  await user.click(within(tb).getByRole('button', { name: '가운데 정렬' }))
+  await user.selectOptions(within(tb).getByLabelText('줄 간격'), '200')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ align: 'center', line: 200 }), { timeout: 3000 })
+  expect(within(tb).getByRole('button', { name: '가운데 정렬' })).toHaveAttribute('aria-pressed', 'true')
+  // 글 고르기(0~3) → pt 14, 굵게
+  blocks()[0].focus()
+  ;(screen.getByRole('textbox', { name: '블록 1' }) as unknown as { focus: () => void }).focus()
+  const line = blocks()[0]
+  const r = document.createRange()
+  r.setStart(line.firstChild!.firstChild ?? line.firstChild!, 0)
+  r.setEnd(line.firstChild!.firstChild ?? line.firstChild!, 3)
+  getSelection()!.removeAllRanges()
+  getSelection()!.addRange(r)
+  fireEvent(document, new Event('selectionchange'))
+  await user.click(within(tb).getByRole('button', { name: '글자 크게' }))
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].marks).toEqual([{ from: 0, to: 3, pt: 11 }]), { timeout: 3000 })
+  await user.click(within(tb).getByRole('button', { name: '굵게(Ctrl+B)' }))
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].marks).toEqual([{ from: 0, to: 3, pt: 11, b: true }]), { timeout: 3000 })
+  await user.selectOptions(within(tb).getByLabelText('문단 모양'), 'h1')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].type).toBe('h1'), { timeout: 3000 })
+})
+
+test('도구 막대: 고른 글 없이 굵게를 누르면 다음에 칠 글자가 굵게', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await saveNoteContent(db, n.id, { title: '회의록', blocks: [{ id: 'a', type: 'p', text: '앞' }] })
+  await waitFor(() => expect(blocks()[0]).toHaveTextContent('앞'))
+  await user.click(blocks()[0])
+  await user.keyboard('{End}')
+  const tb = screen.getByRole('toolbar', { name: '노트 도구' })
+  await user.click(within(tb).getByRole('button', { name: '굵게(Ctrl+B)' }))
+  expect(within(tb).getByRole('button', { name: '굵게(Ctrl+B)' })).toHaveAttribute('aria-pressed', 'true')
+  await user.keyboard('뒤')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ text: '앞뒤', marks: [{ from: 1, to: 2, b: true }] }), { timeout: 3000 })
+})
+
+test('표: 도구 막대로 2×2 넣기 → 첫 칸에 쓰고 Tab으로 옮겨 가며, 마지막 칸 Tab은 줄을 더한다', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  const tb = screen.getByRole('toolbar', { name: '노트 도구' })
+  await user.click(within(tb).getByRole('button', { name: '표 넣기' }))
+  await user.click(within(tb).getByRole('button', { name: '2줄 2칸 표' }))
+  const first = await screen.findByRole('textbox', { name: '1줄 1칸' })
+  await waitFor(() => expect(first).toHaveFocus())
+  await user.keyboard('이름{Tab}확인{Tab}가상일{Tab}✔{Tab}가상이')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.find((b) => b.type === 'table')!.cells).toEqual([['이름', '확인'], ['가상일', '✔'], ['가상이', '']]), { timeout: 3000 })
+  await user.click(screen.getByRole('button', { name: '머리 줄' }))
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.find((b) => b.type === 'table')!.head).toBe(true), { timeout: 3000 })
+})
+
+test('그림: 도구 막대로 넣기(형식 검사), 너비 50%·설명 저장', async () => {
+  const user = userEvent.setup()
+  const { db, n, fs } = await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  const tb = screen.getByRole('toolbar', { name: '노트 도구' })
+  fs.nextFileToRead = { name: '메모.txt', bytes: new Uint8Array([1, 2, 3]) }
+  await user.click(within(tb).getByRole('button', { name: '그림 넣기' }))
+  expect(await screen.findByText('png·jpg·gif·webp 그림만 넣을 수 있습니다.')).toBeInTheDocument()
+  const png = new Uint8Array(33)
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
+  new DataView(png.buffer).setUint32(16, 40)
+  new DataView(png.buffer).setUint32(20, 20)
+  fs.nextFileToRead = { name: '운동장.png', bytes: png }
+  await user.click(within(tb).getByRole('button', { name: '그림 넣기' }))
+  const tools = await screen.findByRole('toolbar', { name: '그림 도구' })
+  await user.click(within(tools).getByRole('button', { name: '50%' }))
+  await user.type(screen.getByLabelText('그림 설명'), '운동장')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.find((b) => b.type === 'image')).toMatchObject({ width: 50, caption: '운동장' }), { timeout: 3000 })
+  expect((await db.note_files.toArray()).map((f) => f.mime)).toEqual(['image/png'])
+})
+
+test('쪽: 쪽 보기·여백·머리말을 저장하고, 쪽 보기면 종이(머리말)가 보인다', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await screen.findByDisplayValue('회의록')
+  const tb = screen.getByRole('toolbar', { name: '노트 도구' })
+  await user.click(within(tb).getByRole('button', { name: '쪽 설정' }))
+  const menu = screen.getByRole('group', { name: '쪽 설정 고르기' })
+  await user.click(within(menu).getByRole('checkbox', { name: '쪽 보기(A4 종이)' }))
+  await user.click(within(menu).getByRole('radio', { name: '좁게' }))
+  await user.type(within(menu).getByLabelText('머리말'), '1학년 5반')
+  // 쪽 단추로 메뉴를 닫아도 머리말은 저장된다(리뷰 고침)
+  await user.click(within(tb).getByRole('button', { name: '쪽 설정' }))
+  await waitFor(async () => expect((await db.notes.get(n.id))!.page).toMatchObject({ view: true, margin: 'narrow', header: '1학년 5반' }))
+  expect(document.querySelector('.note-paper')).not.toBeNull()
+  expect(document.querySelector('.pg-first-head')).toHaveTextContent('1학년 5반')
 })

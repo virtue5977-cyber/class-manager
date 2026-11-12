@@ -57,7 +57,9 @@ export function mergeUp(blocks: NoteBlock[], id: string): { blocks: NoteBlock[];
   }
   const up = blocks[i - 1]
   const cur = blocks[i]
-  if (up.type === 'divider' || up.type === 'file' || up.type === 'folder') return { blocks: blocks.filter((b) => b.id !== up.id), focusId: id, caret: 0 }
+  if (up.type === 'divider' || up.type === 'file' || up.type === 'folder' || up.type === 'pagebreak') return { blocks: blocks.filter((b) => b.id !== up.id), focusId: id, caret: 0 }
+  // 표·그림·명렬표 안으로는 합치지 않는다(합치면 글이 보이지 않는 칸에 숨는다)
+  if (up.type === 'table' || up.type === 'image' || up.type === 'roster') return { blocks, focusId: id, caret: 0 }
   const caret = (up.text ?? '').length
   const { marks: _m, links: _l, ...upPlain } = up
   void _m
@@ -133,4 +135,19 @@ export function markdownPrefix(text: string): { type: NoteBlockType; rest: strin
   if (!m) return null
   const type: NoteBlockType = m[1] === '#' ? 'h1' : m[1] === '##' ? 'h2' : m[1] === '1.' ? 'number' : m[1] === '[]' ? 'check' : 'bullet'
   return { type, rest: m[2] }
+}
+
+/**
+ * 지금 줄(curId) 다음에 nb 넣기. 지금 줄이 빈 문단이면 그 자리를 nb로 바꾼다.
+ * 지금 줄이 없으면(이미 바뀌었거나 지워짐) 맨 뒤에. nb가 맨 끝이면 빈 문단을 하나 붙인다.
+ * after: nb 다음 블록 id(커서 둘 곳)
+ */
+export function insertBlockAfter(bs: NoteBlock[], curId: string | undefined, nb: NoteBlock, newId: () => string = () => crypto.randomUUID().slice(0, 8)): { blocks: NoteBlock[]; after: string } {
+  const i = curId ? bs.findIndex((x) => x.id === curId) : -1
+  const cur = i >= 0 ? bs[i] : undefined
+  const empty = !!cur && cur.type === 'p' && !(cur.text ?? '').trim()
+  const out = i < 0 ? [...bs, nb] : empty ? [...bs.slice(0, i), nb, ...bs.slice(i + 1)] : [...bs.slice(0, i + 1), nb, ...bs.slice(i + 1)]
+  const at = out.indexOf(nb)
+  if (at === out.length - 1) out.push({ id: newId(), type: 'p', text: '' })
+  return { blocks: out, after: out[at + 1].id }
 }

@@ -1,7 +1,8 @@
 /** 노트 → 한글(HWP)에 붙여 넣어도 모양이 남는 HTML. 한글이 잘 읽는 것만 쓴다: p·b·u·i·s·span(style)·table. 목록 기호는 글자로 넣는다. */
 import type { NoteBlock, NoteRec } from '../db/types'
 import { outlineMarks } from './blocks'
-import { segments, type Mark, type NoteLink, type Style } from './marks'
+import { tableWidths } from './tableOps'
+import { ptOf, segments, type Mark, type NoteLink, type Style } from './marks'
 
 const BASE_PT = 10
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -12,7 +13,7 @@ function runHtml(text: string, st: Style): string {
   if (st.color) css.push(`color:${st.color}`)
   if (st.bg) css.push(`background-color:${st.bg}`)
   if (st.font) css.push(`font-family:'${st.font}'`)
-  if (st.size) css.push(`font-size:${st.size === 'sm' ? 8.5 : 12.5}pt`)
+  if (st.pt || st.size) css.push(`font-size:${ptOf(st, BASE_PT)}pt`)
   if (st.s) h = `<s>${h}</s>`
   if (st.i) h = `<i>${h}</i>`
   if (st.u) h = `<u>${h}</u>`
@@ -27,47 +28,65 @@ export function lineHtml(text: string, marks?: Mark[], links?: NoteLink[]): stri
     .join('')
 }
 
-function para(inner: string, o: { pt?: number; bold?: boolean; indent?: number } = {}): string {
-  const css = [`font-size:${o.pt ?? BASE_PT}pt`, 'line-height:160%', 'margin:0']
+function para(inner: string, o: { pt?: number; bold?: boolean; indent?: number; align?: string; line?: number } = {}): string {
+  const css = [`font-size:${o.pt ?? BASE_PT}pt`, `line-height:${o.line ?? 160}%`, 'margin:0']
+  if (o.align && o.align !== 'justify') css.push(`text-align:${o.align}`)
   if (o.bold) css.push('font-weight:bold')
   if (o.indent) css.push(`margin-left:${o.indent * 20}pt`)
   return `<p style="${css.join(';')}">${inner || '&nbsp;'}</p>`
 }
 
-function blockHtml(b: NoteBlock, mark: string, files: Map<string, string>): string {
+function blockHtml(b: NoteBlock, mark: string, files: Map<string, string>, images: Map<string, string> = new Map()): string {
   const ind = b.indent ?? 0
+  const look = { align: b.align, line: b.line }
   const body = lineHtml(b.text ?? '', b.marks, b.links)
   switch (b.type) {
     case 'h1':
-      return para(body, { pt: 16, bold: true, indent: ind })
+      return para(body, { pt: 16, bold: true, indent: ind, ...look })
     case 'h2':
-      return para(body, { pt: 13, bold: true, indent: ind })
+      return para(body, { pt: 13, bold: true, indent: ind, ...look })
     case 'bullet':
     case 'number':
-      return para(`${esc(mark)} ${body}`, { indent: ind + 1 })
+      return para(`${esc(mark)} ${body}`, { indent: ind + 1, ...look })
     case 'check':
-      return para(`${b.checked ? '☑' : '☐'} ${b.checked ? `<s>${body}</s>` : body}`, { indent: ind })
+      return para(`${b.checked ? '☑' : '☐'} ${b.checked ? `<s>${body}</s>` : body}`, { indent: ind, ...look })
     case 'divider':
       return para('―――――――――――――――――――――――――――――――')
     case 'file':
       return para(`[첨부] ${esc(files.get(b.file_id ?? '') ?? '파일')}`, { indent: ind })
     case 'folder':
       return para(`[폴더] ${esc(b.path ?? '')}`, { indent: ind })
+    case 'table': {
+      const ws = tableWidths(b)
+      const cell = (t: string, r: number, c: number) => {
+        const tag = b.head && r === 0 ? 'th' : 'td'
+        return `<${tag} style="border:1px solid #000;padding:2pt 6pt;font-size:${BASE_PT}pt;width:${ws[c]}%;${tag === 'th' ? 'font-weight:bold;background:#f2f2f2;' : ''}">${esc(t).replace(/\n/g, '<br>') || '&nbsp;'}</${tag}>`
+      }
+      return `<table style="border-collapse:collapse;border:1px solid #000;width:100%">${(b.cells ?? []).map((row, r) => `<tr>${row.map((t, c) => cell(t, r, c)).join('')}</tr>`).join('')}</table>`
+    }
+    case 'image': {
+      const src = images.get(b.file_id ?? '')
+      const align = b.align ?? 'center'
+      const img = src ? `<img src="${src}" style="width:${b.width ?? 100}%" alt="${esc(b.caption ?? '')}">` : '[그림]'
+      return `<p style="margin:0;text-align:${align}">${img}</p>${b.caption ? `<p style="margin:0;text-align:${align};font-size:9pt;color:#555">${esc(b.caption)}</p>` : ''}`
+    }
+    case 'pagebreak':
+      return '<p style="page-break-before:always;margin:0"></p>'
     case 'roster': {
       const rows = (b.rows ?? []).map((r) => `<tr><td style="border:1px solid #000;padding:2pt 6pt;font-size:${BASE_PT}pt">${esc(r.label)}</td><td style="border:1px solid #000;padding:2pt 6pt;text-align:center;font-size:${BASE_PT}pt">${r.checked ? '✔' : ''}</td></tr>`)
       const title = b.text ? para(esc(b.text), { bold: true }) : ''
       return `${title}<table style="border-collapse:collapse;border:1px solid #000">${rows.join('')}</table>`
     }
     default:
-      return para(body, { indent: ind })
+      return para(body, { indent: ind, ...look })
   }
 }
 
 /** 노트 전체(또는 고른 블록들) → HTML 조각. 제목을 맨 위에. files: 첨부 id → 이름 */
-export function noteToHtml(note: Pick<NoteRec, 'title' | 'blocks'>, o: { withTitle?: boolean; files?: Map<string, string> } = {}): string {
+export function noteToHtml(note: Pick<NoteRec, 'title' | 'blocks'>, o: { withTitle?: boolean; files?: Map<string, string>; images?: Map<string, string> } = {}): string {
   const marks = outlineMarks(note.blocks)
   const files = o.files ?? new Map()
-  const parts = note.blocks.map((b, i) => blockHtml(b, marks[i], files))
+  const parts = note.blocks.map((b, i) => blockHtml(b, marks[i], files, o.images))
   if (o.withTitle !== false && note.title) parts.unshift(para(esc(note.title), { pt: 18, bold: true }))
   return `<html><head><meta charset="utf-8"></head><body><!--StartFragment-->${parts.join('')}<!--EndFragment--></body></html>`
 }
@@ -81,6 +100,9 @@ export function noteToPlain(note: Pick<NoteRec, 'title' | 'blocks'>, o: { withTi
     if (b.type === 'bullet' || b.type === 'number') return `${pad}${marks[i]} ${t}`
     if (b.type === 'check') return `${pad}${b.checked ? '☑' : '☐'} ${t}`
     if (b.type === 'divider') return '―――――'
+    if (b.type === 'table') return (b.cells ?? []).map((r) => r.join('\t')).join('\n')
+    if (b.type === 'image') return `[그림]${b.caption ? ` ${b.caption}` : ''}`
+    if (b.type === 'pagebreak') return ''
     if (b.type === 'roster') return [t, ...(b.rows ?? []).map((r) => `${r.label}\t${r.checked ? '✔' : ''}`)].filter(Boolean).join('\n')
     return pad + t
   })

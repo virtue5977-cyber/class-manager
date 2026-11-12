@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
-import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
-import { filterSlash, indentBlock, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
+import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent, setNotePage } from '../../lib/notes/notes'
+import { filterSlash, indentBlock, insertBlockAfter, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
 import { caretNav, placeCaret } from '../../lib/ui/caretNav'
 import RichLine, { type LineHandle, type LineValue } from './RichLine'
-import FormatBar from './FormatBar'
-import { applyStyle, styleAt } from '../../lib/notes/marks'
+import NoteToolbar, { type InsertKind, type MarkKey } from './NoteToolbar'
+import NoteTable from './NoteTable'
+import NoteImage from './NoteImage'
+import { DEFAULT_PAGE, PageGap, PageMenu, usePageStarts } from './NotePageView'
+import { fillHeaderFooter, MARGINS } from '../../lib/notes/paginate'
+import { Fragment } from 'react'
+import { imageMime, isImageName, MAX_IMAGE, shrinkImage } from '../../lib/notes/images'
+import { newTable } from '../../lib/notes/tableOps'
+import { applyStyle, forceStyle, styleAt, type Style } from '../../lib/notes/marks'
 import { getSel } from '../../lib/notes/richDom'
 import { copyRich, noteToHtml, noteToPlain } from '../../lib/notes/toHtml'
 import { useLive } from '../../lib/ui/useLive'
@@ -96,7 +103,6 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       // 글자 고르기 대신 줄째 고르기
       window.getSelection?.()?.removeAllRanges()
       ;(document.activeElement as HTMLElement | null)?.blur?.()
-      setPicked(undefined)
       setBsel({ a, h })
     }
     const up = () => {
@@ -157,7 +163,17 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     }
   }, [bsel, blocks])
   /** 글자를 고른 줄(서식 막대) */
-  const [picked, setPicked] = useState<{ id: string; start: number; end: number; top: number; left: number }>()
+  /** 도구 막대: 지금 줄과 고른 범위(커서만이면 start = end) */
+  const [cur, setCur] = useState<{ id: string; start: number; end: number }>()
+  const curRef = useRef(cur)
+  curRef.current = cur
+  /** 고른 글 없이 누른 글자 서식: 그 자리에서 다음에 칠 글자에 쓴다 */
+  const pending = useRef<{ id: string; at: number; style: Record<string, unknown> } | undefined>(undefined)
+  const [, bump] = useState(0)
+  const setPend = (v: typeof pending.current) => {
+    pending.current = v
+    bump((n) => n + 1)
+  }
   const focusNext = useRef<{ id: string; caret: number } | null>(null)
   // 되돌리기(Ctrl+Z)·다시(Ctrl+Y, Ctrl+Shift+Z): 0.7초 넘게 쉬거나 줄 수가 바뀌면 한 단계
   const hist = useRef({ past: [] as NoteBlock[][], future: [] as NoteBlock[][], last: 0, prev: blocks, skip: false })
@@ -212,6 +228,21 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   useEffect(() => () => persist(latest.current.title, latest.current.blocks), [persist])
   // 다른 곳(전달사항 칸 등)에서 노트가 바뀌면 받아 온다(내가 저장한 것과 다를 때만)
   const live = useLive<NoteRec | undefined>(() => db.notes.get(note.id), [db, note.id], note)
+  // 쪽 보기 설정(바꾸면 바로 보이고 저장)
+  const [page, setPage] = useState(note.page ?? DEFAULT_PAGE)
+  const changePage = (p: typeof page) => {
+    setPage(p)
+    void setNotePage(db, note.id, p)
+  }
+  const probe = useRef<HTMLDivElement>(null)
+  const pg = usePageStarts(page.view, blocksBox, probe, blocks, page.margin)
+  // 센 쪽 수를 저장해 둔다(한글 내보내기의 {전체쪽})
+  useEffect(() => {
+    if (page.view && pg.pageH && pg.starts.length !== page.pages) changePage({ ...page, pages: pg.starts.length })
+    // 쪽 보기를 끄면 센 쪽 수는 믿을 수 없으니 지운다(내보내기에서 {전체쪽}을 뺀다)
+    if (!page.view && page.pages !== undefined) changePage({ ...page, pages: undefined })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.view, pg.starts.length, pg.pageH])
   useEffect(() => {
     if (!live || live.deleted) return
     const j = JSON.stringify(live.blocks)
@@ -260,6 +291,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   async function addFiles(files: File[], afterId?: string) {
     setMsg(undefined)
     for (const f of files) {
+      if (isImageName(f.name) || f.type.startsWith('image/')) {
+        await addImage(f.name || '그림.png', await fileBytes(f))
+        continue
+      }
       if (f.size > MAX_FILE) {
         setMsg('50MB까지 붙일 수 있습니다.')
         continue
@@ -366,6 +401,14 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       focusNext.current = { id: b.id, caret: 0 }
       return
     }
+    const pd = pending.current
+    const grew = v.text.length - (b.text ?? '').length
+    if (pd && pd.id === b.id && grew > 0 && at - grew === pd.at) {
+      let mk = v.marks
+      for (const [k, val] of Object.entries(pd.style)) mk = forceStyle(mk, v.text.length, at - grew, at, k as MarkKey, val as string | number | boolean | undefined)
+      v = { ...v, marks: mk }
+      pending.current = { ...pd, at }
+    }
     update(b.id, { text: v.text, marks: v.marks?.length ? v.marks : undefined, links: v.links?.length ? v.links : undefined })
     const m = mentionAt(v.text, at)
     setMen(m ? { id: b.id, ...m, caret: at } : undefined)
@@ -393,25 +436,109 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       const d = h.el
       if (!d || d.ownerDocument.activeElement !== d) continue
       const sel = getSel(d)
-      if (!sel || sel.start === sel.end) return setPicked(undefined)
-      const r = d.ownerDocument.getSelection()?.getRangeAt(0)
-      const rect = r && typeof r.getBoundingClientRect === 'function' ? r.getBoundingClientRect() : null
-      const box = d.getBoundingClientRect?.()
-      return setPicked({ id, start: Math.min(sel.start, sel.end), end: Math.max(sel.start, sel.end), top: rect?.top || box?.top || 0, left: rect?.left || box?.left || 0 })
+      // 도구 막대가 쓸 '지금 줄·고른 범위'(다른 곳을 눌러도 남는다)
+      if (sel) {
+        const c = { id, start: Math.min(sel.start, sel.end), end: Math.max(sel.start, sel.end) }
+        setCur((o) => (o && o.id === c.id && o.start === c.start && o.end === c.end ? o : c))
+        // 다음에 칠 서식은 커서가 친 자리에서 벗어나면 버린다
+        if (pending.current && (pending.current.id !== id || c.start !== pending.current.at || c.end !== c.start)) setPend(undefined)
+      }
+      return
     }
-    setPicked(undefined)
   }, [])
   useEffect(() => {
     document.addEventListener('selectionchange', trackSel)
     return () => document.removeEventListener('selectionchange', trackSel)
   }, [trackSel])
-  function applyFormat(key: Parameters<typeof applyStyle>[4], value?: string) {
-    if (!picked) return
-    const b = blocks.find((x) => x.id === picked.id)
-    if (!b) return
-    const marks = applyStyle(b.marks, (b.text ?? '').length, picked.start, picked.end, key, value)
-    update(b.id, { marks: marks.length ? marks : undefined })
-    requestAnimationFrame(() => refs.current.get(b.id)?.setSelectionRange(picked.start, picked.end))
+
+  /** 막 넣은 표(첫 칸에 커서) */
+  const freshTable = useRef<string | null>(null)
+  function insertTable(o: { rows: number; cols: number }) {
+    const nb: NoteBlock = { id: newBlockId(), type: 'table', ...newTable(o.rows, o.cols) }
+    freshTable.current = nb.id
+    insertAfterCur(nb, 'none')
+  }
+  /** 그림 넣기: 형식 검사·10MB·큰 그림 줄이기 → 지금 줄 다음에 */
+  async function addImage(name: string, raw: Uint8Array) {
+    const mime = imageMime(raw)
+    if (!mime) return setMsg('png·jpg·gif·webp 그림만 넣을 수 있습니다.')
+    if (raw.length > MAX_IMAGE) return setMsg('그림은 한 장에 10MB까지입니다.')
+    const { bytes, mime: m2 } = await shrinkImage(raw, mime)
+    try {
+      const rec = await attachFile(db, note.id, { name, mime: m2, bytes })
+      insertAfterCur({ id: newBlockId(), type: 'image', file_id: rec.id })
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    }
+  }
+  async function pickImage() {
+    const f = await fs.pickFileToRead('image/png,image/jpeg,image/gif,image/webp', { maxBytes: MAX_IMAGE })
+    if (!f) return
+    if (f.tooBig) return setMsg('그림은 한 장에 10MB까지입니다.')
+    await addImage(f.name, f.bytes)
+  }
+  // ---- 도구 막대 ----
+  const curBlock = cur ? blocks.find((x) => x.id === cur.id) : undefined
+  const curStyle: Style = (() => {
+    if (!curBlock || !cur) return {}
+    const len = (curBlock.text ?? '').length
+    const base = styleAt(curBlock.marks, len, cur.start, cur.end) as Record<string, unknown>
+    const pd = pending.current && pending.current.id === cur.id && cur.start === cur.end ? pending.current.style : {}
+    const out = { ...base, ...pd }
+    for (const k of Object.keys(out)) if (out[k] === undefined || out[k] === false) delete out[k]
+    return out as Style
+  })()
+  const backTo = (id: string, start: number, end: number) => requestAnimationFrame(() => refs.current.get(id)?.setSelectionRange(start, end))
+  function tbMark(k: MarkKey, v?: string | number) {
+    if (!curBlock || !cur) return setMsg('글을 고르거나 쓸 줄을 누르세요.')
+    const len = (curBlock.text ?? '').length
+    if (cur.start !== cur.end) {
+      const marks = applyStyle(curBlock.marks, len, cur.start, cur.end, k, v)
+      update(curBlock.id, { marks: marks.length ? marks : undefined })
+      return backTo(curBlock.id, cur.start, cur.end)
+    }
+    // 고른 글이 없으면 다음에 칠 글자에(켜고 끄기는 지금 상태의 반대로)
+    const now = (curStyle as Record<string, unknown>)[k]
+    const want = v === undefined ? !now : now === v ? undefined : v
+    const prev = pending.current && pending.current.id === cur.id && pending.current.at === cur.start ? pending.current.style : {}
+    setPend({ id: cur.id, at: cur.start, style: { ...prev, [k]: want } })
+    backTo(curBlock.id, cur.start, cur.start)
+  }
+  const tbBlock = (patch: (b: NoteBlock) => Partial<NoteBlock>) => {
+    if (!curBlock || !cur) return setMsg('바꿀 줄을 누르세요.')
+    update(curBlock.id, patch(curBlock))
+    backTo(curBlock.id, cur.start, cur.end)
+  }
+  function tbType(t: NoteBlockType) {
+    if (!curBlock || !cur) return
+    setBlocks((bs) => setType(bs, curBlock.id, t))
+    focusNext.current = { id: curBlock.id, caret: cur.start }
+  }
+  function tbIndent(dir: 1 | -1) {
+    if (!curBlock || !cur) return
+    setBlocks((bs) => indentBlock(bs, curBlock.id, dir))
+    backTo(curBlock.id, cur.start, cur.end)
+  }
+  /** 지금 줄 다음에 블록 넣기(지금 줄이 비어 있으면 그 자리에) */
+  function insertAfterCur(nb: NoteBlock, focus: 'next' | 'new' | 'none' = 'next') {
+    // 지금 줄은 ref에서(그림 줄이기·저장을 기다리는 동안 바뀌었을 수 있다) 읽고, 위치는 최신 목록에서 다시 계산
+    const curId = curRef.current?.id
+    setBlocks((bs) => {
+      const r = insertBlockAfter(bs, curId, nb, newBlockId)
+      if (focus !== 'none') focusNext.current = { id: focus === 'new' ? nb.id : r.after, caret: 0 }
+      return r.blocks
+    })
+  }
+  function tbInsert(k: InsertKind, o?: { rows: number; cols: number }) {
+    if (k === 'divider') return insertAfterCur({ id: newBlockId(), type: 'divider' })
+    if (k === 'pagebreak') return insertAfterCur({ id: newBlockId(), type: 'pagebreak' })
+    if (k === 'file') {
+      const nb: NoteBlock = { id: newBlockId(), type: 'p', text: '' }
+      insertAfterCur(nb, 'new')
+      return void chooseSlash(nb, 'file')
+    }
+    if (k === 'table') return insertTable(o ?? { rows: 2, cols: 2 })
+    if (k === 'image') return void pickImage()
   }
 
   function onKey(e: KeyboardEvent<HTMLDivElement>, b: NoteBlock, el: LineHandle) {
@@ -560,7 +687,18 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     const names = new Map<string, string>()
     for (const b of blocks) if (b.type === 'file' && b.file_id) names.set(b.file_id, fileInfo[b.file_id]?.name ?? '파일')
     const n = { title, blocks }
-    const ok = await copyRich(noteToHtml(n, { files: names }), noteToPlain(n))
+    const images = new Map<string, string>()
+    for (const b of blocks)
+      if (b.type === 'image' && b.file_id)
+        try {
+          const f = await readFile(db, b.file_id)
+          let bin = ''
+          f.bytes.forEach((x) => (bin += String.fromCharCode(x)))
+          images.set(b.file_id, `data:${f.mime};base64,${btoa(bin)}`)
+        } catch {
+          /* 없는 그림은 빼고 */
+        }
+    const ok = await copyRich(noteToHtml(n, { files: names, images }), noteToPlain(n))
     setMsg(ok ? '복사했습니다. 한글에서 Ctrl+V로 붙여 넣으세요.' : '복사하지 못했습니다. 글을 골라 Ctrl+C를 눌러 보세요.')
   }
 
@@ -574,7 +712,20 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
 
   const marks = outlineMarks(blocks)
   return (
-    <section className="note-editor" aria-label="노트 편집" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+    <section
+      className="note-editor"
+      aria-label="노트 편집"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+      onPasteCapture={(e) => {
+        // 그림을 붙여 넣으면 그림 블록으로(글은 각 칸이 받는다)
+        const img = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'))
+        if (!img || (e.target as HTMLElement).closest('.nb-tbl, input, textarea')) return
+        e.preventDefault()
+        e.stopPropagation()
+        void addFiles([img])
+      }}
+    >
       <div className="note-head">
         <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
         <div className="row note-tools">
@@ -589,6 +740,19 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           )}
         </div>
       </div>
+      <NoteToolbar
+        block={curBlock}
+        style={curStyle}
+        onType={tbType}
+        onIndent={tbIndent}
+        onAlign={(a) => tbBlock(() => ({ align: a === 'justify' ? undefined : a }))}
+        onLine={(n) => tbBlock(() => ({ line: n === 160 ? undefined : n }))}
+        onMark={tbMark}
+        onInsert={tbInsert}
+        onUndo={() => stepHistory(-1, cur?.id ?? '')}
+        onRedo={() => stepHistory(1, cur?.id ?? '')}
+        extra={<PageMenu page={page} onChange={changePage} />}
+      />
       {msg && <p className="notice" role="status">{msg}</p>}
       {sendFor === 'all' && (
         <div className="row card send-range" role="group" aria-label="전달사항 날짜">
@@ -616,15 +780,24 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           <button type="button" className="link" onClick={() => setSendFor(undefined)}>취소</button>
         </div>
       )}
+      <div className={page.view ? `note-paper-wrap${page.grid ? ' grid' : ''}` : 'note-flow'} style={page.view && page.zoom ? { zoom: page.zoom / 100 } : undefined}>
+      <div
+        className={page.view ? 'note-paper' : undefined}
+        style={page.view ? { padding: `${MARGINS[page.margin].top}mm ${MARGINS[page.margin].right}mm 0 ${MARGINS[page.margin].left}mm` } : undefined}
+      >
+      {page.view && <div className="pg-probe" ref={probe} aria-hidden="true" />}
+      {page.view && page.header && <div className="pg-first-head" style={{ top: 0, height: `${MARGINS[page.margin].top}mm` }} aria-hidden="true"><span>{fillHeaderFooter(page.header, 1, pg.starts.length, today)}</span></div>}
       <div className="note-blocks" ref={blocksBox} onPointerDown={startLineSelect}>
         {blocks.map((b, i) => {
           const lv = b.indent ?? 0
           const q = slashOf(b)
           const items = q !== null ? filterSlash(q) : []
           return (
+            <Fragment key={b.id}>
+            {page.view && i > 0 && pg.starts.includes(i) && <PageGap fill={pg.pageH - (pg.used[pg.starts.indexOf(i) - 1] ?? 0)} page={page} n={pg.starts.indexOf(i)} total={pg.starts.length} today={today} />}
             <div
               key={b.id}
-              className={`nb nb-${b.type} nb-l${lv}${dragId === b.id ? ' dragging' : ''}${inSel(i) ? ' nb-selected' : ''}`}
+              className={`nb nb-${b.type} nb-l${lv}${b.align ? ` al-${b.align}` : ''}${b.line ? ` ln-${b.line}` : ''}${dragId === b.id ? ' dragging' : ''}${inSel(i) ? ' nb-selected' : ''}`}
               style={lv ? { paddingLeft: `${lv * 26}px` } : undefined}
               onDragOver={(e) => dragId && e.preventDefault()}
               onDrop={(e) => {
@@ -645,7 +818,13 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                   <button type="button" role="menuitem" onClick={() => blockAction(b, 'delete')}>지우기</button>
                 </div>
               )}
-              {b.type === 'roster' ? (
+              {b.type === 'table' ? (
+                <NoteTable b={b} autoFocus={freshTable.current === b.id} onChange={(patch) => update(b.id, patch)} onDelete={() => setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))} />
+              ) : b.type === 'image' ? (
+                <NoteImage b={b} onChange={(patch) => update(b.id, patch)} onDelete={() => setBlocks((bs) => (bs.length > 1 ? bs.filter((x) => x.id !== b.id) : [{ id: newBlockId(), type: 'p', text: '' }]))} />
+              ) : b.type === 'pagebreak' ? (
+                <div className="nb-pagebreak" role="separator" aria-label="쪽 나눔"><span>쪽 나눔</span></div>
+              ) : b.type === 'roster' ? (
                 <RosterTable b={b} onChange={(patch) => update(b.id, patch)} />
               ) : b.type === 'divider' ? (
                 <hr />
@@ -706,13 +885,14 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                 </>
               )}
             </div>
+            </Fragment>
           )
         })}
       </div>
-      {picked && (() => {
-        const b = blocks.find((x) => x.id === picked.id)
-        return b ? <FormatBar style={styleAt(b.marks, (b.text ?? '').length, picked.start, picked.end)} top={picked.top} left={picked.left} onApply={applyFormat} onClose={() => setPicked(undefined)} /> : null
-      })()}
+      {page.view && <PageGap last fill={pg.pageH - (pg.used[pg.used.length - 1] ?? 0)} page={page} n={pg.starts.length} total={pg.starts.length} today={today} />}
+      </div>
+      </div>
+
       <p className="muted nb-hint">파일을 끌어다 놓으면 붙습니다(50MB까지).</p>
     </section>
   )
