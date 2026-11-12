@@ -39,7 +39,7 @@ export default function SuggestCard({ items: init, today, cardKey = '' }: { item
     try {
       let id = ''
       if (s.kind === 'notice') id = (await addNotice(db, { text: s.text.trim(), start_date: s.date || today })).id
-      if (s.kind === 'event') id = (await addLocalEvent(db, { date: s.date || today, time: s.time || null, title: s.text.trim(), tag: '업무' })).id
+      if (s.kind === 'event') id = (await addLocalEvent(db, { date: s.date || today, time: s.time || null, title: s.text.trim(), tag: s.tag ?? '업무', place: s.place })).id
       if (s.kind === 'todo') id = (await addTodo(db, [s.text.trim()], s.date || null)).id
       put.current.set(i, { kind: s.kind, id, at: Date.now() })
       setErr(undefined)
@@ -70,6 +70,13 @@ export default function SuggestCard({ items: init, today, cardKey = '' }: { item
             <span className="suggest-when">
               <input type="date" aria-label={`${KIND[s.kind]} ${i + 1} ${s.kind === 'todo' ? '마감일' : '날짜'}`} value={s.date} disabled={done.has(i)} onChange={(e) => patch(i, { date: e.target.value })} />
               {s.kind === 'event' && <input type="time" aria-label={`일정 ${i + 1} 시간`} value={s.time ?? ''} disabled={done.has(i)} onChange={(e) => patch(i, { time: e.target.value })} />}
+              {s.kind === 'event' && <input className="suggest-place" aria-label={`일정 ${i + 1} 장소`} placeholder="장소" value={s.place ?? ''} disabled={done.has(i)} onChange={(e) => patch(i, { place: e.target.value })} />}
+              {s.kind === 'event' && (
+                <select aria-label={`일정 ${i + 1} 구분`} value={s.tag ?? '업무'} disabled={done.has(i)} onChange={(e) => patch(i, { tag: e.target.value as '개인' | '업무' })}>
+                  <option value="업무">업무</option>
+                  <option value="개인">개인</option>
+                </select>
+              )}
             </span>
             <span className="suggest-act">
               <button type="button" className="link" disabled={done.has(i) || busy.current.has(i)} onClick={() => void putOne(i)}>

@@ -75,6 +75,87 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const [fileInfo, setFileInfo] = useState<Record<string, { name: string; size: number }>>({})
   const [folderList, setFolderList] = useState<Record<string, { name: string; dir: boolean }[]>>({})
   const refs = useRef(new Map<string, LineHandle>())
+  /** 여러 줄 고르기(줄째): 한 줄에서 끌기 시작해 다른 줄로 가면(위·아래 모두) */
+  const [bsel, setBsel] = useState<{ a: number; h: number }>()
+  const blocksBox = useRef<HTMLDivElement>(null)
+  const inSel = (i: number) => !!bsel && i >= Math.min(bsel.a, bsel.h) && i <= Math.max(bsel.a, bsel.h)
+  function startLineSelect(e: React.PointerEvent) {
+    if (e.button > 0 || e.shiftKey) return
+    const row = (e.target as Element).closest('.nb')
+    if (!row || !(e.target as Element).closest('[contenteditable]')) return
+    const all = () => Array.from(blocksBox.current?.querySelectorAll('.nb') ?? [])
+    const a = all().indexOf(row)
+    if (a < 0) return
+    setBsel(undefined)
+    let on = false
+    const move = (ev: PointerEvent) => {
+      const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.nb')
+      const h = over ? all().indexOf(over) : -1
+        if (h < 0 || (!on && h === a)) return
+      on = true
+      // 글자 고르기 대신 줄째 고르기
+      window.getSelection?.()?.removeAllRanges()
+      ;(document.activeElement as HTMLElement | null)?.blur?.()
+      setPicked(undefined)
+      setBsel({ a, h })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+  // 줄째 고른 동안: Esc 풀기, Delete·Backspace 지우기, Ctrl+C·X 복사(서식째)·잘라내기, 다른 곳 누르면 풀기
+  useEffect(() => {
+    if (!bsel) return
+    const lo = Math.min(bsel.a, bsel.h)
+    const hi = Math.max(bsel.a, bsel.h)
+    const chosen = () => blocks.slice(lo, hi + 1)
+    const removeChosen = () => {
+      const ids = new Set(chosen().map((b) => b.id))
+      setBlocks((bs) => {
+        const rest = bs.filter((b) => !ids.has(b.id))
+        return rest.length ? rest : [{ id: newBlockId(), type: 'p', text: '' }]
+      })
+      setBsel(undefined)
+    }
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return
+      // 다른 입력칸(명령 막대 등)에 친 키는 그 칸 몫: 줄 고르기를 풀고 손대지 않는다
+      const t = e.target as HTMLElement | null
+      if (t && t !== document.body && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return setBsel(undefined)
+      const mod = e.ctrlKey || e.metaKey
+      if (e.key === 'Escape') return (e.preventDefault(), setBsel(undefined))
+      if (e.key === 'Delete' || e.key === 'Backspace') return (e.preventDefault(), removeChosen())
+      if (mod && /^[cx]$/i.test(e.key)) {
+        e.preventDefault()
+        const part = { title: '', blocks: chosen() }
+        void copyRich(noteToHtml(part), noteToPlain(part)).then(() => setMsg(`${hi - lo + 1}줄을 복사했습니다.`))
+        if (/x/i.test(e.key)) removeChosen()
+        return
+      }
+      if (!mod && !e.altKey && e.key.length === 1) setBsel(undefined)
+    }
+    const down = (e: MouseEvent) => {
+      if (!(e.target as Element | null)?.closest?.('.nb-selected')) setBsel(undefined)
+    }
+    // 다른 칸에 초점이 가면(Ctrl+K 등) 풀기
+    const focus = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) setBsel(undefined)
+    }
+    document.addEventListener('keydown', key)
+    document.addEventListener('mousedown', down)
+    document.addEventListener('focusin', focus)
+    return () => {
+      document.removeEventListener('keydown', key)
+      document.removeEventListener('mousedown', down)
+      document.removeEventListener('focusin', focus)
+    }
+  }, [bsel, blocks])
   /** 글자를 고른 줄(서식 막대) */
   const [picked, setPicked] = useState<{ id: string; start: number; end: number; top: number; left: number }>()
   const focusNext = useRef<{ id: string; caret: number } | null>(null)
@@ -164,7 +245,17 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const update = (id: string, patch: Partial<NoteBlock>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...patch } : b)))
   const [slashOff, setSlashOff] = useState<string>()
   /** 블록 글이 '/…'(12자까지, 띄어쓰기 포함)이면 블록 메뉴 거르기 글. Esc로 닫은 블록은 '/'를 지울 때까지 닫힘. */
-  const slashOf = (b: NoteBlock) => (slashOff === b.id ? null : (/^\/([^\n]{0,12})$/.exec(b.text ?? '')?.[1] ?? null))
+  const slashOf = (b: NoteBlock) => {
+    if (slashOff === b.id) return null
+    const t = b.text ?? ''
+    // 줄 전체가 '/…'이거나, 글 끝에서 띄어쓰기 뒤 '/…'(띄어쓰기 없는 12자까지)
+    return /^\/([^\n]{0,12})$/.exec(t)?.[1] ?? /\s\/([^\s/]{0,12})$/.exec(t)?.[1] ?? null
+  }
+  /** '/…'를 뺀 앞 글(줄 중간에서 연 경우) */
+  const beforeSlash = (b: NoteBlock) => {
+    const t = b.text ?? ''
+    return /^\/[^\n]{0,12}$/.test(t) ? '' : t.replace(/\s\/[^\s/]{0,12}$/, '')
+  }
 
   async function addFiles(files: File[], afterId?: string) {
     setMsg(undefined)
@@ -211,6 +302,23 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
 
   async function chooseSlash(b: NoteBlock, type: NoteBlockType) {
     setSlashSel(0)
+    // 줄 중간에서 연 경우: 앞 글은 남긴다. 글 블록이면 모양만 바꾸고, 표·구분선·파일·폴더는 다음 줄에 새로.
+    const keep = beforeSlash(b)
+    if (keep) {
+      const cut = <T extends { from: number; to: number }>(xs?: T[]) => (xs ?? []).filter((x) => x.from < keep.length).map((x) => ({ ...x, to: Math.min(x.to, keep.length) }))
+      const kept = { text: keep, marks: cut(b.marks).length ? cut(b.marks) : undefined, links: cut(b.links).length ? cut(b.links) : undefined }
+      if (['p', 'h1', 'h2', 'check', 'bullet', 'number'].includes(type)) {
+        setBlocks((bs) => setType(bs.map((x) => (x.id === b.id ? { ...x, ...kept } : x)), b.id, type).map((x) => (x.id === b.id ? { ...x, ...kept } : x)))
+        focusNext.current = { id: b.id, caret: keep.length }
+        return
+      }
+      const nb: NoteBlock = { id: newBlockId(), type: 'p', text: '' }
+      setBlocks((bs) => {
+        const i = bs.findIndex((x) => x.id === b.id)
+        return [...bs.slice(0, i), { ...bs[i], ...kept }, nb, ...bs.slice(i + 1)]
+      })
+      return chooseSlash(nb, type)
+    }
     if (type === 'file') {
       const f = await fs.pickFileToRead('', { maxBytes: MAX_FILE })
       update(b.id, { text: '' })
@@ -473,7 +581,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           <button type="button" className="link" title="서식을 살려 복사합니다. 한글·워드에 붙여 넣으세요." onClick={copyForHwp}>한글로 복사</button>
           {live?.notice_date ? (
             <>
-              <span className="badge notice-badge" title="이날 전달사항과 이어진 노트입니다. 글 줄 하나가 전달사항 한 항목입니다.">{`[전달사항] ${+live.notice_date.slice(5, 7)}/${+live.notice_date.slice(8)}`}</span>
+              <span className="badge notice-badge" title="이날 전달사항과 이어진 노트입니다. 글 줄 하나가 전달사항 한 항목입니다.">{`[전달 ${+live.notice_date.slice(5, 7)}/${+live.notice_date.slice(8)}]`}</span>
               <button type="button" className="link" onClick={() => void unlinkNoticeNote(db, note.id).then(() => setMsg('전달사항과 연결을 끊었습니다. 전달사항은 그대로 남습니다.'))}>연결 끊기</button>
             </>
           ) : (
@@ -508,7 +616,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           <button type="button" className="link" onClick={() => setSendFor(undefined)}>취소</button>
         </div>
       )}
-      <div className="note-blocks">
+      <div className="note-blocks" ref={blocksBox} onPointerDown={startLineSelect}>
         {blocks.map((b, i) => {
           const lv = b.indent ?? 0
           const q = slashOf(b)
@@ -516,7 +624,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           return (
             <div
               key={b.id}
-              className={`nb nb-${b.type} nb-l${lv}${dragId === b.id ? ' dragging' : ''}`}
+              className={`nb nb-${b.type} nb-l${lv}${dragId === b.id ? ' dragging' : ''}${inSel(i) ? ' nb-selected' : ''}`}
               style={lv ? { paddingLeft: `${lv * 26}px` } : undefined}
               onDragOver={(e) => dragId && e.preventDefault()}
               onDrop={(e) => {
@@ -587,8 +695,9 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                           <span className="slash-ico" aria-hidden="true">{it.icon}</span>
                           <span className="slash-txt">
                             <b>{it.label}</b>
-                            <small>{it.hint}</small>
+                            <small>{it.hint.split(' · ').filter((h) => !/^Ctrl/.test(h)).join(' · ')}</small>
                           </span>
+                          {/Ctrl\+[^ ·]+/.exec(it.hint) && <kbd className="slash-key">{/Ctrl\+[^ ·]+/.exec(it.hint)![0]}</kbd>}
                         </li>
                       ))}
                       <li className="slash-foot" aria-hidden="true">↑↓ 고르기 · Enter 넣기 · Esc 닫기</li>
@@ -613,28 +722,43 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
 function RosterTable({ b, onChange }: { b: NoteBlock; onChange: (p: Partial<NoteBlock>) => void }) {
   const rows = b.rows ?? []
   const done = rows.filter((r) => r.checked).length
+  const size = b.size ?? 'md'
   const set = (fn: (r: NonNullable<NoteBlock['rows']>[number]) => boolean) => onChange({ rows: rows.map((r) => ({ ...r, checked: fn(r) })) })
+  const shown = b.hide_done ? rows.filter((r) => !r.checked) : rows
   return (
-    <div className="nb-roster">
+    <div className={`nb-roster nb-roster-${size}${b.collapsed ? ' collapsed' : ''}`}>
       <table className="grid nb-roster-table" aria-label="학생 체크 표">
         <caption>
-          <div className="row nb-roster-head">
-            <input aria-label="표 제목" placeholder="표 제목(예: 동의서 제출)" value={b.text ?? ''} onChange={(e) => onChange({ text: e.target.value })} />
-            <span className="muted">{`${done} / ${rows.length}`}</span>
-            <button type="button" className="link" onClick={() => set(() => true)}>모두 체크</button>
-            <button type="button" className="link" onClick={() => set(() => false)}>모두 해제</button>
-          </div>
-        </caption>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.sid} className={r.checked ? 'on' : undefined}>
-              <td className="pii">{r.label}</td>
-              <td>
-                <input type="checkbox" aria-label={`${r.label} 체크`} checked={r.checked} onChange={(e) => set((x) => (x.sid === r.sid ? e.target.checked : x.checked))} />
-              </td>
-            </tr>
+      <div className="row nb-roster-head">
+        <input aria-label="표 제목" placeholder="표 제목(예: 동의서 제출)" value={b.text ?? ''} onChange={(e) => onChange({ text: e.target.value })} />
+        <span className="muted">{`${done} / ${rows.length}`}</span>
+        <button type="button" className="link" onClick={() => set(() => true)}>모두 체크</button>
+        <button type="button" className="link" onClick={() => set(() => false)}>모두 해제</button>
+        <button type="button" className="link" onClick={() => onChange({ hide_done: !b.hide_done })}>
+          {b.hide_done ? `체크한 학생 보이기(${done})` : '체크한 학생 숨기기'}
+        </button>
+        <span className="seg-mini" role="radiogroup" aria-label="표 크기">
+          {(['sm', 'md', 'lg'] as const).map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={size === k} className={size === k ? 'on' : undefined} onClick={() => onChange({ size: k })}>
+              {k === 'sm' ? '작게' : k === 'md' ? '보통' : '크게'}
+            </button>
           ))}
-        </tbody>
+        </span>
+        <button type="button" className="link" onClick={() => onChange({ collapsed: !b.collapsed })}>{b.collapsed ? '표 펴기' : '표 접기'}</button>
+      </div>
+        </caption>
+      {!b.collapsed && (
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.sid} className={r.checked ? 'on' : undefined}>
+                <td className="pii">{r.label}</td>
+                <td>
+                  <input type="checkbox" aria-label={`${r.label} 체크`} checked={r.checked} onChange={(e) => set((x) => (x.sid === r.sid ? e.target.checked : x.checked))} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+      )}
       </table>
     </div>
   )

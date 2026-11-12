@@ -46,3 +46,10 @@ test('! 자동완성: 처음 낱말은 스킬, 그다음은 하위(받는 사람
   expect(suggest('!', 1, c).length).toBe(7)
   expect(suggest('!전달 학', 6, c).map((s) => s.insert)).toEqual(['학생', '학부모'])
 })
+
+test('! 명령 뒤에서도 @로 학생·노트 후보', () => {
+  const s = suggest('!전달 학부모 @', 10, ctx)
+  expect(s.some((x) => x.kind === 'student')).toBe(true)
+  expect(suggest('!누가 @', 6, ctx).some((x) => x.kind === 'student')).toBe(true)
+  expect(suggest('!상', 2, ctx).map((x) => x.label)).toEqual(['!상담'])
+})

@@ -29,7 +29,7 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
     if (!bang.sub) return { summary: '받는 사람을 고르세요: !전달 학생 · !전달 교사 · !전달 학부모', links: [], pending: true }
     if (!bang.body) return { summary: `!전달 ${bang.sub} 뒤에 전할 내용을 쓰세요.`, links: [], pending: true }
     input = `/전달 ${bang.sub} ${bang.body}`
-  } else if (bang?.skill === '상담정리') input = `/상담정리 ${bang.body}`
+  } else if (bang?.skill === '상담') input = `/상담정리 ${bang.body}`
   const p = parseCommand(input, ctx, commandNames(), commandSubs())
   const isMessage = p.cmd === 'notice' && (p.sub === '학부모' || p.sub === '교사')
   // /전달 학생 …: AI가 학생에게 맞게 고쳐 전달사항으로. AI가 꺼져 있으면 규칙(글 그대로)
@@ -42,9 +42,9 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
   // ! 스킬과 질문은 설정과 상관없이 이름을 늘 가린다(설계서 10 §1)
   const allNames = [...new Set([...(ctx.maskNames ?? ctx.students.map((x) => x.name)), ...(await allStudentNames(env.db))])]
   // 나머지 ! 스킬(일정·할일·나누기·요약·누가·추천)
-  if (bang && bang.skill !== '전달' && bang.skill !== '상담정리') return runSkillAi(input, env as never, allNames)
+  if (bang && bang.skill !== '전달' && bang.skill !== '상담') return runSkillAi(input, env as never, allNames)
   // 옛 쓰임 안내: /전달 학생|교사|학부모, /상담정리 → 이제는 !
-  const hint = !bang && (isMessage || isStudentNotice || p.cmd === 'counselDraft') ? ` (이제는 !${p.cmd === 'counselDraft' ? '상담정리' : `전달 ${p.sub}`})` : ''
+  const hint = !bang && (isMessage || isStudentNotice || p.cmd === 'counselDraft') ? ` (이제는 !${p.cmd === 'counselDraft' ? '상담' : `전달 ${p.sub}`})` : ''
 
   if (p.cmd === 'counselDraft') {
     if (p.students.length !== 1) return { summary: '학생을 @로 한 명 고르세요.', links: [], pending: true }

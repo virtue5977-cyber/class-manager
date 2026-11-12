@@ -33,7 +33,7 @@ test('긴 붙여넣기 → !처럼 추천 카드(전달사항·일정·할 일, 
   const { env, ctx } = await setup(() => '{"summary":"강당 교육 안내","notices":["강당 교육\\n- 3교시"],"events":[{"date":"2026-11-13","time":"","title":"강당 교육"}],"todos":[{"text":"동의서 걷기","due":"2026-11-11"}]}')
   const r = await executeInput('공지\n3교시 후 강당 교육\n동의서 내일까지\n체육복 지참', ctx, env, aiFallback)
   expect(r.result?.summary).toBe('강당 교육 안내')
-  expect(r.result?.card).toEqual({ kind: 'suggest', data: { items: [{ kind: 'notice', text: '강당 교육\n- 3교시', date: '2026-11-10' }, { kind: 'event', text: '강당 교육', date: '2026-11-13', time: '' }, { kind: 'todo', text: '동의서 걷기', date: '2026-11-11' }] } })
+  expect(r.result?.card).toEqual({ kind: 'suggest', data: { items: [{ kind: 'notice', text: '강당 교육\n- 3교시', date: '2026-11-10' }, { kind: 'event', text: '강당 교육', date: '2026-11-13', time: '', tag: '업무' }, { kind: 'todo', text: '동의서 걷기', date: '2026-11-11' }] } })
 })
 
 test('/상담정리 → 미정리 기록을 정리하고 되돌릴 수 있다', async () => {
@@ -98,7 +98,7 @@ test('!일정·!요약·기호 없는 질문(앱 자료로 대답, 이름은 가
     req.system.includes('"events"') && !req.system.includes('"notices"') ? '{"events":[{"date":"2026-11-13","time":"9:00","title":"수학 올림픽"}]}' : req.system.includes('요점') ? '{"text":"- 금요일 올림픽"}' : '{"answer":"오늘 결석은 박도윤 한 명입니다."}',
   )
   const ev = await executeInput('!일정 금요일 9시 수학 올림픽', ctx, env, aiFallback)
-  expect(ev.result?.card).toEqual({ kind: 'suggest', data: { items: [{ kind: 'event', text: '수학 올림픽', date: '2026-11-13', time: '09:00' }] } })
+  expect(ev.result?.card).toEqual({ kind: 'suggest', data: { items: [{ kind: 'event', text: '수학 올림픽', date: '2026-11-13', time: '09:00', tag: '업무' }] } })
   const sum = await executeInput('!요약 긴 글', ctx, env, aiFallback)
   expect(sum.result?.card).toEqual({ kind: 'draft', data: { kind: 'message', text: '- 금요일 올림픽' } })
   const q = await executeInput('오늘 결석한 학생 누구야', ctx, env, aiFallback)

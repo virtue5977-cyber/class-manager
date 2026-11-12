@@ -12,6 +12,19 @@ export interface Suggestion {
 
 const MAX = 8
 
+/** @ 뒤: 학생(번호 이름)과 노트 제목 */
+function atSuggest(q: string, ctx: ParseCtx): Suggestion[] {
+  const studs = (q ? findStudents(q, ctx.students) : ctx.students).filter((s) => !s.deleted && s.active !== false)
+  const out: Suggestion[] = studs.map((s) => ({
+    label: `${s.number}번 ${s.name}`,
+    insert: ctx.students.filter((x) => x.name === s.name).length === 1 ? `@${s.name}` : `@${s.number}`,
+    kind: 'student' as const,
+  }))
+  for (const n of ctx.notes)
+    if (!n.deleted && n.title.trim() && (!q || n.title.includes(q))) out.push({ label: n.title, insert: `@${n.title.trim()}`, kind: 'note', detail: '노트' })
+  return out.slice(0, MAX)
+}
+
 function tokenAt(input: string, caret: number): { start: number; text: string } {
   let start = caret
   while (start > 0 && !/\s/.test(input[start - 1])) start--
@@ -29,7 +42,7 @@ export function suggest(input: string, caret: number, ctx: ParseCtx & { commands
   }
   const sk = /^!(\S+)\s+$/.exec(before) && SKILLS.find((k) => k.id === /^!(\S+)/.exec(before)![1])
   if (sk && sk.subs) return sk.subs.filter((x) => x.startsWith(text) && x !== text).map((x) => ({ label: x, insert: x, kind: 'sub' as const, detail: sk.help }))
-  if (before.trimStart().startsWith('!')) return []
+  if (before.trimStart().startsWith('!')) return text.startsWith('@') ? atSuggest(text.slice(1), ctx) : []
   // 명령
   if (isFirst && text.startsWith('/')) {
     const q = text.slice(1)
@@ -45,18 +58,7 @@ export function suggest(input: string, caret: number, ctx: ParseCtx & { commands
   const parsed = parseCommand(before, ctx, commandNames(ctx.commands), commandSubs(ctx.commands))
   const cmd = ctx.commands.find((c) => c.id === parsed.cmd)
   // 학생·노트
-  if (text.startsWith('@')) {
-    const q = text.slice(1)
-    const studs = (q ? findStudents(q, ctx.students) : ctx.students).filter((s) => !s.deleted && s.active !== false)
-    const out: Suggestion[] = studs.map((s) => ({
-      label: `${s.number}번 ${s.name}`,
-      insert: ctx.students.filter((x) => x.name === s.name).length === 1 ? `@${s.name}` : `@${s.number}`,
-      kind: 'student' as const,
-    }))
-    for (const n of ctx.notes)
-      if (!n.deleted && n.title.trim() && (!q || n.title.includes(q))) out.push({ label: n.title, insert: `@${n.title.trim()}`, kind: 'note', detail: '노트' })
-    return out.slice(0, MAX)
-  }
+  if (text.startsWith('@')) return atSuggest(text.slice(1), ctx)
   if (!cmd) return []
   // 태그
   if (text.startsWith('#'))

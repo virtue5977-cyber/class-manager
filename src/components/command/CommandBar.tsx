@@ -108,7 +108,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
         <ul className="suggest" role="listbox" aria-label="자동완성">
           {list.map((s, i) => (
             <li key={s.kind + s.label} role="option" aria-selected={i === sel} className={i === sel ? 'on' : undefined} onMouseDown={(e) => (e.preventDefault(), pick(s))}>
-              <span className={`sg-kind sg-${s.kind}`} aria-hidden="true">{s.kind === 'note' ? '📄' : s.kind === 'student' ? '@' : s.kind === 'cmd' ? '/' : s.kind === 'tag' ? '#' : '·'}</span>
+              <span className={`sg-kind sg-${s.kind}`} aria-hidden="true">{s.kind === 'note' ? '📄' : s.kind === 'student' ? '@' : s.kind === 'cmd' ? '' : s.kind === 'tag' ? '#' : '·'}</span>
               <span className="pii">{s.label}</span>
               {s.detail && <span className="muted">{s.detail}</span>}
             </li>
@@ -119,7 +119,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
         <input
           ref={ref}
           aria-label="명령 입력"
-          placeholder={env ? '/기록(예: /출결 @3 결석 질병) · !AI 글(예: !전달 학부모, !일정) · 질문은 그냥' : '먼저 학급을 만드세요'}
+          placeholder={env ? '/빠른 실행 · !AI 실행 · @학생·노트 — 모르면 /설명서' : '먼저 학급을 만드세요'}
           value={value}
           disabled={!env}
           onChange={(e) => set(e.target.value, e.target.selectionStart ?? e.target.value.length)}

@@ -11,7 +11,7 @@ export const SKILLS: Skill[] = [
   { id: '나누기', help: '!나누기 공문 — 전달사항으로 나눠 추천(안내 하나 = 하나)' },
   { id: '요약', help: '!요약 글 — 요점만' },
   { id: '누가', help: '!누가 관찰 메모 — 누가기록 문체로' },
-  { id: '상담정리', help: '!상담정리 @학생 — 미정리 상담을 누가기록 초안으로' },
+  { id: '상담', help: '!상담 @학생 — 미정리 상담·관찰을 누가기록 초안으로' },
 ]
 
 export interface ParsedSkill {
@@ -24,7 +24,8 @@ export interface ParsedSkill {
 export function parseSkill(input: string): ParsedSkill {
   const t = input.replace(/^\s*!/, '')
   const m = /^(\S+)([\s\S]*)$/.exec(t.trimStart())
-  const sk = m && SKILLS.find((s) => s.id === m[1])
+  // 옛 이름 !상담정리도 받는다
+  const sk = m && SKILLS.find((s) => s.id === (m[1] === '상담정리' ? '상담' : m[1]))
   if (!sk || t.match(/^\s/)) return { skill: 'auto', sub: undefined, body: t.trim() }
   let rest = m![2]
   let sub: string | undefined
@@ -54,6 +55,10 @@ export interface Suggestion {
   /** 전달사항: 날짜, 일정: 날짜, 할 일: 마감일('' = 없음) */
   date: string
   time?: string
+  /** 일정: 장소(선택) */
+  place?: string
+  /** 일정: 개인/업무(기본 업무) */
+  tag?: '개인' | '업무'
 }
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/
@@ -71,7 +76,7 @@ export function normalizeSuggestions(
   for (const n of (r.notices ?? []).slice(0, 5)) if (str(n)) out.push({ kind: 'notice', text: str(n), date: today })
   for (const e of (r.events ?? []).slice(0, 5)) {
     const o = (e ?? {}) as Record<string, unknown>
-    if (str(o.title)) out.push({ kind: 'event', text: str(o.title), date: YMD.test(str(o.date)) ? str(o.date) : today, time: time(o.time) })
+    if (str(o.title)) out.push({ kind: 'event', text: str(o.title), date: YMD.test(str(o.date)) ? str(o.date) : today, time: time(o.time), place: str(o.place).slice(0, 60) || undefined, tag: o.tag === '개인' ? '개인' : '업무' })
   }
   for (const t of (r.todos ?? []).slice(0, 5)) {
     const o = (t ?? {}) as Record<string, unknown>

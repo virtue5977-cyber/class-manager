@@ -3,7 +3,8 @@ import { atVisualEdge, caretNav, placeCaret, type CaretMove } from '../../lib/ui
 import Icon from '../../components/Icon'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { NoticeItemRec } from '../../lib/db/types'
-import { addNotice, clearNoticesOn, deleteNotice, moveNotice, noticesOn, updateNotice } from '../../lib/notices/notices'
+import { addNotice, clearNoticesOn, deleteNotice, moveNotice, noticeDateGroups, noticesOn, reorderNotices, updateNotice, type NoticeDateGroup } from '../../lib/notices/notices'
+import { dropIndex, reorderIds, startPointerDrag } from '../../lib/ui/pointerDrag'
 import { splitNoticesByAi } from '../../lib/notices/aiSplit'
 import { openNoticeNote } from '../../lib/notices/noteSync'
 import { listNotes } from '../../lib/notes/notes'
@@ -21,6 +22,8 @@ import { Link, useNavigate } from 'react-router-dom'
 const DRAFT = '__draft'
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`
 const period = (n: NoticeItemRec) => (n.start_date === n.end_date ? md(n.start_date) : `${md(n.start_date)}~${md(n.end_date)}`)
+/** 줄에 보이는 날짜: 보고 있는 날 하루짜리는 쓰지 않는다 */
+const periodShown = (n: NoticeItemRec, date: string) => (n.start_date === date && n.end_date === date ? '' : period(n))
 
 /** 그날 전달사항: 체크 · 고정 · 순서 · 기간 · 지우기(되돌리기) · 직접 추가 · AI로 나누기 · 노트로 열기(짝 노트) · 내보내기. */
 /** 글 길이에 맞춰 칸 높이를 늘린다(잘리지 않게) */
@@ -30,12 +33,33 @@ const grow = (el: HTMLTextAreaElement | null) => {
   el.style.height = `${el.scrollHeight}px`
 }
 
-export default function NoticeTab({ date }: { date: string }) {
+export default function NoticeTab({ date: home }: { date: string }) {
+  /** 날짜별 목록에서 고른 날(없으면 받은 날) */
+  const [view, setView] = useState<string>()
+  const date = view ?? home
+  const [byDate, setByDate] = useState(false)
   const db = useDb()
   const navigate = useNavigate()
   const fs = useFs()
   const ai = useAi()
   const list = useLive<NoticeItemRec[]>(() => noticesOn(db, date), [db, date], [])
+  const groups = useLive<{ upcoming: NoticeDateGroup[]; ranges: NoticeDateGroup[]; past: NoticeDateGroup[] }>(() => (byDate ? noticeDateGroups(db, date) : Promise.resolve({ upcoming: [], ranges: [], past: [] })), [db, date, byDate], { upcoming: [], ranges: [], past: [] })
+  const listRef = useRef<HTMLUListElement>(null)
+  const [dragId, setDragId] = useState<string>()
+  const [dropAt, setDropAt] = useState<number>()
+  /** 손잡이를 끌어 순서 바꾸기(위·아래 모두) */
+  function beginDrag(e: React.PointerEvent, id: string) {
+    e.preventDefault()
+    const ids = list.map((n) => n.id)
+    const mids = () => Array.from(listRef.current?.querySelectorAll<HTMLElement>('li[data-id]') ?? []).map((li) => { const r = li.getBoundingClientRect(); return r.top + r.height / 2 })
+    let at = -1
+    startPointerDrag(e, {
+      onStart: () => setDragId(id),
+      onMove: (_x, y) => { at = dropIndex(mids(), y); setDropAt(at) },
+      onDrop: () => { setDragId(undefined); setDropAt(undefined); if (at >= 0) void act(() => reorderNotices(db, date, reorderIds(ids, id, at))) },
+      onCancel: () => { setDragId(undefined); setDropAt(undefined) },
+    })
+  }
   /** 새 줄(아직 저장 안 함). null이면 없음 */
   const [draft, setDraft] = useState<string | null>(null)
   const fields = useRef(new Map<string, HTMLTextAreaElement>())
@@ -159,7 +183,14 @@ export default function NoticeTab({ date }: { date: string }) {
   return (
     <section className="notice-tab stack" aria-label="전달사항">
       <div className="row between">
-        <strong>{`${md(date)} 전달사항 ${list.length}개`}</strong>
+        <span className="row">
+          <strong>{`${md(date)} 전달사항 ${list.length}개`}</strong>
+          {view && view !== home && (
+            <button type="button" className="link" onClick={() => setView(undefined)}>
+              보던 날로
+            </button>
+          )}
+        </span>
         <div className="row notice-tools" role="toolbar" aria-label="전달사항 도구">
           <button type="button" className="icon-btn tool-ico" aria-label="가져오기(붙여넣어 AI로 나누기)" title="가져오기 — 붙여넣어 AI로 나누기" aria-pressed={pasteOpen} onClick={() => setPasteOpen((v) => !v)}>
             <Icon name="upload" size={16} />
@@ -175,6 +206,9 @@ export default function NoticeTab({ date }: { date: string }) {
             })}
           >
             <Icon name="noteAdd" size={16} />
+          </button>
+          <button type="button" className="icon-btn tool-ico" aria-label="날짜별 전달사항" title="날짜별 — 다른 날 전달사항 보기" aria-pressed={byDate} onClick={() => setByDate((v) => !v)}>
+            <Icon name="calendar" size={16} />
           </button>
           <ExportMenu icon items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`전달사항_${date}.pdf`) }]} />
           <button type="button" className="icon-btn tool-ico" aria-label="전체 지우기" title="이날 전달사항 전체 지우기" disabled={!list.length} onClick={() => setConfirmClear(true)}>
@@ -223,6 +257,22 @@ export default function NoticeTab({ date }: { date: string }) {
           </div>
         </div>
       )}
+      {byDate && (
+        <section className="notice-dates card" aria-label="날짜별 전달사항">
+          {groups.upcoming.length + groups.ranges.length + groups.past.length === 0 && <p className="muted">다른 날 전달사항이 없습니다.</p>}
+          {[...groups.upcoming, ...groups.ranges].map((g) => (
+            <DateGroup key={g.key} g={g} current={date} onView={() => setView(g.start)} onDelete={(n) => act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))} />
+          ))}
+          {groups.past.length > 0 && (
+            <details>
+              <summary>{`지난 날짜 ${groups.past.length}`}</summary>
+              {groups.past.map((g) => (
+                <DateGroup key={g.key} g={g} current={date} onView={() => setView(g.start)} onDelete={(n) => act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))} />
+              ))}
+            </details>
+          )}
+        </section>
+      )}
       {msg && <p className="notice" role="status">{msg}</p>}
       {undo && (
         <p className="row">
@@ -232,9 +282,12 @@ export default function NoticeTab({ date }: { date: string }) {
           </button>
         </p>
       )}
-      <ul className="plain notice-list" aria-label="전달사항 목록">
+      <ul className="plain notice-list" aria-label="전달사항 목록" ref={listRef}>
         {list.map((n, i) => (
-          <li key={n.id} className={`notice-row${n.done ? ' done' : ''}${n.pinned ? ' pinned' : ''}`}>
+          <li key={n.id} data-id={n.id} className={`notice-row${n.done ? ' done' : ''}${n.pinned ? ' pinned' : ''}${dragId === n.id ? ' dragging' : ''}${dropAt === i ? ' drop-before' : ''}${dropAt === list.length && i === list.length - 1 ? ' drop-after' : ''}`}>
+            <span className="drag-grip" role="button" tabIndex={-1} aria-label={`${n.text} 끌어서 순서 바꾸기`} title="끌어서 순서 바꾸기" onPointerDown={(e) => beginDrag(e, n.id)}>
+              <Icon name="grip" size={14} />
+            </span>
             <input type="checkbox" aria-label={`${n.text} 완료`} checked={n.done} onChange={(e) => act(() => updateNotice(db, n.id, { done: e.target.checked }))} />
             <span className="notice-box">
             <textarea
@@ -274,10 +327,12 @@ export default function NoticeTab({ date }: { date: string }) {
                 {n.parts.flatMap((p, k) => (typeof p !== 'string' && 'note' in p ? [<Link key={k} to={`/notes?id=${p.note}`} className="note-link notice-link" title="노트 열기">{`📄 ${notes.find((x) => x.id === p.note)?.title ?? '지운 노트'}`}</Link>] : []))}
               </span>
             )}
-            <button type="button" className="notice-period link" aria-label={`${n.text} 기간 고치기`} onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>
-              {period(n)}
-            </button>
             <span className="row-tools">
+            {!periodShown(n, date) && (
+              <button type="button" className="icon-btn" aria-label={`${n.text} 날짜 정하기`} title="날짜·기간 정하기" onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>
+                <Icon name="calendar" size={14} />
+              </button>
+            )}
             <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.text} 고정`} aria-pressed={n.pinned} onClick={() => act(() => updateNotice(db, n.id, { pinned: !n.pinned }))}>
               <Icon name="pin" size={14} />
             </button>
@@ -285,6 +340,9 @@ export default function NoticeTab({ date }: { date: string }) {
             <button type="button" className="icon-btn" aria-label={`${n.text} 아래로`} disabled={i === list.length - 1} onClick={() => act(() => moveNotice(db, date, n.id, 1))}>↓</button>
             <button type="button" className="icon-btn" aria-label={`${n.text} 지우기`} onClick={() => act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))}>×</button>
             </span>
+            <button type="button" className="notice-period link" aria-label={`${n.text} 기간 고치기`} onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>
+              {periodShown(n, date)}
+            </button>
             </span>
             {rangeFor === n.id && (
               <span className="row notice-range">
@@ -297,6 +355,7 @@ export default function NoticeTab({ date }: { date: string }) {
         ))}
         {draft !== null && (
           <li className="notice-row draft">
+            <span className="drag-grip" aria-hidden="true" />
             <input type="checkbox" aria-hidden="true" tabIndex={-1} disabled />
             <span className="notice-box">
               <textarea
@@ -339,5 +398,26 @@ export default function NoticeTab({ date }: { date: string }) {
         + 추가
       </button>
     </section>
+  )
+}
+
+/** 날짜별 목록의 한 묶음: 날짜(누르면 그날 보기)와 항목(마우스 올리면 지우기) */
+function DateGroup({ g, current, onView, onDelete }: { g: NoticeDateGroup; current: string; onView: () => void; onDelete: (n: NoticeItemRec) => void }) {
+  return (
+    <div className={`notice-date-group${g.start === current ? ' on' : ''}`}>
+      <button type="button" className="link notice-date" aria-label={`${g.label} 보기`} onClick={onView}>
+        {g.label}
+      </button>
+      <ul className="plain">
+        {g.items.map((n) => (
+          <li key={n.id} className={`row notice-date-item${n.done ? ' done' : ''}`}>
+            <span className="pii">{n.text.split('\n')[0]}</span>
+            <button type="button" className="icon-btn" aria-label={`${n.text} 지우기`} onClick={() => onDelete(n)}>
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

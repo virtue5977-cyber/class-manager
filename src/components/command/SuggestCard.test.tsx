@@ -48,3 +48,22 @@ test('리뷰 고침: 넣는 중에는 다시 못 누르고(두 번 넣지 않음
   await waitFor(async () => expect((await db.todos.toArray()).filter((t) => !t.deleted)).toHaveLength(0))
   expect(screen.getAllByRole('button', { name: '넣기' })).toHaveLength(2)
 })
+
+test('일정 추천 카드: 장소·구분을 고쳐 넣으면 그대로 저장', async () => {
+  const user = userEvent.setup()
+  const db = createDb('t-' + crypto.randomUUID())
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <SuggestCard today="2026-11-12" cardKey="pl" items={[{ kind: 'event', text: '도우미 교육', date: '2026-11-13', time: '08:00', place: '시청각실', tag: '업무' }]} />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  const place = await screen.findByLabelText('일정 1 장소')
+  expect(place).toHaveValue('시청각실')
+  await user.clear(place)
+  await user.type(place, '본관 시청각실')
+  await user.selectOptions(screen.getByLabelText('일정 1 구분'), '개인')
+  await user.click(screen.getByRole('button', { name: '넣기' }))
+  await waitFor(async () => expect((await db.local_events.toArray()).map((e) => [e.title, e.place, e.tag])).toEqual([['도우미 교육', '본관 시청각실', '개인']]))
+})

@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
 import { AppProviders } from '../../app/context'
-import { createNote } from '../../lib/notes/notes'
+import { createNote, saveNoteContent } from '../../lib/notes/notes'
 import { addTodo } from '../../lib/todos/todos'
 import { noticesOn } from '../../lib/notices/notices'
 import NotesPage from './NotesPage'
@@ -354,7 +354,7 @@ test('노트 전체를 전달사항으로: 날짜를 골라 잇고, [전달사�
   const g = screen.getByRole('group', { name: '전달사항 날짜' })
   await user.click(within(g).getByRole('button', { name: '잇기' }))
   await waitFor(async () => expect((await noticesOn(db, '2026-11-10')).map((x) => x.text)).toEqual(['체육복 지참']))
-  expect((await screen.findAllByText('[전달사항] 11/10')).length).toBeGreaterThan(0)
+  expect((await screen.findAllByText('[전달 11/10]')).length).toBeGreaterThan(0)
   const { addNotice } = await import('../../lib/notices/notices')
   await addNotice(db, { text: '우유 신청', start_date: '2026-11-10' })
   await waitFor(() => expect(blocks().map((b) => b.textContent)).toEqual(['체육복 지참', '우유 신청']))
@@ -379,4 +379,85 @@ test('노트 글에서 @를 치면 다른 노트 후보, 고르면 링크로 저
   await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ text: '참고 @다른 노트 끝', links: [{ from: 3, to: 9, note: other.id }] }), { timeout: 3000 })
   const link = blocks()[0].querySelector('.nl') as HTMLElement
   expect(link.textContent).toBe('@다른 노트')
+})
+
+test('여러 줄 고르기: 아래 줄에서 위 줄로(거꾸로) 끌면 줄째 골라지고, Delete로 지우고 Esc로 풀린다', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await saveNoteContent(db, n.id, { title: '회의록', blocks: [{ id: 'a', type: 'p', text: '하나' }, { id: 'b', type: 'p', text: '둘' }, { id: 'c', type: 'p', text: '셋' }, { id: 'd', type: 'p', text: '넷' }] })
+  await waitFor(() => expect(blocks().map((x) => x.textContent)).toEqual(['하나', '둘', '셋', '넷']))
+  const rows = () => Array.from(document.querySelectorAll<HTMLElement>('.nb'))
+  const orig = document.elementFromPoint
+  document.elementFromPoint = () => rows()[1]
+  fireEvent.pointerDown(blocks()[3], { button: 0, clientX: 10, clientY: 100 })
+  fireEvent.pointerMove(window, { clientX: 10, clientY: 20 })
+  fireEvent.pointerUp(window, { clientX: 10, clientY: 20 })
+  document.elementFromPoint = orig
+  expect(rows().map((r) => r.classList.contains('nb-selected'))).toEqual([false, true, true, true])
+  await user.keyboard('{Escape}')
+  expect(document.querySelectorAll('.nb-selected')).toHaveLength(0)
+  // 다시 고르고 Delete
+  document.elementFromPoint = () => rows()[2]
+  fireEvent.pointerDown(blocks()[0], { button: 0, clientX: 10, clientY: 10 })
+  fireEvent.pointerMove(window, { clientX: 10, clientY: 80 })
+  fireEvent.pointerUp(window, { clientX: 10, clientY: 80 })
+  document.elementFromPoint = orig
+  fireEvent.keyDown(document, { key: 'Delete' })
+  await waitFor(() => expect(blocks().map((x) => x.textContent)).toEqual(['넷']))
+})
+
+test('/ 메뉴: 단축키를 오른쪽에 보이고, 글 끝에서 띄어쓰기 뒤 /도 열린다(앞 글은 남김)', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('/')
+  const menu = await screen.findByRole('listbox', { name: '블록 고르기' })
+  expect(within(menu).getByRole('option', { name: '제목 1' })).toHaveTextContent('Ctrl+2')
+  await user.keyboard('{Escape}{Backspace}체육복 지참 /체')
+  const m2 = await screen.findByRole('listbox', { name: '블록 고르기' })
+  await user.click(within(m2).getByRole('option', { name: '체크 목록' }))
+  await waitFor(() => expect(blocks()[0]).toHaveTextContent(/^체육복 지참$/))
+  expect(screen.getByRole('checkbox', { name: '체크' })).toBeInTheDocument()
+})
+
+test('명렬표: 크기(작게·보통·크게), 체크한 학생은 작게, 체크한 학생 숨기기·표 접기', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await saveNoteContent(db, n.id, { title: '회의록', blocks: [{ id: 'r', type: 'roster', text: '동의서', rows: [{ sid: 'a', label: '1번 가상일', checked: true }, { sid: 'b', label: '2번 가상이', checked: false }] }] })
+  const table = await screen.findByRole('table', { name: '학생 체크 표' })
+  expect(within(table).getByText('1번 가상일').closest('tr')).toHaveClass('on')
+  await user.click(screen.getByRole('radio', { name: '작게' }))
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].size).toBe('sm'))
+  await user.click(screen.getByRole('button', { name: '체크한 학생 숨기기' }))
+  expect(within(screen.getByRole('table', { name: '학생 체크 표' })).queryByText('1번 가상일')).toBeNull()
+  expect(screen.getByRole('button', { name: '체크한 학생 보이기(1)' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '표 접기' }))
+  expect(screen.queryByText('2번 가상이')).toBeNull()
+  await user.click(screen.getByRole('button', { name: '표 펴기' }))
+  expect(screen.getByText('2번 가상이')).toBeInTheDocument()
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ hide_done: true, collapsed: false }))
+})
+
+test('여러 줄을 고른 채 다른 입력칸에서 Backspace·Ctrl+C를 눌러도 고른 줄은 지워지지 않는다(그 칸 글이 먼저)', async () => {
+  const { db, n } = await setup()
+  await saveNoteContent(db, n.id, { title: '회의록', blocks: [{ id: 'a', type: 'p', text: '하나' }, { id: 'b', type: 'p', text: '둘' }, { id: 'c', type: 'p', text: '셋' }] })
+  await waitFor(() => expect(blocks().map((x) => x.textContent)).toEqual(['하나', '둘', '셋']))
+  const rows = () => Array.from(document.querySelectorAll<HTMLElement>('.nb'))
+  const orig = document.elementFromPoint
+  document.elementFromPoint = () => rows()[0]
+  fireEvent.pointerDown(blocks()[2], { button: 0 })
+  fireEvent.pointerMove(window, {})
+  fireEvent.pointerUp(window, {})
+  document.elementFromPoint = orig
+  expect(document.querySelectorAll('.nb-selected')).toHaveLength(3)
+  const other = document.createElement('input')
+  document.body.appendChild(other)
+  other.focus()
+  const ev = fireEvent.keyDown(other, { key: 'Backspace' })
+  expect(ev).toBe(true) // 막지 않음
+  await new Promise((r) => setTimeout(r, 50))
+  expect(blocks().map((x) => x.textContent)).toEqual(['하나', '둘', '셋'])
+  expect(document.querySelectorAll('.nb-selected')).toHaveLength(0) // 다른 칸으로 가면 풀린다
+  other.remove()
 })

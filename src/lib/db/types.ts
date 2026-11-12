@@ -205,6 +205,8 @@ export interface HwpxTemplateRec extends BaseRecord {
 
 /** 동기화·백업 대상 설정. 기기 전용 값은 DeviceLocalRec에 둔다. */
 export interface AppSettingsRec extends BaseRecord {
+  /** 누가기록 '미정리' 알림(메뉴 숫자) 끄기 */
+  nuga_alert_off?: boolean
   teacher_name: string
   school_name: string
   neis_office_code: string
@@ -289,6 +291,12 @@ export interface NoteBlock {
   indent?: number
   /** 학생 체크 표(roster): 만든 때의 학생(번호 이름)과 체크. text는 표 제목 */
   rows?: { sid: string; label: string; checked: boolean }[]
+  /** 학생 체크 표 크기(작게 = 여러 칸 격자, 기본 보통) */
+  size?: 'sm' | 'md' | 'lg'
+  /** 체크한 학생 숨기기 */
+  hide_done?: boolean
+  /** 표 접기 */
+  collapsed?: boolean
   /** 글자 서식(text 안 위치 [from,to)). 없으면 서식 없음 */
   marks?: import('../notes/marks').Mark[]
   /** @노트 링크(text 안 위치) */
@@ -330,6 +338,10 @@ export interface LocalEventRec extends BaseRecord {
   title: string
   tag: '개인' | '업무'
   google_id: string | null
+  /** 장소(선택) */
+  place?: string
+  /** 메모(선택) */
+  memo?: string
 }
 
 export interface ChatRec extends BaseRecord {

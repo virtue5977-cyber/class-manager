@@ -64,3 +64,11 @@ test('AI 대답 "복사": 요약과 초안 글을 클립보드로, 단추는 "�
   expect(writeText).toHaveBeenCalledWith('내일은 체육복이 필요합니다.\n\n체육복 챙기기')
   expect(await screen.findByRole('button', { name: '복사됨' })).toBeInTheDocument()
 })
+
+test('설명서: 앱 단축키와 노트 단축키를 나눠 싣는다', async () => {
+  const { helpSections } = await import('../../lib/command/help')
+  const [, , , app, note] = helpSections()
+  expect(app.rows.some((x) => x.keys === 'Ctrl+K')).toBe(true)
+  expect(note.rows.some((x) => x.keys === 'Ctrl+Enter')).toBe(true)
+  expect(app.rows.some((x) => x.keys.startsWith('노트'))).toBe(false)
+})
