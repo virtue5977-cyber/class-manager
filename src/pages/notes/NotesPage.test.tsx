@@ -102,11 +102,11 @@ test('/ 메뉴는 띄어쓴 이름(제목 1)도 거르고, Esc로 닫으면 글�
   await user.keyboard('/제목 1')
   expect(await screen.findByRole('option', { name: '제목 1' })).toBeInTheDocument()
   await user.keyboard('{Enter}')
-  expect(blocks()[0]).toHaveValue('')
+  expect(blocks()[0].textContent).toBe('')
   expect(blocks()[0].closest('.nb')).toHaveClass('nb-h1')
   await user.keyboard('/없는것{Escape}')
   expect(screen.queryByRole('listbox', { name: '블록 고르기' })).not.toBeInTheDocument()
-  expect(blocks()[0]).toHaveValue('/없는것')
+  expect(blocks()[0].textContent).toBe('/없는것')
 })
 
 test('노트 지우기는 한 번 더 묻는다', async () => {
@@ -199,7 +199,7 @@ test('노트 편집: Ctrl+Shift+8은 글머리, "1. "은 번호, ↑↓로 블�
   await user.keyboard('배{Enter}{Enter}1. 하나')
   const third = screen.getByRole('textbox', { name: '블록 3' })
   await waitFor(() => expect(third.closest('.nb')).toHaveClass('nb-number'))
-  expect(third).toHaveValue('하나')
+  expect(third.textContent).toBe('하나')
   await user.keyboard('{ArrowUp}')
   expect(screen.getByRole('textbox', { name: '블록 2' })).toHaveFocus()
   await user.keyboard('{ArrowUp}')
@@ -238,11 +238,12 @@ test('글자 바꾸기는 줄 맨 앞에서 띄어쓰기를 칠 때만: 이미 "
   await setup()
   await screen.findByDisplayValue('회의록')
   const b1 = blocks()[0]
-  fireEvent.change(b1, { target: { value: '- 체육복' } })
   await user.click(b1)
-  await user.keyboard('{End}!')
+  // 붙여 넣은 '- 체육복'은 글로 남고, 끝에 글자를 쳐도 그대로
+  await user.paste('- 체육복')
+  await user.keyboard('!')
   expect(b1.closest('.nb')).toHaveClass('nb-p')
-  expect(b1).toHaveValue('- 체육복!')
+  expect(b1.textContent).toBe('- 체육복!')
 })
 
 test('/ 메뉴가 열려 있으면 ←→도 블록을 옮기지 않는다', async () => {
@@ -267,4 +268,52 @@ test('노트 안 Ctrl+2는 제목 1, Ctrl+6은 체크, Ctrl+Enter로 체크 켜�
   await user.keyboard('{Control>}6{/Control}')
   await user.keyboard('{Control>}{Enter}{/Control}')
   expect(await screen.findByRole('checkbox', { name: '체크' })).toBeChecked()
+})
+
+test('글자를 골라 Ctrl+B면 굵게 저장되고, 서식 막대로 글자색을 준다', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await screen.findByDisplayValue('회의록')
+  const b1 = blocks()[0]
+  await user.click(b1)
+  await user.keyboard('가나다라마')
+  const { setSel } = await import('../../lib/notes/richDom')
+  setSel(b1 as HTMLElement, 1, 3)
+  document.dispatchEvent(new Event('selectionchange'))
+  await user.keyboard('{Control>}b{/Control}')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].marks).toEqual([{ b: true, from: 1, to: 3 }]), { timeout: 3000 })
+  expect(b1.querySelector('span[style*="bold"]')?.textContent).toBe('나다')
+  const bar = await screen.findByRole('toolbar', { name: '글자 서식' })
+  expect(within(bar).getByRole('button', { name: '굵게(Ctrl+B)' })).toHaveAttribute('aria-pressed', 'true')
+  await user.click(within(bar).getByRole('button', { name: '글자색' }))
+  await user.click(within(bar).getByRole('menuitem', { name: '글자색 #c0392b' }))
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0].marks).toEqual([{ b: true, color: '#c0392b', from: 1, to: 3 }]), { timeout: 3000 })
+  // 앞에 글자를 넣으면 서식이 따라 밀린다
+  setSel(b1 as HTMLElement, 0, 0)
+  await user.keyboard('X')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks[0]).toMatchObject({ text: 'X가나다라마', marks: [{ b: true, color: '#c0392b', from: 2, to: 4 }] }), { timeout: 3000 })
+})
+
+test('Shift+Enter는 줄 안 줄바꿈, 붙여넣기는 서식 없는 글', async () => {
+  const user = userEvent.setup()
+  const { db, n } = await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('첫 줄{Shift>}{Enter}{/Shift}둘째')
+  await waitFor(async () => expect((await db.notes.get(n.id))!.blocks.map((b) => b.text)).toEqual(['첫 줄\n둘째']), { timeout: 3000 })
+})
+
+test('Ctrl+Z는 줄 나누기를 되돌리고 Ctrl+Y는 다시', async () => {
+  const user = userEvent.setup()
+  await setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('가나다라')
+  await new Promise((r) => setTimeout(r, 750))
+  await user.keyboard('{ArrowLeft}{ArrowLeft}{Enter}')
+  await waitFor(() => expect(blocks().map((b) => b.textContent)).toEqual(['가나', '다라']))
+  await user.keyboard('{Control>}z{/Control}')
+  await waitFor(() => expect(blocks().map((b) => b.textContent)).toEqual(['가나다라']))
+  await user.keyboard('{Control>}y{/Control}')
+  await waitFor(() => expect(blocks().map((b) => b.textContent)).toEqual(['가나', '다라']))
 })

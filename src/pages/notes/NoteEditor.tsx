@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
 import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent } from '../../lib/notes/notes'
 import { filterSlash, indentBlock, markdownPrefix, mergeUp, moveBlock, noteShortcut, outlineMarks, rosterBlock, setType, splitBlock } from '../../lib/notes/blocks'
-import { atVisualEdge, caretNav, placeCaret } from '../../lib/ui/caretNav'
+import { caretNav, placeCaret } from '../../lib/ui/caretNav'
+import RichLine, { type LineHandle, type LineValue } from './RichLine'
+import FormatBar from './FormatBar'
+import { applyStyle, styleAt } from '../../lib/notes/marks'
+import { getSel } from '../../lib/notes/richDom'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
 import { addNotice } from '../../lib/notices/notices'
@@ -56,8 +60,42 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   const [dragId, setDragId] = useState<string>()
   const [fileInfo, setFileInfo] = useState<Record<string, { name: string; size: number }>>({})
   const [folderList, setFolderList] = useState<Record<string, { name: string; dir: boolean }[]>>({})
-  const refs = useRef(new Map<string, HTMLTextAreaElement>())
+  const refs = useRef(new Map<string, LineHandle>())
+  /** 글자를 고른 줄(서식 막대) */
+  const [picked, setPicked] = useState<{ id: string; start: number; end: number; top: number; left: number }>()
   const focusNext = useRef<{ id: string; caret: number } | null>(null)
+  // 되돌리기(Ctrl+Z)·다시(Ctrl+Y, Ctrl+Shift+Z): 0.7초 넘게 쉬거나 줄 수가 바뀌면 한 단계
+  const hist = useRef({ past: [] as NoteBlock[][], future: [] as NoteBlock[][], last: 0, prev: blocks, skip: false })
+  useEffect(() => {
+    const h = hist.current
+    if (h.prev === blocks) return
+    if (h.skip) {
+      h.skip = false
+      h.prev = blocks
+      return
+    }
+    const now = Date.now()
+    if (now - h.last > 700 || h.prev.length !== blocks.length) {
+      h.past.push(h.prev)
+      if (h.past.length > 100) h.past.shift()
+    }
+    h.last = now
+    h.future = []
+    h.prev = blocks
+  }, [blocks])
+  function stepHistory(dir: -1 | 1, focusId: string) {
+    const h = hist.current
+    const from = dir === -1 ? h.past : h.future
+    const to = dir === -1 ? h.future : h.past
+    const next = from.pop()
+    if (!next) return
+    to.push(blocks)
+    h.skip = true
+    h.last = 0
+    setBlocks(next)
+    const id = next.some((x) => x.id === focusId) ? focusId : next[next.length - 1]?.id
+    if (id) focusNext.current = { id, caret: (next.find((x) => x.id === id)?.text ?? '').length }
+  }
   const latest = useRef({ title, blocks })
   latest.current = { title, blocks }
 
@@ -186,8 +224,54 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
     focusNext.current = { id: b.id, caret: 0 }
   }
 
-  function onKey(e: KeyboardEvent<HTMLTextAreaElement>, b: NoteBlock) {
+  /** 줄 글이 바뀜: 문단 맨 앞에 '# ', '- ', '1. ', '[] ' 등을 치면 그 블록으로(방금 친 글자가 띄어쓰기이고 커서 앞이 바꾸기 글자뿐일 때만) */
+  function onLineChange(b: NoteBlock, v: LineValue, at: number) {
+    const head = markdownPrefix(v.text.slice(0, at))
+    const md = b.type === 'p' && v.text.length === (b.text ?? '').length + 1 && v.text[at - 1] === ' ' && head && head.rest === '' ? { type: head.type, rest: v.text.slice(at) } : null
+    if (md) {
+      setBlocks((bs) => setType(bs, b.id, md.type).map((x) => (x.id === b.id ? { ...x, text: md.rest, marks: undefined, links: undefined } : x)))
+      focusNext.current = { id: b.id, caret: 0 }
+      return
+    }
+    update(b.id, { text: v.text, marks: v.marks?.length ? v.marks : undefined, links: v.links?.length ? v.links : undefined })
+    setSlashSel(0)
+    if (slashOff === b.id && !v.text.startsWith('/')) setSlashOff(undefined)
+  }
+
+  /** 글자를 고르면 서식 막대를 띄운다 */
+  const trackSel = useCallback(() => {
+    for (const [id, h] of refs.current) {
+      const d = h.el
+      if (!d || d.ownerDocument.activeElement !== d) continue
+      const sel = getSel(d)
+      if (!sel || sel.start === sel.end) return setPicked(undefined)
+      const r = d.ownerDocument.getSelection()?.getRangeAt(0)
+      const rect = r && typeof r.getBoundingClientRect === 'function' ? r.getBoundingClientRect() : null
+      const box = d.getBoundingClientRect?.()
+      return setPicked({ id, start: Math.min(sel.start, sel.end), end: Math.max(sel.start, sel.end), top: rect?.top || box?.top || 0, left: rect?.left || box?.left || 0 })
+    }
+    setPicked(undefined)
+  }, [])
+  useEffect(() => {
+    document.addEventListener('selectionchange', trackSel)
+    return () => document.removeEventListener('selectionchange', trackSel)
+  }, [trackSel])
+  function applyFormat(key: Parameters<typeof applyStyle>[4], value?: string) {
+    if (!picked) return
+    const b = blocks.find((x) => x.id === picked.id)
+    if (!b) return
+    const marks = applyStyle(b.marks, (b.text ?? '').length, picked.start, picked.end, key, value)
+    update(b.id, { marks: marks.length ? marks : undefined })
+    requestAnimationFrame(() => refs.current.get(b.id)?.setSelectionRange(picked.start, picked.end))
+  }
+
+  function onKey(e: KeyboardEvent<HTMLDivElement>, b: NoteBlock, el: LineHandle) {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY' || /^[zy]$/i.test(e.key))) {
+      e.preventDefault()
+      const redo = e.code === 'KeyY' || e.key.toLowerCase() === 'y' || e.shiftKey
+      return stepHistory(redo ? 1 : -1, b.id)
+    }
     const q = slashOf(b)
     const items = q !== null ? filterSlash(q) : []
     if (items.length) {
@@ -206,11 +290,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
         return
       }
     }
-    const el = e.currentTarget
     // 방향키: 첫·마지막 줄(맨 앞·끝)에서 옆 글 블록으로(구분선·파일·표는 건너뜀)
     // / 메뉴가 열려 있으면 메뉴가 먼저(←→로도 블록을 떠나지 않는다)
     const mv = items.length ? null : caretNav({ ...e, isComposing: e.nativeEvent.isComposing }, el)
-    if (mv && ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || atVisualEdge(el, mv.dir))) {
+    if (mv && ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || el.atEdge(mv.dir))) {
       const i = blocks.findIndex((x) => x.id === b.id)
       const dir = mv.dir
       for (let j = i + dir; j >= 0 && j < blocks.length; j += dir) {
@@ -374,31 +457,16 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
                       {b.type === 'check' ? <input type="checkbox" aria-label="체크" checked={!!b.checked} onChange={(e) => update(b.id, { checked: e.target.checked })} /> : <span className={`nb-mark nb-mark-${b.type}`}>{marks[i]}</span>}
                     </span>
                   )}
-                  <textarea
-                    ref={(el) => (el ? refs.current.set(b.id, el) : refs.current.delete(b.id))}
-                    aria-label={`블록 ${i + 1}`}
-                    rows={1}
-                    value={b.text ?? ''}
+                  <RichLine
+                    ref={(h) => (h ? refs.current.set(b.id, h) : refs.current.delete(b.id))}
+                    label={`블록 ${i + 1}`}
+                    text={b.text ?? ''}
+                    marks={b.marks}
+                    links={b.links}
                     placeholder={i === blocks.length - 1 ? "글을 쓰거나 '/'로 블록 고르기" : ''}
-                    onChange={(e) => {
-                      // 문단 맨 앞에 '# ', '- ', '1. ', '[] ' 등을 치면 그 블록으로
-                      // 방금 친 글자가 띄어쓰기이고, 커서 앞이 바꾸기 글자(예: '- ')뿐일 때만
-                      const v = e.target.value
-                      const at = e.target.selectionStart ?? v.length
-                      const head = markdownPrefix(v.slice(0, at))
-                      const md = b.type === 'p' && v.length === (b.text ?? '').length + 1 && v[at - 1] === ' ' && head && head.rest === '' ? { type: head.type, rest: v.slice(at) } : null
-                      if (md) {
-                        setBlocks((bs) => setType(bs, b.id, md.type).map((x) => (x.id === b.id ? { ...x, text: md.rest } : x)))
-                        focusNext.current = { id: b.id, caret: 0 }
-                        return
-                      }
-                      update(b.id, { text: e.target.value })
-                      setSlashSel(0)
-                      if (slashOff === b.id && !e.target.value.startsWith('/')) setSlashOff(undefined)
-                      e.target.style.height = 'auto'
-                      e.target.style.height = `${e.target.scrollHeight}px`
-                    }}
-                    onKeyDown={(e) => onKey(e, b)}
+                    onChange={(v, at) => onLineChange(b, v, at)}
+                    onKeyDown={(e, h) => onKey(e, b, h)}
+                    onSelect={trackSel}
                   />
                   {items.length > 0 && (
                     <ul className="suggest nb-slash" role="listbox" aria-label="블록 고르기">
@@ -420,6 +488,10 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
           )
         })}
       </div>
+      {picked && (() => {
+        const b = blocks.find((x) => x.id === picked.id)
+        return b ? <FormatBar style={styleAt(b.marks, (b.text ?? '').length, picked.start, picked.end)} top={picked.top} left={picked.left} onApply={applyFormat} onClose={() => setPicked(undefined)} /> : null
+      })()}
       <p className="muted nb-hint">파일을 끌어다 놓으면 붙습니다(50MB까지).</p>
     </section>
   )
