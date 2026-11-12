@@ -222,12 +222,13 @@ function pageSetup(page: NoteRec['page'], reg: Registry, now?: Date): { secPr?: 
   /** 글 + {쪽}·{전체쪽}은 쪽 번호 컨트롤로 */
   const runs = (t: string) =>
     t
-      .split(/(\{쪽\}|\{전체쪽\})/)
+      .split(/(\{쪽\})/)
       .filter(Boolean)
       .map((part) =>
-        part === '{쪽}' || part === '{전체쪽}'
-          ? `<hp:run charPrIDRef="${cp}"><hp:ctrl><hp:autoNum num="1" numType="${part === '{쪽}' ? 'PAGE' : 'TOTAL_PAGE'}"><hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/></hp:autoNum></hp:ctrl></hp:run>`
-          : `<hp:run charPrIDRef="${cp}">${tx(fillHeaderFooter(part, 1, 1, today))}</hp:run>`,
+        part === '{쪽}'
+          ? `<hp:run charPrIDRef="${cp}"><hp:ctrl><hp:autoNum num="1" numType="PAGE"><hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/></hp:autoNum></hp:ctrl></hp:run>`
+          : // {전체쪽}은 편집기 쪽 보기에서 센 쪽 수(한글 TOTAL_PAGE는 읽지 못하는 프로그램이 있어 글로)
+            `<hp:run charPrIDRef="${cp}">${tx(fillHeaderFooter(part, 1, page.pages ?? 1, today))}</hp:run>`,
       )
       .join('')
   const box = (tag: 'header' | 'footer', id: number, t: string) =>

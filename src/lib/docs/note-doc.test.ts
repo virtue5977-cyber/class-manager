@@ -71,10 +71,11 @@ test('노트 hwpx: 그림 블록은 BinData 파일 + manifest + hp:pic(너비 �
 })
 
 test('노트 hwpx: 쪽 여백·머리말·꼬리말(쪽 번호·전체 쪽)', async () => {
-  const f = await unzipText(await buildNoteHwpx({ title: '', blocks: [{ id: 'p', type: 'p', text: '본문' }], page: { view: true, margin: 'narrow', grid: false, header: '1학년 5반 {날짜}', footer: '- {쪽} / {전체쪽} -' } }, new Map(), new Date('2026-11-12T09:00:00+09:00')))
+  const f = await unzipText(await buildNoteHwpx({ title: '', blocks: [{ id: 'p', type: 'p', text: '본문' }], page: { view: true, margin: 'narrow', grid: false, header: '1학년 5반 {날짜}', footer: '- {쪽} / {전체쪽} -', pages: 3 } }, new Map(), new Date('2026-11-12T09:00:00+09:00')))
   const sec = f['Contents/section0.xml']
   expect(xmlErrors(sec)).toEqual([])
   expect(sec).toMatch(/<hp:margin header="\d+" footer="\d+" gutter="0" left="4252" right="4252" top="4252" bottom="4252"\/>/)
   expect(sec).toMatch(/<hp:header [^>]*applyPageType="BOTH"[\s\S]*1학년 5반 2026\.11\.12\./)
-  expect(sec).toMatch(/<hp:footer [^>]*>[\s\S]*- [\s\S]*numType="PAGE"[\s\S]*numType="TOTAL_PAGE"/)
+  expect(sec).toMatch(/<hp:footer [^>]*>[\s\S]*- [\s\S]*numType="PAGE"[\s\S]* \/ 3 -/)
+  expect(sec).not.toContain('TOTAL_PAGE')
 })

@@ -321,6 +321,8 @@ export interface NotePage {
   zoom?: number
   header?: string
   footer?: string
+  /** 쪽 보기에서 센 쪽 수(한글 내보내기의 {전체쪽}) */
+  pages?: number
 }
 export interface NoteRec extends BaseRecord {
   title: string

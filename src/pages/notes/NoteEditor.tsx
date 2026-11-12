@@ -234,6 +234,11 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
   }
   const probe = useRef<HTMLDivElement>(null)
   const pg = usePageStarts(page.view, blocksBox, probe, blocks, page.margin)
+  // 센 쪽 수를 저장해 둔다(한글 내보내기의 {전체쪽})
+  useEffect(() => {
+    if (page.view && pg.pageH && pg.starts.length !== page.pages) changePage({ ...page, pages: pg.starts.length })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.view, pg.starts.length, pg.pageH])
   useEffect(() => {
     if (!live || live.deleted) return
     const j = JSON.stringify(live.blocks)
