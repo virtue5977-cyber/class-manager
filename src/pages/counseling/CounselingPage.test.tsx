@@ -265,3 +265,40 @@ test('0.14: 전체 목록 내보내기, 대상에 교사 없음, 관찰도 분�
   await user.click(within(screen.getByRole('list', { name: '학생 목록' })).getByRole('button', { name: /^1번 김지훈/ }))
   expect(await screen.findByRole('region', { name: '전체 누가기록' })).toBeInTheDocument()
 })
+
+async function oneLog() {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const s = await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()} ai={async () => '{}'}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  await user.click(await screen.findByRole('button', { name: /^1번 김지훈/ }))
+  await user.type(screen.getByLabelText('내용(개조식 메모나 녹음 글)'), '메모')
+  await user.click(screen.getByRole('button', { name: '기록 추가' }))
+  const card = await screen.findByRole('article')
+  return { user, db, s, card }
+}
+
+test('누가기록 칸에 쓰다가 창을 닫으면(flushAll) 저장된다', async () => {
+  const { flushAll } = await import('../../lib/ui/flush')
+  const { user, db, s, card } = await oneLog()
+  await user.click(within(card).getByRole('button', { name: '직접 쓰기' }))
+  await user.type(within(card).getByLabelText('누가기록'), '닫기 전에 쓴 누가기록')
+  flushAll()
+  await waitFor(async () => expect((await listLogsByStudent(db, s.id))[0].nuga_text).toBe('닫기 전에 쓴 누가기록'))
+})
+
+test('기록 지우기는 한 번 더 묻는다(취소하면 남음)', async () => {
+  const { user, db, s, card } = await oneLog()
+  await user.click(within(card).getByRole('button', { name: '지우기' }))
+  const ask = within(card).getByRole('group', { name: '기록 지우기 확인' })
+  await user.click(within(ask).getByRole('button', { name: '취소' }))
+  expect(await listLogsByStudent(db, s.id)).toHaveLength(1)
+  await user.click(within(card).getByRole('button', { name: '지우기' }))
+  await user.click(within(within(card).getByRole('group', { name: '기록 지우기 확인' })).getByRole('button', { name: '지우기' }))
+  await waitFor(async () => expect(await listLogsByStudent(db, s.id)).toHaveLength(0))
+})
