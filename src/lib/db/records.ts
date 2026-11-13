@@ -1,16 +1,19 @@
 import type { Table } from 'dexie'
 import type { BaseRecord } from './types'
+import { lastStamp } from '../vault/middleware'
 
 export function newRecord<T extends object>(fields: T, now: Date = new Date()): T & BaseRecord {
   const ts = now.toISOString()
   return { ...fields, id: crypto.randomUUID(), created_at: ts, updated_at: ts, deleted: false }
 }
 
-/** 레코드를 저장하면서 updated_at만 갱신한다. */
+/** 레코드를 저장하면서 updated_at만 갱신한다. vault DB에서는 미들웨어가 실제로 찍은 도장을 돌려준다. */
 export async function save<T extends BaseRecord>(table: Table<T, string>, rec: T, now: Date = new Date()): Promise<T> {
   const next = { ...rec, updated_at: now.toISOString() }
   await table.put(next)
-  return next
+  if (!(table.db as { isVault?: boolean }).isVault) return next
+  const stamped = lastStamp(table, next.id)
+  return stamped ? { ...next, updated_at: stamped } : next
 }
 
 /** 행을 지우지 않고 삭제 표시만 한다(2단계 동기화의 tombstone). */

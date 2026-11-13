@@ -1,5 +1,5 @@
 import { gcm } from '@noble/ciphers/aes.js'
-import { canonicalJson, parseCanonical } from './canon'
+import { asBytes, canonicalJson, parseCanonical } from './canon'
 
 const VERSION = 1
 const IV_LEN = 12
@@ -57,8 +57,8 @@ export function openRow(
 ): Record<string, unknown> | { id: unknown; _broken: true } {
   const broken = { id: stored.id, _broken: true as const }
   try {
-    const e = stored._enc
-    if (!(e instanceof Uint8Array)) return broken
+    const e = asBytes(stored._enc)
+    if (!e) return broken
     const text = dec.decode(decryptBytes(key, e, rowAad(table, stored.id)))
     const row = parseCanonical(text) as Record<string, unknown>
     if (row === null || typeof row !== 'object' || Array.isArray(row)) return broken

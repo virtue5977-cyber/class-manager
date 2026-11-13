@@ -15,6 +15,18 @@ export function b64ToBytes(s: string): Uint8Array {
   return out
 }
 
+/**
+ * Uint8Array면(다른 realm에서 온 것 포함 — 예: 시험 환경의 fake-indexeddb 복제본) 이 realm의 Uint8Array로, 아니면 null.
+ */
+export function asBytes(v: unknown): Uint8Array | null {
+  if (v instanceof Uint8Array) return v
+  if (ArrayBuffer.isView(v) && Object.prototype.toString.call(v) === '[object Uint8Array]') {
+    const u = v as Uint8Array
+    return new Uint8Array(u.buffer, u.byteOffset, u.byteLength)
+  }
+  return null
+}
+
 function label(v: unknown): string {
   if (typeof v === 'function') return '함수'
   if (v === null || typeof v !== 'object') return typeof v
@@ -42,7 +54,8 @@ function ser(v: unknown): string {
         for (let i = 0; i < v.length; i++) items.push(v[i] === undefined ? 'null' : ser(v[i]))
         return '[' + items.join(',') + ']'
       }
-      if (v instanceof Uint8Array) return '{"$u8":"' + bytesToB64(v) + '"}'
+      const bytes = asBytes(v)
+      if (bytes) return '{"$u8":"' + bytesToB64(bytes) + '"}'
       if (!isPlainObject(v)) throw new TypeError(`저장할 수 없는 값: ${label(v)}`)
       const o = v as Record<string, unknown>
       const parts: string[] = []

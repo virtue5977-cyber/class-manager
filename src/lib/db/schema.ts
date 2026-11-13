@@ -101,8 +101,12 @@ export class AppDB extends Dexie {
   sync_rows!: Table<SyncRowRec, string>
   readonly isVault: boolean
 
-  constructor(name: string = 'class-manager', opts?: { vault?: boolean }) {
-    super(name)
+  /**
+   * opts.immutableCache: Dexie 읽기 캐시를 'immutable'로(결과를 복제하지 않고 얼린다). 암호화 미들웨어가 그 위에서
+   * 언제나 새 객체로 풀어 주므로 앱에는 차이가 없고, 암호문 행을 깊은 복제하지 않아도 된다(openVaultDb가 쓴다).
+   */
+  constructor(name: string = 'class-manager', opts?: { vault?: boolean; immutableCache?: boolean }) {
+    super(name, opts?.immutableCache ? { cache: 'immutable' } : undefined)
     if (opts?.vault) {
       this.isVault = true
       this.version(1).stores(VAULT_STORES)
