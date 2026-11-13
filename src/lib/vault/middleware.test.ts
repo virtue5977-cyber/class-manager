@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { liveQuery } from 'dexie'
+import { liveQuery, type DBCore, type DBCoreCursor } from 'dexie'
 import { describe, it, expect, afterEach } from 'vitest'
 import type { AppDB } from '../db/schema'
 import type { StudentRec, AttendanceRec } from '../db/types'
@@ -250,5 +250,60 @@ describe('암호화 미들웨어', () => {
     const db = vdb()
     await db.students.bulkPut([student('s1'), student('s2', { name: '다른' })])
     expect((await db.students.filter(s => s.name === '가상학생').toArray()).map(s => s.id)).toEqual(['s1'])
+  })
+
+  it('커서 감싸개는 원본 커서의 getter를 상속하지 않는다(실제 브라우저 IDBCursor 브랜드 검사)', async () => {
+    // 실제 Chromium의 IDBCursor.key/primaryKey getter는 플랫폼 객체가 아니면 TypeError(Illegal invocation).
+    // fake-indexeddb는 검사하지 않으므로, 아래 층에서 사설 필드로 같은 검사를 하는 커서로 감싼다.
+    class BrandedCursor {
+      #c: DBCoreCursor
+      constructor(c: DBCoreCursor) { this.#c = c }
+      get trans() { return this.#c.trans }
+      get key() { return this.#c.key }
+      get primaryKey() { return this.#c.primaryKey }
+      get value() { return this.#c.value }
+      get done() { return this.#c.done }
+      continue(k?: unknown) { return k === undefined ? this.#c.continue() : this.#c.continue(k) }
+      continuePrimaryKey(k: unknown, pk: unknown) { return this.#c.continuePrimaryKey(k, pk) }
+      advance(n: number) { return this.#c.advance(n) }
+      start(cb: () => void) { return this.#c.start(cb) }
+      stop(v?: unknown) { return this.#c.stop(v) }
+      next() { return this.#c.next().then(() => this) }
+      fail(e: Error) { return this.#c.fail(e) }
+    }
+    const db = openTestVaultDb(); dbs.push(db)
+    db.use({
+      stack: 'dbcore', name: 'test-brand', level: 2.5,
+      create: (down: DBCore) => ({
+        ...down,
+        table: (n: string) => {
+          const t = down.table(n)
+          return { ...t, openCursor: (req) => t.openCursor(req).then(c => c && (new BrandedCursor(c) as unknown as DBCoreCursor)) }
+        },
+      }),
+    })
+    await db.students.bulkPut([student('s1', { number: 1 }), student('s2', { number: 2, class_id: 'c2' }), student('s3', { number: 3 })])
+    await breakRow(db, 's3')
+    const pks: unknown[] = []
+    await db.students.orderBy('class_id').each((_v, c) => { pks.push(c.primaryKey) })
+    expect(pks).toEqual(['s1', 's2'])
+    expect(await db.students.filter(s => s.number === 1).primaryKeys()).toEqual(['s1'])
+    expect(await db.transaction('rw', db.students, () => db.students.filter(s => s.number === 1).primaryKeys())).toEqual(['s1'])
+    expect(await db.students.filter(s => s.number === 1).modify({ memo: 'm' })).toBe(1)
+    expect((await db.students.get('s1'))?.memo).toBe('m')
+    expect(await db.students.where('class_id').anyOf(['c1', 'c2']).modify({ hobby: 'h' })).toBe(2)
+    expect((await db.students.toArray()).map(s => s.hobby)).toEqual(['h', 'h'])
+    expect(await db.students.orderBy('class_id').keys()).toEqual(['c1', 'c1', 'c2'])
+  })
+
+  it('손상 행과 count·delete 경로(문서화한 동작)', async () => {
+    const db = vdb()
+    await db.students.bulkPut([student('s1'), student('s2'), student('s3', { class_id: 'c2' })])
+    await breakRow(db, 's2')
+    expect(await db.students.count()).toBe(3) // count는 통과: 손상 행도 셈
+    expect(await db.students.where('class_id').equals('c1').delete()).toBe(1) // 색인 범위: 손상 행 남김
+    expect((await readRaw(db, 'students')).map(r => r.id)).toEqual(['s2', 's3'])
+    await db.students.toCollection().delete() // 전체 범위: deleteRange라 손상 행도 지움
+    expect(await readRaw(db, 'students')).toEqual([])
   })
 })

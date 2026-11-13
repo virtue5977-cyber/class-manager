@@ -30,6 +30,8 @@ test('PIN이 없으면 바로, 있으면 잠금 → 틀리면 안내 → 맞으�
   await user.type(screen.getByLabelText('PIN'), '2468')
   await user.click(screen.getByRole('button', { name: '열기' }))
   expect(await screen.findByText('본문')).toBeInTheDocument()
+  // '본문'은 잠긴 동안에도 가림막 아래 있으므로, 실제로 열렸는지(PIN 칸이 사라졌는지)까지 기다린다.
+  await waitFor(() => expect(screen.queryByLabelText('PIN')).not.toBeInTheDocument())
   act(() => setVisibility('hidden'))
   t += 60_000
   act(() => setVisibility('visible'))
@@ -74,6 +76,8 @@ test('잠가도 쓰던 글은 남고, 틀린 횟수는 새로고침해도 이어
   for (let i = 0; i < 5; i++) {
     await user.type(screen.getByLabelText('PIN'), '0000')
     await user.click(screen.getByRole('button', { name: '열기' }))
+    // 한 번씩 차례로 틀린다: 앞 시도의 처리(틀린 횟수 저장 → 칸 비우기)가 끝난 뒤 다음 시도.
+    await waitFor(() => expect(screen.getByLabelText('PIN')).toHaveValue(''))
   }
   expect(await screen.findByRole('alert')).toHaveTextContent('5번 틀렸습니다')
   await user.type(screen.getByLabelText('PIN'), '2468')

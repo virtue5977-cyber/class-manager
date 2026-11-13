@@ -190,6 +190,14 @@ function wrapTable(down: DBCoreTable, dbName: string, key: Uint8Array): DBCoreTa
     }
   }
 
+  /*
+   * 손상 행과 지우기·세기(Dexie 4.4.7 경로 확인):
+   * - count()는 그대로 통과하므로 손상 행도 센다.
+   * - 기본키 범위나 전체 범위(toCollection·where(':id')·orderBy(..) 전체)의 Collection.delete()는
+   *   count + deleteRange로 가므로 손상 행도 지운다. Table.delete·bulkDelete·clear도 지운다.
+   * - 색인 범위(where('class_id').equals(..) 등)나 filter가 붙은 Collection.delete()는 modify 경로
+   *   (쓰기 묶음의 키만 읽기 → 아래 query·openCursor)라 손상 행을 건너뛰고 남긴다.
+   */
   function query(req: DBCoreQueryRequest): Promise<DBCoreQueryResponse> {
     const keysOnly = !req.values
     // 읽기 묶음의 키만 읽기는 그대로. 쓰기 묶음(modify·update·delete가 키를 고르는 곳)은 손상 행을 뺀다.
@@ -231,27 +239,45 @@ function wrapTable(down: DBCoreTable, dbName: string, key: Uint8Array): DBCoreTa
       }
       return lastOpen!
     }
-    return Object.create(cursor, {
-      value: {
-        get() {
+    // 원본 커서를 프로토타입으로 쓰지 않는다(Object.create 금지): 실제 브라우저의 IDBCursor.key·primaryKey getter는
+    // 플랫폼 객체가 아닌 this로 부르면 TypeError(Illegal invocation)를 던지고, Dexie는 빈 결과를 낸다.
+    // 모든 속성·메서드를 원본 커서에 대고 명시적으로 넘긴다(Dexie 자체 감싸개와 같은 방식). 메서드는 부를 때마다
+    // cursor.xxx를 다시 읽는다 — Dexie 기본 커서는 start/stop 때 continue·stop 등을 바꿔 끼운다.
+    const w: DBCoreCursor = {
+      get trans() { return cursor.trans },
+      get key() { return cursor.key },
+      get primaryKey() { return cursor.primaryKey },
+      get value() {
+        const o = current()
+        return isBroken(o) ? undefined : o
+      },
+      get done() { return cursor.done },
+      continue(k?: unknown) {
+        if (k === undefined) cursor.continue()
+        else cursor.continue(k)
+      },
+      continuePrimaryKey(k: unknown, pk: unknown) { cursor.continuePrimaryKey(k, pk) },
+      advance(n: number) { cursor.advance(n) },
+      stop(v?: unknown) { cursor.stop(v) },
+      fail(e: Error) { cursor.fail(e) },
+      start(onNext: () => void) {
+        return cursor.start(() => {
           const o = current()
-          return isBroken(o) ? undefined : o
-        },
+          if (isBroken(o)) {
+            notifyBroken(name, o.id)
+            cursor.continue()
+            return
+          }
+          onNext()
+        })
       },
-      start: {
-        value(onNext: () => void) {
-          return cursor.start(() => {
-            const o = current()
-            if (isBroken(o)) {
-              notifyBroken(name, o.id)
-              cursor.continue()
-              return
-            }
-            onNext()
-          })
-        },
+      next() {
+        // Dexie 기본 커서의 next()와 같은 뜻: 한 칸(손상 행은 건너뜀) 나아가고 멈춘다.
+        let gotOne = 1
+        return w.start(() => (gotOne-- ? w.continue() : w.stop())).then(() => w)
       },
-    }) as DBCoreCursor
+    }
+    return w
   }
 
   return {

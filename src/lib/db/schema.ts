@@ -104,6 +104,8 @@ export class AppDB extends Dexie {
   /**
    * opts.immutableCache: Dexie 읽기 캐시를 'immutable'로(결과를 복제하지 않고 얼린다). 암호화 미들웨어가 그 위에서
    * 언제나 새 객체로 풀어 주므로 앱에는 차이가 없고, 암호문 행을 깊은 복제하지 않아도 된다(openVaultDb가 쓴다).
+   * 단, 미들웨어를 그대로 통과하는 표(meta·neis_cache·note_blobs·sync_rows)는 liveQuery 결과가 얼린 객체로 온다
+   * (보통 읽기는 그대로 변경 가능). liveQuery 결과를 고쳐 쓰지 말고 복사해서 쓴다.
    */
   constructor(name: string = 'class-manager', opts?: { vault?: boolean; immutableCache?: boolean }) {
     super(name, opts?.immutableCache ? { cache: 'immutable' } : undefined)
