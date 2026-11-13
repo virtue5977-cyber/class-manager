@@ -60,8 +60,9 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
   }
   function clickSeat(row: number, col: number) {
     const seat = seatAt(chart!.seats, row, col)!
-    if (picked && !seat.disabled) {
-      seatsChange(placeStudent(chart!.seats, picked, row, col))
+    if (picked) {
+      // 책상 없는 칸이면 책상을 다시 놓고 앉힌다
+      seatsChange(placeStudent(seat.disabled ? toggleDisabled(chart!.seats, row, col) : chart!.seats, picked, row, col))
       setPicked(null)
     } else if (seat.student_id) setPicked(seat.student_id)
     // 빈자리를 누르면 책상 없음, 책상 없는 칸을 누르면 다시 놓기

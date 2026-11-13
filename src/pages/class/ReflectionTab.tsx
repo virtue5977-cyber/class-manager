@@ -36,6 +36,9 @@ function printNow(mode: PaperMode) {
   }
 }
 
+/** 16줄 모두 자동 자간 */
+const AUTO_SPS: (number | null)[] = Array(16).fill(null)
+
 export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: { classRec: ClassRec; today?: string }) {
   const db = useDb()
   const fs = useFs()
@@ -56,15 +59,15 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
   const [minPt, setMinPt] = useState(10)
   const [sel, setSel] = useState(0)
   /** 줄마다 손으로 정한 자간(%), null이면 자동 */
-  const [sps, setSps] = useState<(number | null)[]>(() => Array(16).fill(null))
+  const [sps, setSps] = useState<(number | null)[]>(AUTO_SPS)
   const setSp = (i: number, v: number | null) => setSps((xs) => xs.map((x, k) => (k === i ? (v === null ? null : Math.max(-50, Math.min(30, v))) : x)))
   const [raw, setRaw] = useState('')
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [panel, setPanel] = useState<'main' | 'phrases' | 'fit'>('main')
   // 저장하지 않은 고침이 있는지: 불러온(또는 저장한) 때와 비교
-  const snap = () => JSON.stringify({ date, reason, lines, t1, t2 })
-  const [baseline, setBaseline] = useState(() => JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1: DEFAULT_T1, t2: DEFAULT_T2 }))
+  const snap = () => JSON.stringify({ date, reason, lines, t1, t2, sps })
+  const [baseline, setBaseline] = useState(() => JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1: DEFAULT_T1, t2: DEFAULT_T2, sps: AUTO_SPS }))
   const dirty = snap() !== baseline
   const [pendingSid, setPendingSid] = useState<string>()
   // 종이는 실제 크기(mm·pt)로 그리고, 화면 폭에 맞게 줄여 보인다(글자 맞춤과 같은 기준).
@@ -134,22 +137,24 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     }
   }
   function open(r: ReflectionRec) {
-    setBaseline(JSON.stringify({ date: r.date, reason: r.reason, lines: r.lines, t1: r.t1, t2: r.t2 }))
+    const rs = Array.from({ length: 16 }, (_, k) => r.spacing?.[k] ?? null)
+    setBaseline(JSON.stringify({ date: r.date, reason: r.reason, lines: r.lines, t1: r.t1, t2: r.t2, sps: rs }))
     setEditId(r.id)
     setDate(r.date)
     setReason(r.reason)
     setLines([...r.lines])
-    setSps(Array.from({ length: 16 }, (_, k) => r.spacing?.[k] ?? null))
+    setSps(rs)
     setT1(r.t1)
     setT2(r.t2)
     setMode(r.mode)
   }
   function fresh() {
-    setBaseline(JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1, t2 }))
+    setBaseline(JSON.stringify({ date: today, reason: '', lines: DEFAULT_LINES, t1, t2, sps: AUTO_SPS }))
     setEditId(undefined)
     setDate(today)
     setReason('')
     setLines([...DEFAULT_LINES])
+    setSps(AUTO_SPS)
   }
   const setLine = (i: number, v: string) => setLines((ls) => ls.map((x, k) => (k === i ? v : x)))
   const shown = q.trim() ? students.filter((s) => s.name.includes(q.trim()) || String(s.number) === q.trim()) : students
@@ -168,7 +173,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           </div>
           <button type="button" onClick={fresh}>새로 쓰기</button>
           <button type="button" className="primary" disabled={!student} onClick={() => act(async () => {
-            const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode, ...(sps.some((x) => x !== null) ? { spacing: sps } : {}) }, editId)
+            const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode, spacing: sps.some((x) => x !== null) ? sps : undefined }, editId)
             setEditId(r.id)
             setBaseline(snap())
             setMsg('저장했습니다.')
@@ -363,7 +368,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
                       </ol>
                     </details>
                     <div className="row">
-                      <button type="button" className="link" aria-label={`${g.title} 불러오기`} onClick={() => { setLines(Array.from({ length: 16 }, (_, k) => g.lines?.[k] ?? '')); setMsg(`'${g.title}'을(를) 불러왔습니다.`) }}>
+                      <button type="button" className="link" aria-label={`${g.title} 불러오기`} onClick={() => { setLines(Array.from({ length: 16 }, (_, k) => g.lines?.[k] ?? '')); setSps(AUTO_SPS); setMsg(`'${g.title}'을(를) 불러왔습니다.`) }}>
                         불러오기
                       </button>
                       <button type="button" className="danger-text" aria-label={`${g.title} 지우기`} onClick={() => act(() => deleteGoodText(db, g.id))}>
