@@ -156,6 +156,9 @@ export default function NoticeTab({ date: home }: { date: string }) {
     return false
   }
   const partsOf = (text: string) => parseNoteParts(text, notes)
+  /** 고치는 중인 줄(@노트 링크 보기 대신 글칸) */
+  const [editing, setEditing] = useState<string>()
+  const hasLink = (n: NoticeItemRec) => !!n.parts?.some((p) => typeof p !== 'string' && 'note' in p)
   const [msg, setMsg] = useState<string>()
   const [undo, setUndo] = useState<{ text: string; run: () => Promise<void> }>()
   const [rangeFor, setRangeFor] = useState<string>()
@@ -289,11 +292,40 @@ export default function NoticeTab({ date: home }: { date: string }) {
               <Icon name="grip" size={14} />
             </span>
             <input type="checkbox" aria-label={`${n.text} 완료`} checked={n.done} onChange={(e) => act(() => updateNotice(db, n.id, { done: e.target.checked }))} />
-            <span className="notice-box">
+            <span className={`notice-box${hasLink(n) ? ' has-links' : ''}${editing === n.id ? ' editing' : ''}`}>
+            {/* @노트가 든 줄은 고치지 않을 때 글 안의 '@노트이름'이 그대로 링크(할 일처럼). 링크 밖을 누르면 고치기. */}
+            {hasLink(n) && editing !== n.id && (
+              <span
+                className="notice-view pii"
+                onMouseDown={(e) => {
+                  if ((e.target as HTMLElement).closest('a')) return
+                  e.preventDefault()
+                  setEditing(n.id)
+                  requestAnimationFrame(() => {
+                    const el = document.querySelector<HTMLTextAreaElement>(`li[data-id="${n.id}"] textarea.notice-text`)
+                    el?.focus()
+                    el?.setSelectionRange(el.value.length, el.value.length)
+                  })
+                }}
+              >
+                {(n.parts ?? []).map((p, k) =>
+                  typeof p === 'string' ? (
+                    <span key={k}>{p}</span>
+                  ) : 'note' in p ? (
+                    notes.some((x) => x.id === p.note) ? (
+                      <Link key={k} to={`/notes?id=${p.note}`} className="note-link" title="노트 열기">{`@${notes.find((x) => x.id === p.note)!.title}`}</Link>
+                    ) : (
+                      <span key={k} className="dead" title="지운 노트입니다">@지운 노트</span>
+                    )
+                  ) : null,
+                )}
+              </span>
+            )}
             <textarea
               rows={1}
               className="notice-text"
               aria-label={`${i + 1}번 내용`}
+              onFocus={() => setEditing(n.id)}
               defaultValue={n.text}
               key={n.text}
               ref={fieldRef(n.id)}
@@ -314,6 +346,7 @@ export default function NoticeTab({ date: home }: { date: string }) {
               }}
               onBlur={(e) => {
                 setMen(undefined)
+                setEditing((x) => (x === n.id ? undefined : x))
                 const v = e.target.value.trim()
                 // 다 지우고 떠나면 그 줄을 없앤다(되돌리기 가능)
                 if (!v) return void act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))
@@ -322,11 +355,6 @@ export default function NoticeTab({ date: home }: { date: string }) {
               }}
             />
             {men?.id === n.id && <NoteMentionList items={menItems} sel={menSel} onPick={(x) => pickMention(n.id, x)} />}
-            {n.parts?.some((p) => typeof p !== 'string' && 'note' in p) && (
-              <span className="notice-links">
-                {n.parts.flatMap((p, k) => (typeof p !== 'string' && 'note' in p ? [<Link key={k} to={`/notes?id=${p.note}`} className="note-link notice-link" title="노트 열기">{`📄 ${notes.find((x) => x.id === p.note)?.title ?? '지운 노트'}`}</Link>] : []))}
-              </span>
-            )}
             <span className="row-tools">
             {!periodShown(n, date) && (
               <button type="button" className="icon-btn" aria-label={`${n.text} 날짜 정하기`} title="날짜·기간 정하기" onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>

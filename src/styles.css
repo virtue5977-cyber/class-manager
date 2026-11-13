@@ -1198,3 +1198,8 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .tree-row > .confirm-even { flex: 1 0 100%; justify-content: flex-end; padding: 2px 4px 4px; }
 .tree-row > .confirm-even button.danger { background: var(--c-red); }
 .tree-row > .confirm-even button { flex: none; }
+
+/* 전달사항: @노트가 든 줄은 고치지 않을 때 글 안 링크로 보인다 */
+.notice-box.has-links:not(.editing) > textarea.notice-text { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+.notice-view { flex: 1; min-width: 0; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; line-height: 1.5; }
+.notice-row.done .notice-view { color: var(--sub); text-decoration: line-through; }
