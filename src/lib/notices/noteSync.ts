@@ -139,12 +139,17 @@ export async function syncNoticesToNote(db: AppDB, date: string): Promise<void> 
 
 /** 그날 짝 노트를 열기(없으면 만들고 그날 하루짜리 전달사항을 넣는다) */
 export async function openNoticeNote(db: AppDB, date: string): Promise<NoteRec> {
-  const had = await noticeNoteOf(db, date)
-  if (had) return had
-  const rec = newRecord({ title: noticeNoteTitle(date), blocks: [{ id: newBlockId(), type: 'p', text: '' }], pinned: false, notice_date: date }) as NoteRec
-  await db.notes.add(rec)
+  // 확인과 만들기를 한 묶음으로(두 번 눌러도 노트는 하나)
+  const { note, made } = await db.transaction('rw', db.notes, async () => {
+    const had = await noticeNoteOf(db, date)
+    if (had) return { note: had, made: false }
+    const rec = newRecord({ title: noticeNoteTitle(date), blocks: [{ id: newBlockId(), type: 'p', text: '' }], pinned: false, notice_date: date }) as NoteRec
+    await db.notes.add(rec)
+    return { note: rec, made: true }
+  })
+  if (!made) return note
   await syncNoticesToNote(db, date)
-  return (await db.notes.get(rec.id))!
+  return (await db.notes.get(note.id))!
 }
 
 /**

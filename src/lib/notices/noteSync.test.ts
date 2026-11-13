@@ -117,3 +117,11 @@ test('짝 노트 줄이던 전달사항을 여러 날로 늘리거나 다른 날
   await saveNoteContent(db, next.id, { title: nb.title, blocks: [...nb.blocks, { id: 'y', type: 'p', text: '또' }] })
   expect(await texts(db, '2026-11-14')).toEqual(['여러 날로', '다음 날로', '또'])
 })
+
+test('같은 날 노트 열기를 동시에 두 번 눌러도 노트는 하나', async () => {
+  const { openNoticeNote } = await import('./noteSync')
+  const db = createDb('test-' + crypto.randomUUID())
+  const [a, b] = await Promise.all([openNoticeNote(db, '2026-11-13'), openNoticeNote(db, '2026-11-13')])
+  expect(a.id).toBe(b.id)
+  expect((await db.notes.toArray()).filter((n) => n.notice_date === '2026-11-13')).toHaveLength(1)
+})
