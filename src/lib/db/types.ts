@@ -407,3 +407,8 @@ export interface RosterField {
   builtin: boolean
   visible: boolean
 }
+
+/** 노트 본문 암호화 조각(Task 6) */
+export interface NoteBlobRec { id: string; _enc: Uint8Array }
+export interface MetaRec { id: string; [k: string]: unknown }
+export interface SyncRowRec { id: string; [k: string]: unknown }
