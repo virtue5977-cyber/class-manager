@@ -86,7 +86,7 @@ function readBackupPublic(dir) {
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/
 const isB64 = (x) => typeof x === 'string' && x.length > 0 && x.length < 8192 && x.length % 4 === 0 && B64.test(x)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-// dbName: 스펙 §3 예시 'watson-1a2b3c4d' = 'watson-' + 소문자 16진 8자.
+// dbName = 'watson-' + keyId 앞 8자(계획 Global Constraints). keyId는 소문자 uuid.
 const DBNAME = /^watson-[0-9a-f]{8}$/
 const TOP_KEYS = new Set(['v', 'keyId', 'dbName', 'pass', 'recovery', 'dekB64', 'dpapi'])
 const wrapOk = (w, needUpdatedAt) => !!w && typeof w === 'object' && !Array.isArray(w) &&
@@ -98,7 +98,7 @@ function validStorePayload(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return false
   if (!Object.keys(p).every((k) => TOP_KEYS.has(k))) return false
   if (p.v !== 1 || typeof p.keyId !== 'string' || !UUID.test(p.keyId)) return false
-  if (typeof p.dbName !== 'string' || !DBNAME.test(p.dbName)) return false
+  if (typeof p.dbName !== 'string' || !DBNAME.test(p.dbName) || p.dbName !== 'watson-' + p.keyId.slice(0, 8)) return false
   if (!wrapOk(p.pass, true)) return false
   if (p.recovery !== undefined && !wrapOk(p.recovery, false)) return false
   if (!isB64(p.dekB64) || Buffer.from(p.dekB64, 'base64').length !== 32) return false

@@ -176,3 +176,9 @@ test('I2 올바른 payload(recovery 포함, dpapi는 허용·무시)', () => {
   expect(V.validStorePayload(goodPayload())).toBe(true)
   expect(V.validStorePayload(goodPayload({ recovery: { salt: b64(16), iter: 100000, iv: b64(12), ct: b64(48) }, dpapi: 'x' }))).toBe(true)
 })
+
+test('I2 dbName은 watson-<keyId 앞 8자>와 같아야 한다', () => {
+  expect(V.validStorePayload(goodPayload({ dbName: 'watson-deadbeef' }))).toBe(false)
+  expect(V.validStorePayload(goodPayload({ keyId: '9a2b3c4d-1111-4222-8333-444455556666' }))).toBe(false)
+  expect(V.validStorePayload(goodPayload({ keyId: '9a2b3c4d-1111-4222-8333-444455556666', dbName: 'watson-9a2b3c4d' }))).toBe(true)
+})
