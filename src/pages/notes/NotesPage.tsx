@@ -16,7 +16,7 @@ import ExportMenu from '../../components/ExportMenu'
 import { buildNoteHwpx } from '../../lib/docs/note-doc'
 import PageHead from '../../components/PageHead'
 import NoteEditor from './NoteEditor'
-import NoticeTag, { shownTitle } from './NoticeTag'
+import { NoteIcon, shownTitle } from './NoticeTag'
 import { readFile } from '../../lib/notes/notes'
 import { unlinkNoticeNote } from '../../lib/notices/noteSync'
 
@@ -159,11 +159,10 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
 
   const lineCls = (id: string) => (drop?.kind === 'line' && drop.id === id ? (drop.after ? ' drop-after' : ' drop-before') : '')
   const noteRow = (n: NoteRec, depth = 0, parent: string | null = null) => (
-    <li key={n.id} data-kind="note" data-id={n.id} data-parent={parent ?? ''} className={`note-item tree-row${n.id === id ? ' on' : ''}${drag?.id === n.id ? ' dragging' : ''}${lineCls(n.id)}`} style={{ paddingLeft: 4 + depth * 16 }} onPointerDown={(e) => !q.trim() && beginDrag(e, 'note', n.id)}>
+    <li key={n.id} data-kind="note" data-id={n.id} data-parent={parent ?? ''} className={`note-item tree-row${confirmDel === n.id ? ' asking' : ''}${n.id === id ? ' on' : ''}${drag?.id === n.id ? ' dragging' : ''}${lineCls(n.id)}`} style={{ paddingLeft: 4 + depth * 16 }} onPointerDown={(e) => !q.trim() && beginDrag(e, 'note', n.id)}>
       <span className="tree-twisty" aria-hidden="true" />
-      <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>
-      <NoticeTag note={n} />
-      <Link to={`/notes?id=${n.id}`} draggable={false} className="tree-title">{shownTitle(n)}</Link>
+      <NoteIcon note={n} />
+      <Link to={`/notes?id=${n.id}`} draggable={false} className="tree-title" title={shownTitle(n)}>{shownTitle(n)}</Link>
       {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
       {n.pinned && <span className="tree-pinned" aria-hidden="true"><Icon name="pin" size={12} /></span>}
       {/* 마우스를 올리면 오른쪽이 흐려지며 도구가 뜬다(제목이 …로 잘리지 않게 자리를 차지하지 않음) */}
@@ -180,8 +179,8 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       </span>
       {confirmDel === n.id && (
         <span className="row confirm-inline confirm-even" role="group" aria-label="노트 지우기 확인">
-          <span>지울까요?</span>
-          <button type="button" className="danger" onClick={async () => { setConfirmDel(undefined); await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>정말 지우기</button>
+          <span className="muted">지울까요?</span>
+          <button type="button" className="danger" onClick={async () => { setConfirmDel(undefined); await deleteNote(db, n.id); if (n.id === id) navigate('/notes') }}>지우기</button>
           <button type="button" onClick={() => setConfirmDel(undefined)}>취소</button>
         </span>
       )}
@@ -232,7 +231,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
 
   return (
     <section className="stack notes-page">
-      <PageHead title="노트함" summary={`노트 ${notes.length}개`}>
+      <PageHead compact title="노트함" summary={`노트 ${notes.length}개`}>
         <button type="button" className="primary" onClick={async () => navigate(`/notes?id=${(await createNote(db, undefined, undefined, folder)).id}`)}>
           + 새 노트
         </button>

@@ -1038,7 +1038,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .tree-row, .notebox-item { position: relative; }
 .notebox-item { display: flex; flex-wrap: wrap; }
 .notebox-item > .notebox-row { flex: 1 1 auto; min-width: 0; }
-.tree-row .tree-title { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; word-break: keep-all; line-height: 1.35; }
+.tree-row .tree-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tree-pinned { color: var(--sub); flex: none; }
 .hover-tools { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 28px; background: linear-gradient(to right, transparent, var(--panel) 26px); opacity: 0; pointer-events: none; transition: opacity .12s; }
 .notes-tree .tree-row.on .hover-tools { background: linear-gradient(to right, transparent, var(--selected-solid, var(--panel)) 26px); }
@@ -1164,3 +1164,37 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 /* 종이 안은 늘 밝은 색(어두운 화면에서도 흰 종이에 검은 글) */
 .note-paper { --ink: #111; --sub: #666; --hover: #f1f1ef; --line: #ddd; --line-input: #c9c9c9; --panel: #fff; --ink-soft: #999; --accent-soft: #e9f3fd; --accent-soft-line: #a8cdf3; color-scheme: light; }
 .note-paper textarea, .note-paper input { color: #111; }
+
+/* 0.16 노트함: 머리 한 줄, 지우기 확인은 작게 */
+.page-head.compact { align-items: center; margin-bottom: 4px; }
+.page-head.compact .page-title { display: flex; flex-direction: row; align-items: baseline; gap: 10px; }
+.page-head.compact .page-title h2 { margin: 0; }
+.notice-badge { background: transparent !important; color: var(--sub) !important; border: 1px solid var(--line); }
+.confirm-even { gap: 4px; padding: 2px 0 2px 22px; font-size: 12.5px; flex-wrap: nowrap; }
+.confirm-even button { min-width: 0 !important; height: 24px !important; padding: 0 10px !important; font-size: 12px !important; }
+
+/* W 창 닫기: 펼칠 때의 반대로 오른쪽(W 단추)으로 말려 들어간다 */
+.w-panel.closing { animation: w-rollup .26s cubic-bezier(.4, 0, .8, .4) forwards; pointer-events: none; }
+@keyframes w-rollup { from { clip-path: inset(0 0 0 0 round 14px); opacity: 1; } to { clip-path: inset(0 0 0 calc(100% - 52px) round 14px); opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .w-panel.closing { animation: none; } }
+
+/* 반성문: 고른 줄 자간, 좋은 글 펼쳐 보기 */
+.line-sp { gap: 4px; align-items: center; font-size: 13px; }
+.line-sp button { min-width: 28px; height: 26px; padding: 0 6px; }
+.line-sp .link.on { font-weight: 700; color: var(--accent); }
+.line-sp-val { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.good-view ol { margin: 4px 0 0; padding-left: 1.6em; }
+.good-view summary { cursor: pointer; }
+.good-save { border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* 자리: 고정 핀(단색), 빈자리는 눌러서 책상 없음↔놓기 */
+.seat:not(.taken) { cursor: pointer; }
+.seat-pin { color: var(--sub); background: transparent; border: 0; padding: 2px; }
+.seat-pin.on { color: var(--accent); }
+.seat.fixed .seat-tools { opacity: 1; }
+
+/* 노트 지우기 확인: 제목 아래 한 줄(도구가 가리지 않게) */
+.tree-row.asking > .hover-tools { display: none; }
+.tree-row > .confirm-even { flex: 1 0 100%; justify-content: flex-end; padding: 2px 4px 4px; }
+.tree-row > .confirm-even button.danger { background: var(--c-red); }
+.tree-row > .confirm-even button { flex: none; }

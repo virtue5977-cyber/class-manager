@@ -67,3 +67,20 @@ test('청소: 줄 추가, 구역 이름, 학생 넣기, 자동 분배, hwpx', as
   await pickExport(user, '한글(hwpx)')
   await waitFor(() => expect(fs.downloads.map((d) => d.name)).toEqual(['1학년_5반_청소_구역.hwpx']))
 })
+
+test('빈자리를 누르면 책상 없음↔다시 놓기(고른 학생이 있으면 그 학생 배치), 고정은 단색 핀', async () => {
+  const user = userEvent.setup()
+  const { db, c, fs } = await setup()
+  render(<AppProviders db={db} fs={fs}><SeatingTab classRec={c} today="2026-11-05" /></AppProviders>)
+  await user.click(await screen.findByRole('gridcell', { name: '1행 3열 빈자리' }))
+  expect(await screen.findByRole('gridcell', { name: '1행 3열 책상 없음' })).toBeInTheDocument()
+  await waitFor(async () => expect(seatAt((await listSeatingCharts(db, c.id))[0].seats, 0, 2)!.disabled).toBe(true))
+  await user.click(screen.getByRole('gridcell', { name: '1행 3열 책상 없음' }))
+  expect(await screen.findByRole('gridcell', { name: '1행 3열 빈자리' })).toBeInTheDocument()
+  // 고른 학생이 있으면 배치
+  await user.click(screen.getByRole('button', { name: '1.가나' }))
+  await user.click(screen.getByRole('gridcell', { name: '1행 3열 빈자리' }))
+  expect(await screen.findByRole('gridcell', { name: '1행 3열 1.가나' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '1행 3열 책상 없음' })).toBeNull()
+  expect(screen.getByRole('button', { name: '1행 3열 고정' })).not.toHaveTextContent('📌')
+})

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
@@ -104,4 +104,26 @@ test('구글 Gemini API 키: 연결 방식으로 고르면 키·모델 칸이 �
   await user.selectOptions(screen.getByRole('combobox', { name: 'Gemini 모델' }), 'gemini-3.5-flash-lite')
   expect((await getSettings(db)).gemini_model).toBe('gemini-3.5-flash-lite')
   expect(screen.getByRole('checkbox', { name: /학생 이름 가리기/ })).toBeDisabled()
+})
+
+test('설정 > AI 지시문 고치기에 반성문 16줄 지시문도 있고, 샘플 시험은 16줄로', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const lines = Array.from({ length: 16 }, (_, k) => `문장 ${k + 1}`)
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()} ai={async () => JSON.stringify({ lines })}>
+      <AiSettings />
+    </AppProviders>,
+  )
+  await user.click(await screen.findByLabelText('AI 정리 사용'))
+  await user.click(screen.getByText('반성문 16줄 지시문'))
+  const box = screen.getByLabelText('반성문 16줄 지시문')
+  await waitFor(() => expect(box).toHaveValue(DEFAULT_PROMPTS.reflection))
+  await user.clear(box)
+  await user.type(box, '정중하게 쓴다')
+  const det = box.closest('details')!
+  await user.click(within(det).getByRole('button', { name: '지시문 저장' }))
+  await waitFor(async () => expect(await getPrompt(db, 'reflection')).toBe('정중하게 쓴다'))
+  await user.click(within(det).getByRole('button', { name: '샘플로 시험(AI 호출)' }))
+  expect(await within(det).findByText(/1\. 문장 1/)).toBeInTheDocument()
 })

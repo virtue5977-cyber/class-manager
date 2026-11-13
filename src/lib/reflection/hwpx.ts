@@ -1,6 +1,6 @@
 import { escapeXml } from '../hwpx/xml'
 import JSZip from 'jszip'
-import { bodyOpts, fitLine, MODES, titleOpts, type PaperMode } from './fit'
+import { fitLine, lineFit, MODES, titleOpts, type PaperMode } from './fit'
 import { REFLECTION_HWPX_B64 } from './template'
 
 const b64ToU8 = (b: string) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0))
@@ -15,6 +15,8 @@ export interface ReflectionDoc {
   lines: string[]
   mode: PaperMode
   fitOpts?: { auto?: boolean; minSp?: number; minPt?: number }
+  /** 줄마다 손으로 정한 자간(%) — null이면 자동 */
+  spacing?: (number | null)[]
 }
 
 /** 보내 주신 양식의 글자만 바꿔 저장(생성기 saveHwpx 이식). 맞춤 크기·자간은 글자 서식을 복제해 넣는다. */
@@ -66,7 +68,7 @@ export async function buildReflectionHwpx(d: ReflectionDoc): Promise<Uint8Array>
   for (let i = 0; i < 16; i++) {
     const idx = 2 + i * 2
     const v = d.lines[i] ?? ''
-    const f = fitLine(v ? `${i + 1}. ${v}` : '', bodyOpts(d.mode, d.fitOpts))
+    const f = lineFit(v ? `${i + 1}. ${v}` : '', d.mode, d.fitOpts, d.spacing?.[i])
     const text = v ? (i === 0 ? v : `${i + 1}. ${v}`) : ''
     const r = run(getCp(14, f.pt, f.sp), text)
     // 바꿀 글에 $&·$' 같은 것이 있어도 그대로 들어가게 함수로 넘긴다.

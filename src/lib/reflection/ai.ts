@@ -13,14 +13,19 @@ export async function fillByAi(db: AppDB, ai: AiCaller | undefined, reason: stri
   if (!s.ai_enabled || !ai) throw new Error('AI가 꺼져 있습니다. 설정 > AI에서 켜세요.')
   const m = maskText(reason, [...new Set([...names, ...(await allStudentNames(db))])])
   const t = lineTarget(mode)
-  const reply = extractJson<{ lines?: unknown[] }>(
-    await ai({
-      system: `${await getPrompt(db, 'reflection')}\n\n# 길이(앱 고정)\n- 각 문장은 띄어쓰기 포함 ${t.min}~${t.max}자로 써서 양식의 한 줄을 꽉 채운다. 이보다 짧은 문장은 쓰지 않는다.\n\n# 출력 형식\nJSON {"lines": ["문장", … 16개]} 만. 번호는 붙이지 않는다.`,
-      user: `사유: ${m.text}`,
-      maxTokens: 2500,
-    }),
-  )
+  void t
+  const reply = extractJson<{ lines?: unknown[] }>(await ai(reflectionRequest(await getPrompt(db, 'reflection'), m.text, mode)))
   const lines = (reply.lines ?? []).map((l) => unmaskText(String(l).replace(/^\s*\d{1,2}\s*[.)]\s*/, '').trim(), m.map)).filter(Boolean)
   if (lines.length !== 16) throw new Error('16줄을 받지 못했습니다. 다시 시도하세요.')
   return lines
+}
+
+/** 반성문 16줄 AI 요청(지시문 + 앱이 정한 길이·형식). reason은 이름을 가린 사유. */
+export function reflectionRequest(instruction: string, reason: string, mode: PaperMode = 'B4') {
+  const t = lineTarget(mode)
+  return {
+    system: `${instruction}\n\n# 길이(앱 고정)\n- 각 문장은 띄어쓰기 포함 ${t.min}~${t.max}자로 써서 양식의 한 줄을 꽉 채운다. 이보다 짧은 문장은 쓰지 않는다.\n\n# 출력 형식\nJSON {"lines": ["문장", … 16개]} 만. 번호는 붙이지 않는다.`,
+    user: `사유: ${reason}`,
+    maxTokens: 2500,
+  }
 }

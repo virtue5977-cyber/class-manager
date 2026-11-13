@@ -71,7 +71,7 @@ test('다른 화면의 W: 누르면 입력 칸, Esc로 접힘', async () => {
   const input = await screen.findByRole('combobox', { name: '명령 입력' })
   await waitFor(() => expect(input).toHaveFocus())
   await user.keyboard('{Escape}')
-  expect(screen.queryByRole('combobox', { name: '명령 입력' })).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('combobox', { name: '명령 입력' })).not.toBeInTheDocument())
   expect(screen.getByRole('button', { name: /명령 입력 열기/ })).toBeInTheDocument()
 })
 
@@ -194,4 +194,15 @@ test('보내면 입력 칸이 바로 비고 내 말이 올라가며, 대답 동�
   expect(await within(log).findByText(/할 일이 없습니다/)).toBeInTheDocument()
   await waitFor(() => expect(within(log).queryByRole('status', { name: '대답을 만드는 중' })).toBeNull())
   expect(within(log).getAllByText('오늘 할 일 알려줘')).toHaveLength(1)
+})
+
+test('W 창: 바깥을 누르면 두루마리처럼 말려 닫힌다(닫히는 동안 closing)', async () => {
+  const user = userEvent.setup()
+  await setup('/calendar')
+  await user.click(screen.getByRole('button', { name: '명령 입력 열기(Ctrl+K)' }))
+  expect(await screen.findByRole('combobox', { name: '명령 입력' })).toBeInTheDocument()
+  fireEvent.mouseDown(document.body)
+  expect(document.querySelector('.w-panel')).toHaveClass('closing')
+  await waitFor(() => expect(screen.queryByRole('combobox', { name: '명령 입력' })).not.toBeInTheDocument())
+  expect(screen.getByRole('button', { name: '명령 입력 열기(Ctrl+K)' })).toBeInTheDocument()
 })

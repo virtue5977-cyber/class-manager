@@ -389,6 +389,8 @@ export interface ReflectionRec extends BaseRecord {
   t1: string
   t2: string
   mode: 'B4' | 'A4'
+  /** 줄마다 손으로 정한 자간(%), null이면 자동 */
+  spacing?: (number | null)[]
 }
 export interface ReflectionPhraseRec extends BaseRecord {
   text: string

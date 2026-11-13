@@ -33,7 +33,7 @@ test('홈 노트함: 마우스 올리면 전달사항으로 지정·해제, 표�
   show(db)
   await user.click(await screen.findByRole('button', { name: '체육대회 안내 전달사항으로' }))
   await waitFor(async () => expect((await noticesOn(db, D)).map((x) => x.text)).toEqual(['체육복 지참']))
-  expect(await screen.findByText('[전달 11/12]')).toBeInTheDocument()
+  expect(await screen.findByRole('img', { name: '11/12 전달사항' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '체육대회 안내 전달사항에서 빼기' }))
   await waitFor(async () => expect((await db.notes.get(n.id))!.notice_date).toBeUndefined())
 })

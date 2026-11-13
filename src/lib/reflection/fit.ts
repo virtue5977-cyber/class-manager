@@ -61,3 +61,9 @@ export function lineTarget(mode: PaperMode): { min: number; max: number } {
   const cap = (widthPt(mode) / 12 - 1.18) / 0.9
   return { min: Math.round(cap) - 2, max: Math.round(cap * 1.1) }
 }
+
+/** 한 줄 맞춤: manual(자간 %)이 있으면 그 자간으로 고정(자동 줄이기 안 함), 없으면 자동 */
+export function lineFit(text: string, mode: PaperMode, o: Parameters<typeof bodyOpts>[1] | undefined, manual: number | null | undefined): Fit {
+  const base = bodyOpts(mode, o)
+  return manual === null || manual === undefined ? fitLine(text, base) : fitLine(text, { ...base, baseSp: manual, auto: false })
+}

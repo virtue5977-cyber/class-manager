@@ -30,6 +30,8 @@ export async function saveReflection(db: AppDB, input: Omit<ReflectionRec, keyof
     const cur = await db.reflections.get(id)
     if (cur) {
       const next = { ...cur, ...input, updated_at: new Date().toISOString() }
+      // 자간을 모두 자동으로 되돌렸으면 저장된 자간도 지운다
+      if (!input.spacing) delete next.spacing
       await db.reflections.put(next)
       return next
     }

@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { HeadTools } from '../../components/PageHead'
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
 import ExportMenu from '../../components/ExportMenu'
@@ -60,9 +61,12 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
   function clickSeat(row: number, col: number) {
     const seat = seatAt(chart!.seats, row, col)!
     if (picked) {
-      seatsChange(placeStudent(chart!.seats, picked, row, col))
+      // 책상 없는 칸이면 책상을 다시 놓고 앉힌다
+      seatsChange(placeStudent(seat.disabled ? toggleDisabled(chart!.seats, row, col) : chart!.seats, picked, row, col))
       setPicked(null)
     } else if (seat.student_id) setPicked(seat.student_id)
+    // 빈자리를 누르면 책상 없음, 책상 없는 칸을 누르면 다시 놓기
+    else seatsChange(toggleDisabled(chart!.seats, row, col))
   }
   const dragProps = (sid: string) => ({
     draggable: true,
@@ -196,7 +200,7 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
           ))}
         </div>
       )}
-      <p className="muted">학생을 끌어다 놓거나, 학생을 누른 뒤 칸을 누르세요. 칸끼리 끌면 맞바꿉니다. 📌 고정석은 무작위 배치에서 빠지고, ✕는 책상 없음입니다.</p>
+      <p className="muted">학생을 끌어다 놓거나, 학생을 누른 뒤 칸을 누르세요. 칸끼리 끌면 맞바꿉니다. 핀을 누르면 고정석(무작위 배치에서 빠짐), 빈자리를 누르면 책상 없음 ↔ 다시 놓기입니다.</p>
       <div className="seating-wrap print-area">
         <h3 className="print-title">{chart.title}</h3>
         {chart.podium_position === 'top' && podium}
@@ -214,19 +218,17 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
                   className={`seat${seat.disabled ? ' off' : ''}${st ? ' taken' : ''}${seat.fixed ? ' fixed' : ''}${st && picked === st.id ? ' picked' : ''}`}
                   onDragOver={(e) => !seat.disabled && e.preventDefault()}
                   onDrop={(e) => dropOnSeat(e, r, c)}
-                  onClick={() => !seat.disabled && clickSeat(r, c)}
+                  onClick={() => clickSeat(r, c)}
+                  title={seat.disabled ? '누르면 책상 다시 놓기' : st ? undefined : '누르면 책상 없음'}
                   {...(st ? dragProps(st.id) : {})}
                 >
                   <span className="seat-name pii">{seat.disabled ? '' : st ? seatLabel(st) : ''}</span>
                   <span className="seat-tools">
                     {st && (
-                      <button type="button" aria-label={`${label} 고정`} aria-pressed={seat.fixed} onClick={(e) => { e.stopPropagation(); seatsChange(toggleFixed(chart.seats, r, c)) }}>
-                        📌
+                      <button type="button" className={`seat-pin${seat.fixed ? ' on' : ''}`} aria-label={`${label} 고정`} aria-pressed={seat.fixed} title={seat.fixed ? '고정 풀기' : '이 자리에 고정'} onClick={(e) => { e.stopPropagation(); seatsChange(toggleFixed(chart.seats, r, c)) }}>
+                        <Icon name="pin" size={13} />
                       </button>
                     )}
-                    <button type="button" aria-label={`${label} 책상 없음`} aria-pressed={seat.disabled} onClick={(e) => { e.stopPropagation(); seatsChange(toggleDisabled(chart.seats, r, c)) }}>
-                      ✕
-                    </button>
                   </span>
                 </div>
               )
