@@ -52,6 +52,12 @@ contextBridge.exposeInMainWorld('desktop', {
     sizes: ['A4', 'B4'],
     save: (name, opts) => ipcRenderer.invoke('pdf:save', name, opts),
   },
+  vault: {
+    status: () => ipcRenderer.invoke('vault:status'),
+    unlockDpapi: () => ipcRenderer.invoke('vault:unlock-dpapi'),
+    readBackup: () => ipcRenderer.invoke('vault:read-backup'),
+    store: (v) => ipcRenderer.invoke('vault:store', v),
+  },
   agy: {
     status: () => ipcRenderer.invoke('ai:agy:status'),
     ask: (prompt) => ipcRenderer.invoke('ai:agy:ask', prompt),
