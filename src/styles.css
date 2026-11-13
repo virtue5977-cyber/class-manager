@@ -1192,3 +1192,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .seat-pin { color: var(--sub); background: transparent; border: 0; padding: 2px; }
 .seat-pin.on { color: var(--accent); }
 .seat.fixed .seat-tools { opacity: 1; }
+
+/* 노트 지우기 확인: 제목 아래 한 줄(도구가 가리지 않게) */
+.tree-row.asking > .hover-tools { display: none; }
+.tree-row > .confirm-even { flex: 1 0 100%; justify-content: flex-end; padding: 2px 4px 4px; }
+.tree-row > .confirm-even button.danger { background: var(--c-red); }
+.tree-row > .confirm-even button { flex: none; }

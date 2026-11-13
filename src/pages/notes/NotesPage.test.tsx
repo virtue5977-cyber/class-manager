@@ -116,7 +116,7 @@ test('노트 지우기는 한 번 더 묻는다', async () => {
   const list = await screen.findByRole('list', { name: '노트 목록' })
   await user.click(await within(list).findByRole('button', { name: '회의록 지우기' }))
   expect(await db.notes.get(n.id)).toMatchObject({ deleted: false })
-  await user.click(screen.getByRole('button', { name: '정말 지우기' }))
+  await user.click(within(screen.getByRole('group', { name: '노트 지우기 확인' })).getByRole('button', { name: '지우기' }))
   await waitFor(async () => expect((await db.notes.get(n.id))!.deleted).toBe(true))
 })
 
