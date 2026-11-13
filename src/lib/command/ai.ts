@@ -91,7 +91,10 @@ export async function aiFallback(input: string, ctx: ParseCtx, env: RunEnv): Pro
   // 짧은 글 → 질문이면 앱 자료로 대답, 할 일이면 명령 제안(AI 한 번)
   const list = COMMAND_META.map((c) => `- ${c.help}`).join('\n')
   // 질문과 앱 자료는 같은 가명 표로(같은 학생 = 같은 가명, 다른 학생 = 다른 가명)
-  const m = maskText(input, allNames)
+  // @3처럼 번호로 고른 학생은 이름으로 바꿔 보낸다(가명이 앱 자료의 가명과 이어지게)
+  const byNo = new Map(ctx.students.filter((x) => !x.deleted).map((x) => [String(x.number), x.name]))
+  const named = input.replace(/@(\d{1,2})(?!\d)/g, (all, n: string) => (byNo.has(n) ? `@${byNo.get(n)}` : all))
+  const m = maskText(named, allNames)
   const data = maskText(await appContext(env, p.students.map((x) => x.id)), allNames, m.map)
   const reply = extractJson<{ command?: string; answer?: string }>(
     await env.ai!({

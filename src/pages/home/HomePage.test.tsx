@@ -84,7 +84,7 @@ test('처음에는 시작하기 단계가 보이고, 학급을 만들면 체크�
     </MemoryRouter>,
   )
   expect(await screen.findByText('시작하기 · 남은 단계 4개')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '학급 만들기' })).toHaveClass('done')
+  expect(screen.getByRole('link', { name: '완료: 학급 만들기' })).toHaveClass('done')
 })
 
 test('할 일에 없는 학생 @를 쓰면 추가하지 않고 알린다', async () => {

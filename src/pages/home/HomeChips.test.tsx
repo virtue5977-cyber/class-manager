@@ -27,3 +27,22 @@ test('대화가 비었으면 자주 쓰는 명령 칩, 누르면 입력칸에 �
   expect(box).toHaveValue('/출결 ')
   await waitFor(() => expect(box).toHaveFocus())
 })
+
+test('입력칸에 이미 쓴 글이 있으면 칩은 지우지 않고 앞에 붙인다', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await setCurrentClassId(db, c.id)
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <HomePage today="2026-11-10" />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  const box = screen.getByLabelText('명령 입력')
+  await waitFor(() => expect(box).toBeEnabled(), { timeout: 4000 })
+  await user.type(box, '@3 내일 감기')
+  await user.click(within(screen.getByRole('group', { name: '자주 쓰는 명령' })).getByRole('button', { name: '/결석' }))
+  expect(box).toHaveValue('/결석 @3 내일 감기')
+})

@@ -484,7 +484,8 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
   const fs = useFs()
   const alertOff = useLive<boolean>(async () => !!(await db.app_settings.get(APP_SETTINGS_ID))?.nuga_alert_off, [db], false)
   const ids = students.map((s) => s.id)
-  const all = useLive<CounselingLogRec[]>(() => listAllLogs(db, ids), [db, ids.join(',')], [])
+  const loaded = useLive<CounselingLogRec[] | undefined>(() => listAllLogs(db, ids), [db, ids.join(',')], undefined)
+  const all = loaded ?? []
   const [kind, setKind] = useState<KindFilter>('전체')
   const [sid, setSid] = useState('')
   const [from, setFrom] = useState('')
@@ -507,7 +508,7 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
   }
   return (
     <section className="stack wide all-logs" aria-label="전체 누가기록">
-      {all.length === 0 ? (
+      {!loaded ? null : all.length === 0 ? (
         <EmptyState title="아직 누가기록이 없습니다" hint="왼쪽에서 학생을 골라 첫 기록을 쓰거나, 홈에서 /상담 · /관찰 명령을 쓰세요." />
       ) : (
       <>

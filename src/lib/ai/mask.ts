@@ -83,13 +83,17 @@ export function maskText(text: string, names: string[], map: Record<string, stri
   // 긴 꼴부터 바꿔야 "김민수"가 "민수"보다 먼저 잡힌다.
   const all = people.flatMap((p) => p.forms.map((f) => ({ f, p }))).sort((a, b) => b.f.length - a.f.length)
   const pseudoOf = new Map<string, string>()
+  // 두 사람이 같이 쓰는 꼴(김민수·이민수의 '민수')은 다른 사람의 가명을 빌리거나 되돌릴 꼴로 쓰지 않는다
+  const owners = new Map<string, number>()
+  for (const p of people) for (const x of new Set(p.forms)) owners.set(x, (owners.get(x) ?? 0) + 1)
+  const shared = (x: string) => (owners.get(x) ?? 0) > 1
   for (const { f, p } of all) {
     if (!s.includes(f)) continue
-    let ps = pseudoOf.get(p.full) ?? reverse.get(p.full) ?? [...reverse].find(([v]) => p.forms.includes(v))?.[1]
+    let ps = pseudoOf.get(p.full) ?? reverse.get(p.full) ?? [...reverse].find(([v, t]) => p.forms.includes(v) && !shared(v) && t.startsWith(p.who))?.[1]
     if (!ps) {
       ps = pseudonym(p.who, Object.keys(out).filter((k) => k.startsWith(p.who)).length)
-      // 되돌릴 꼴: 글에 가장 먼저 나온 꼴. "지훈이"로 썼으면 "지훈"(조사는 따로 고친다)
-      const first = p.forms.filter((x) => s.includes(x)).sort((a, b) => s.indexOf(a) - s.indexOf(b) || b.length - a.length)[0] ?? f
+      // 되돌릴 꼴: 글에 가장 먼저 나온(이 사람만의) 꼴. "지훈이"로 썼으면 "지훈"(조사는 따로 고친다)
+      const first = p.forms.filter((x) => s.includes(x) && !shared(x)).sort((a, b) => s.indexOf(a) - s.indexOf(b) || b.length - a.length)[0] ?? f
       out[ps] = first.endsWith('이') && p.forms.includes(first.slice(0, -1)) ? first.slice(0, -1) : first
       reverse.set(out[ps], ps)
     }

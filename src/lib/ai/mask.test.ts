@@ -64,3 +64,10 @@ test('보호자 이름은 보호자A로 가리고(학생으로 읽히지 않게)
   expect(unmaskText(m.text, m.map)).toBe('김민수 어머니 이영희 님과 통화')
   expect(hideNames('이영희 님', [`${GUARDIAN_PREFIX}이영희`])).toBe('○○ 님')
 })
+
+test('학생과 보호자의 이름 끝이 같아도 섞지 않는다(김민수 / 보호자 이민수)', async () => {
+  const { GUARDIAN_PREFIX } = await import('./mask')
+  const m = maskText('민수 어머니(이민수)와 통화', ['김민수', `${GUARDIAN_PREFIX}이민수`])
+  expect(m.text).toBe('학생A 어머니(보호자A)와 통화')
+  expect(unmaskText(m.text, m.map)).toBe('민수 어머니(이민수)와 통화')
+})

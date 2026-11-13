@@ -60,8 +60,9 @@ export async function runNuga(db: AppDB, ai: AiCaller, student: StudentRec, rost
     return { id: seq(i), kind: l.kind ?? '상담', date: l.date, place: place.text, memo: m.text }
   })
   const { system, user } = buildNugaPrompt(await getPrompt(db, 'nuga'), items, settings.nuga_max_chars)
-  const reply = extractJson<{ items?: { id: string; text: string }[] }>(await ai({ system, user, maxTokens: 1500 + logs.length * 400 }))
-  const got = new Map((reply.items ?? []).map((i) => [i.id, String(i.text ?? '').trim()]))
+  const reply = extractJson<{ items?: { id: string | number; text: string }[] }>(await ai({ system, user, maxTokens: 1500 + logs.length * 400 }))
+  // AI가 순번을 숫자로 돌려줘도 맞춘다
+  const got = new Map((reply.items ?? []).map((i) => [String(i.id).trim(), String(i.text ?? '').trim()]))
   const out: NugaResult[] = []
   for (const [i, l] of logs.entries()) {
     const raw = got.get(seq(i))
