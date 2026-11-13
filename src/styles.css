@@ -1172,3 +1172,8 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .notice-badge { background: transparent !important; color: var(--sub) !important; border: 1px solid var(--line); }
 .confirm-even { gap: 4px; padding: 2px 0 2px 22px; font-size: 12.5px; flex-wrap: nowrap; }
 .confirm-even button { min-width: 0 !important; height: 24px !important; padding: 0 10px !important; font-size: 12px !important; }
+
+/* W 창 닫기: 펼칠 때의 반대로 오른쪽(W 단추)으로 말려 들어간다 */
+.w-panel.closing { animation: w-rollup .26s cubic-bezier(.4, 0, .8, .4) forwards; pointer-events: none; }
+@keyframes w-rollup { from { clip-path: inset(0 0 0 0 round 14px); opacity: 1; } to { clip-path: inset(0 0 0 calc(100% - 52px) round 14px); opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .w-panel.closing { animation: none; } }
