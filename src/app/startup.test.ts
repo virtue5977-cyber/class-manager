@@ -53,3 +53,14 @@ test('runStartup: 쓰기 실패 → failed와 메시지', async () => {
   expect(r.backup).toBe('failed')
   expect(r.error).toBe('디스크가 가득 찼습니다')
 })
+
+test('runAutoBackup: 켜 둔 채 기한이 되면 백업하고, 동시에 두 번 불러도 한 번만', async () => {
+  const { runAutoBackup } = await import('./startup')
+  const db = testDb()
+  await setupPassphrase(db, '우리반암호구2026', { iterations: 1000 })
+  const folder = createMemoryFolder()
+  const fs = createMemoryFsAdapter(folder)
+  const [a, b] = await Promise.all([runAutoBackup(db, fs, NOW), runAutoBackup(db, fs, NOW)])
+  expect([a.backup, b.backup].sort()).toEqual(['done', 'not-due'])
+  expect(await folder.listFiles()).toHaveLength(1)
+})

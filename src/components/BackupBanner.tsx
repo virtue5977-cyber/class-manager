@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useBackupEvents, useDb, useFs } from '../app/context'
-import { checkBackupStatus, runStartup, type StartupStatus } from '../app/startup'
+import { checkBackupStatus, runAutoBackup, runStartup, type StartupStatus } from '../app/startup'
 import { runBackup } from '../lib/backup/service'
 import { toYmd } from '../lib/schoolDays'
 
@@ -36,6 +36,24 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
       setStatus(r.backup)
       setError(r.error)
     })
+  }, [db, fs])
+
+  // 켜 둔 채 하루가 지나도 백업되게: 1시간마다, 창이 다시 보일 때 기한 확인
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'hidden') return
+      runAutoBackup(db, fs).then((r) => {
+        if (r.backup === 'not-due') return
+        setStatus(r.backup)
+        setError(r.error)
+      })
+    }
+    const every = setInterval(check, 3600_000)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      clearInterval(every)
+      document.removeEventListener('visibilitychange', check)
+    }
   }, [db, fs])
 
   // 설정 화면에서 암호구·폴더가 바뀌면 백업을 다시 돌리지 않고 상태만 다시 확인한다.

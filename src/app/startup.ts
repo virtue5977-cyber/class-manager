@@ -19,17 +19,28 @@ export async function runStartup(
   now: Date = new Date(),
 ): Promise<{ backup: StartupStatus; error?: string; persisted: boolean }> {
   const persisted = await requestPersistence()
-  try {
-    if (!(await getCachedKey(db))) return { backup: 'needs-setup', persisted }
-    if (!needsAutoBackup(await getLastBackupAt(db), now)) return { backup: 'not-due', persisted }
-    const state = await fs.restoreFolder()
-    if (state.status === 'none') return { backup: 'needs-folder', persisted }
-    if (state.status === 'needs-permission') return { backup: 'needs-permission', persisted }
-    await runBackup(db, state.folder, { now })
-    return { backup: 'done', persisted }
-  } catch (e) {
-    return { backup: 'failed', error: e instanceof Error ? e.message : String(e), persisted }
-  }
+  return { ...(await runAutoBackup(db, fs, now)), persisted }
+}
+
+let queue: Promise<unknown> = Promise.resolve()
+
+/** 기한이 지났으면 자동 백업(켤 때·켜 둔 동안 1시간마다·창이 다시 보일 때). 한 번에 하나씩만 돈다. */
+export function runAutoBackup(db: AppDB, fs: FsAdapter, now: Date = new Date()): Promise<{ backup: StartupStatus; error?: string }> {
+  const run = queue.then(async (): Promise<{ backup: StartupStatus; error?: string }> => {
+    try {
+      if (!(await getCachedKey(db))) return { backup: 'needs-setup' }
+      if (!needsAutoBackup(await getLastBackupAt(db), now)) return { backup: 'not-due' }
+      const state = await fs.restoreFolder()
+      if (state.status === 'none') return { backup: 'needs-folder' }
+      if (state.status === 'needs-permission') return { backup: 'needs-permission' }
+      await runBackup(db, state.folder, { now })
+      return { backup: 'done' }
+    } catch (e) {
+      return { backup: 'failed', error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  queue = run.catch(() => {})
+  return run
 }
 
 export type BackupHealth = 'ok' | 'needs-setup' | 'needs-folder' | 'needs-permission'
