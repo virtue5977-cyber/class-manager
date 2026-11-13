@@ -26,3 +26,17 @@ test('급식·시간표를 가져오면 같은 화면의 내 시간표가 바로
   await user.click(screen.getByRole('button', { name: '이번 주 급식·시간표 가져오기' }))
   expect(await screen.findByLabelText('1-1')).toBeInTheDocument()
 })
+
+test('설정 탭 옆 점의 뜻을 탭 아래에 알려 준다', async () => {
+  const { MemoryRouter } = await import('react-router-dom')
+  const { default: SettingsPage } = await import('./SettingsPage')
+  const db = createDb('test-' + crypto.randomUUID())
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <SettingsPage />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  expect(await screen.findByText('설정할 것이 남은 메뉴')).toBeInTheDocument()
+})

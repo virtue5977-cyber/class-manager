@@ -1241,3 +1241,8 @@ tr.warn-row td:first-child, tr.warn-row td:nth-child(2) { background: var(--bann
 .chat-empty { display: grid; gap: 12px; justify-items: center; text-align: center; margin: auto 0; }
 .chip-row { justify-content: center; gap: 8px; }
 button.chip { min-height: var(--h-sm); padding: 2px 12px; border-radius: var(--r-pill); font-size: var(--fs-sm); background: var(--bg); }
+details.help > summary { cursor: pointer; color: var(--sub); font-size: var(--fs-sm); width: fit-content; }
+details.help > p { margin: 4px 0 0; }
+.todo-legend { display: flex; align-items: center; gap: 6px; margin: -4px 0 0; font-size: var(--fs-xs); }
+.todo-legend .todo-dot { position: static; }
+.cal-add-open { width: 100%; justify-content: center; }

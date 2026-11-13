@@ -171,7 +171,6 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               </button>
             ))}
           </div>
-          <button type="button" onClick={fresh}>새로 쓰기</button>
           <button type="button" className="primary" disabled={!student} onClick={() => act(async () => {
             const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode, spacing: sps.some((x) => x !== null) ? sps : undefined }, editId)
             setEditId(r.id)
@@ -179,12 +178,6 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
             setMsg('저장했습니다.')
           })}>
             저장
-          </button>
-          <button type="button" disabled={!student} onClick={() => act(async () => {
-            const n = await createNote(db, `${md(date)} 반성문 ${student!.number}번`, [{ id: newBlockId(), type: 'p', text: `사유: ${reason}` }, ...lines.filter(Boolean).map((l) => ({ id: newBlockId(), type: 'number' as const, text: l })), { id: newBlockId(), type: 'p', text: '#/class/reflection' }])
-            setMsg(`노트 '${n.title}'로 보냈습니다.`)
-          })}>
-            노트로 보내기
           </button>
           <ExportMenu
             onPrint={() => printNow(mode)}
@@ -197,6 +190,18 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               } },
             ]}
           />
+          <details className="menu">
+            <summary>더 ▾</summary>
+            <div className="menu-list">
+              <button type="button" onClick={fresh}>새로 쓰기</button>
+              <button type="button" disabled={!student} onClick={() => act(async () => {
+                const n = await createNote(db, `${md(date)} 반성문 ${student!.number}번`, [{ id: newBlockId(), type: 'p', text: `사유: ${reason}` }, ...lines.filter(Boolean).map((l) => ({ id: newBlockId(), type: 'number' as const, text: l })), { id: newBlockId(), type: 'p', text: '#/class/reflection' }])
+                setMsg(`노트 '${n.title}'로 보냈습니다.`)
+              })}>
+                노트로 보내기
+              </button>
+            </div>
+          </details>
         </HeadTools>
       </div>
       {msg && <p className="notice" role="status">{msg}</p>}

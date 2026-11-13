@@ -50,6 +50,11 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
           </button>
         ))}
       </div>
+      {Object.values(todo).some(Boolean) && (
+        <p className="muted todo-legend">
+          <span className="todo-dot" aria-hidden="true" /> 설정할 것이 남은 메뉴
+        </p>
+      )}
       <div className="stack gap settings-body" role="tabpanel">
         {tab === 'backup' && (
           <>
