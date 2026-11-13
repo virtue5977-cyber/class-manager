@@ -393,7 +393,7 @@ function LogCard(p: {
   onSaveNuga.current = p.onSaveNuga
   const saveNugaIfChanged = useCallback(() => {
     const d = draft.current
-    if (d.nuga !== d.saved) onSaveNuga.current(d.nuga.trim())
+    if (d.nuga.trim() !== (d.saved ?? '').trim()) onSaveNuga.current(d.nuga.trim())
   }, [])
   useEffect(() => registerFlush(saveNugaIfChanged), [saveNugaIfChanged])
   const hasNuga = !!l.nuga_text || writing

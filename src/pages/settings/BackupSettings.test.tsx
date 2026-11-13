@@ -126,3 +126,16 @@ test('암호구가 이미 있으면 바꿀 때 이전 백업 안내가 보이고
   expect(await screen.findByText(/이전 백업 파일은 예전 암호구로만 열립니다/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '암호구 바꾸기' })).toBeInTheDocument()
 })
+
+test('HTML판에서는 폴더를 고를 수 있어도 백업 파일 내려받기 단추가 있다(설치형으로 옮기기)', async () => {
+  const { edition } = await import('../../lib/update/update')
+  edition.single = true
+  try {
+    const db = createDb('test-' + crypto.randomUUID())
+    const fs = createMemoryFsAdapter(createMemoryFolder())
+    renderWith(db, fs)
+    expect(await screen.findByRole('button', { name: '백업 파일 내려받기' })).toBeInTheDocument()
+  } finally {
+    edition.single = false
+  }
+})

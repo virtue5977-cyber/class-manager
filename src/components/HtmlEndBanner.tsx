@@ -7,8 +7,8 @@ export default function HtmlEndBanner() {
   return (
     <div className="banner" role="status">
       <span>
-        HTML판은 0.17로 끝납니다. 학생 자료를 지키려면 설치형(Windows 앱)으로 옮기세요: 설정 &gt; 백업에서{' '}
-        <Link to="/settings?tab=backup">백업 파일 내려받기</Link> → 설치형에서 '백업 파일에서 복원'.
+        HTML판은 0.17로 끝납니다. 학생 자료를 지키려면 설치형(Windows 앱)으로 옮기세요: 백업 암호구를 정한 뒤 설정 &gt; 백업에서{' '}
+        <Link to="/settings?tab=backup">백업 파일 내려받기</Link> → 설치형에서 같은 암호구로 '백업 파일에서 복원'.
       </span>
     </div>
   )

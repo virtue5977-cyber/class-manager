@@ -5,6 +5,7 @@ import type { SafetyTarget } from '../../lib/backup/service'
 import { PBKDF2_ITERATIONS } from '../../lib/backup/crypto'
 import { getCachedKey, getLastBackupAt, restoreFromBytes, runBackup, setupPassphrase } from '../../lib/backup/service'
 import * as reload from '../../lib/ui/reload'
+import { edition } from '../../lib/update/update'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function formatLocal(iso: string): string {
@@ -166,6 +167,11 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
               <button type="button" className={hasKey ? 'primary' : undefined} onClick={backupNow} disabled={busy || !hasKey}>
                 지금 백업
               </button>
+              {edition.single && (
+                <button type="button" onClick={downloadBackup} disabled={busy || !hasKey}>
+                  백업 파일 내려받기
+                </button>
+              )}
             </div>
           </>
         ) : (

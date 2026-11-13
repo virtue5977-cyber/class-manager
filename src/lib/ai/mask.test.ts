@@ -50,3 +50,9 @@ test('밖으로 보내는 글(hideForExport): 이름 ○○, 전화·주민번�
   const { hideForExport } = await import('./mask')
   expect(hideForExport('김민수 어머니 010-1234-5678, mom@example.com', ['김민수'])).toBe('○○ 어머니 [전화], [메일]')
 })
+
+test('밖으로 보내는 글: 학년도·시각 범위·ISBN은 전화·주민번호로 오인하지 않는다', async () => {
+  const { hideForExport } = await import('./mask')
+  expect(hideForExport('2025-2026 학년도 협의, 회의 1400-1600, 0830-0910 1교시, ISBN 9788912345678', [])).toBe('2025-2026 학년도 협의, 회의 1400-1600, 0830-0910 1교시, ISBN 9788912345678')
+  expect(hideForExport('집 02-123-4567, 휴대폰 01012345678, 주민 120305-3123456', [])).toBe('집 [전화], 휴대폰 [전화], 주민 [주민]')
+})

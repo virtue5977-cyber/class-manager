@@ -749,7 +749,7 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing) return
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return
             if (e.key === 'Enter' || e.key === 'ArrowDown') {
               e.preventDefault()
               toFirstLine()

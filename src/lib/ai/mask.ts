@@ -6,8 +6,8 @@ export interface Masked {
   map: Record<string, string>
 }
 
-/** 주민등록번호(앞 6자리-뒤 7자리, 붙여 쓴 것도) */
-const RRN_RE = /\b\d{6}-?[1-4]\d{6}\b/g
+/** 주민등록번호(생년월일 6자리-뒤 7자리, 붙여 쓴 것도). 앞 6자리가 날짜 꼴일 때만(ISBN 등 제외) */
+const RRN_RE = /\b\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-?[1-4]\d{6}\b/g
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
 const PHONE_RE = /\+82[-. ]?\d{1,2}[-. ]?\d{3,4}[-. ]?\d{4}\b|\b01[016789][-. ]?\d{3,4}[-. ]?\d{4}\b|\b0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}\b|\b\d{3,4}-\d{4}\b/g
 /** 학번: "학번 1503", "1503번"처럼 학번으로 보이는 것만(연도·금액은 그대로) */
@@ -138,6 +138,9 @@ export function hideNames(text: string, names: string[]): string {
 }
 
 /** 밖(구글 캘린더 등)으로 보내는 글: 이름은 ○○, 전화·주민번호·메일은 [전화]·[주민]·[메일](되돌리지 않음). */
+/** 밖으로 보낼 때(되돌리지 않음)는 지역번호·휴대폰 꼴만 전화로 본다: '2025-2026 학년도', '1400-1600' 같은 범위는 그대로 */
+const PHONE_EXPORT_RE = /\+82[-. ]?\d{1,2}[-. ]?\d{3,4}[-. ]?\d{4}\b|\b01[016789][-. ]?\d{3,4}[-. ]?\d{4}\b|\b0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}\b/g
+
 export function hideForExport(text: string, names: string[]): string {
-  return hideNames(text.replace(RRN_RE, '[주민]').replace(EMAIL_RE, '[메일]').replace(PHONE_RE, '[전화]'), names)
+  return hideNames(text.replace(RRN_RE, '[주민]').replace(EMAIL_RE, '[메일]').replace(PHONE_EXPORT_RE, '[전화]'), names)
 }
