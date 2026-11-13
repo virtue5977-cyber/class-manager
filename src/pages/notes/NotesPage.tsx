@@ -14,7 +14,6 @@ import { toYmd } from '../../lib/schoolDays'
 import { useLive } from '../../lib/ui/useLive'
 import ExportMenu from '../../components/ExportMenu'
 import { buildNoteHwpx } from '../../lib/docs/note-doc'
-import PageHead from '../../components/PageHead'
 import NoteEditor from './NoteEditor'
 import { NoteIcon, shownTitle } from './NoticeTag'
 import { readFile } from '../../lib/notes/notes'
@@ -229,16 +228,33 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       ]
     })
 
+  const curRec = current ? notes.find((n) => n.id === current.id) : undefined
+  /** 편집기 머리 오른쪽 도구: 폴더·새 노트·내보내기 */
+  const tools = (
+    <>
+      {current && folders.length > 0 && (
+        <select className="note-folder-pick" aria-label="노트 폴더" title="폴더" value={curRec?.folder_id && folders.some((f) => f.id === curRec.folder_id) ? curRec.folder_id : ''} onChange={(e) => fAct(() => moveNote(db, current.id, e.target.value || null))}>
+          <option value="">폴더 없음</option>
+          {folderOptions.map((o) => (
+            <option key={o.id} value={o.id}>{o.label}</option>
+          ))}
+        </select>
+      )}
+      <button type="button" className="primary" onClick={async () => navigate(`/notes?id=${(await createNote(db, undefined, undefined, folder)).id}`)}>
+        + 새 노트
+      </button>
+      {current && <ExportMenu items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${current.title || '노트'}.pdf`) }]} />}
+    </>
+  )
   return (
     <section className="stack notes-page">
-      <PageHead compact title="노트함" summary={`노트 ${notes.length}개`}>
-        <button type="button" className="primary" onClick={async () => navigate(`/notes?id=${(await createNote(db, undefined, undefined, folder)).id}`)}>
-          + 새 노트
-        </button>
-        {current && <ExportMenu items={[{ format: 'hwpx', run: () => exportAs('hwpx') }, { format: 'xlsx', run: () => exportAs('xlsx') }, { format: 'pdf', run: () => exportPdf(`${current.title || '노트'}.pdf`) }]} />}
-      </PageHead>
       <div className="notes-layout">
         <div className="notes-list stack">
+          {/* 제목은 왼쪽 열 위에만: 오른쪽 편집기가 맨 위(제목 높이)부터 시작해 넓게 보인다 */}
+          <div className="notes-title">
+            <h2>노트함</h2>
+            <span className="muted">{`노트 ${notes.length}개`}</span>
+          </div>
           <input type="search" aria-label="노트 찾기" placeholder="제목·내용 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="row notes-folder-bar">
             <button type="button" className="link" onClick={() => fAct(async () => { const nf = await addFolder(db, '새 폴더', folder); if (folder) toggleF(folder, true); setEdit({ id: nf.id, name: nf.name }) })}>
@@ -263,6 +279,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
         <div className="notes-main stack">
           {current ? (
             <>
+              <NoteEditor key={current.id} note={current} today={today} tools={tools} />
               {todos.length > 0 && (
                 <section className="panel-card" aria-label="이 노트를 가리키는 할 일">
                   <h3>이 노트를 가리키는 할 일</h3>
@@ -278,21 +295,12 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
                   </ul>
                 </section>
               )}
-              {folders.length > 0 && (
-                <label className="inline note-folder-pick">
-                  폴더
-                  <select aria-label="노트 폴더" value={notes.find((n) => n.id === current.id)?.folder_id && folders.some((f) => f.id === notes.find((n) => n.id === current.id)?.folder_id) ? notes.find((n) => n.id === current.id)!.folder_id! : ''} onChange={(e) => fAct(() => moveNote(db, current.id, e.target.value || null))}>
-                    <option value="">맨 위(폴더 없음)</option>
-                    {folderOptions.map((o) => (
-                      <option key={o.id} value={o.id}>{o.label}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <NoteEditor key={current.id} note={current} today={today} />
             </>
           ) : (
-            <p className="muted">왼쪽에서 노트를 고르거나 새 노트를 만드세요.</p>
+            <div className="notes-empty card stack">
+              <div className="row note-tools">{tools}</div>
+              <p className="muted">왼쪽에서 노트를 고르거나 새 노트를 만드세요.</p>
+            </div>
           )}
         </div>
       </div>

@@ -40,7 +40,7 @@ function fileBytes(f: File): Promise<Uint8Array> {
 const fmtSize = (n: number) => (n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024).toFixed(0)}KB` : `${(n / 1048576).toFixed(1)}MB`)
 
 /** 노트 편집: 제목 + 블록(빈 블록에서 / → 블록 메뉴). 입력이 멈추고 0.5초 뒤 저장. */
-export default function NoteEditor({ note, today }: { note: NoteRec; today: string }) {
+export default function NoteEditor({ note, today, tools }: { note: NoteRec; today: string; tools?: React.ReactNode }) {
   const db = useDb()
   const fs = useFs()
   const navigate = useNavigate()
@@ -729,6 +729,7 @@ export default function NoteEditor({ note, today }: { note: NoteRec; today: stri
       <div className="note-head">
         <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
         <div className="row note-tools">
+          {tools && <span className="row note-page-tools">{tools}</span>}
           <button type="button" className="link" title="서식을 살려 복사합니다. 한글·워드에 붙여 넣으세요." onClick={copyForHwp}>한글로 복사</button>
           {live?.notice_date ? (
             <>
