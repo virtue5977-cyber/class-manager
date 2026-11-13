@@ -76,7 +76,7 @@ export async function importSnapshot(db: AppDB, snap: Snapshot): Promise<void> {
       const { data, chunks: _c, ...meta } = r
       void _c
       const out: NoteFileRec = { ...meta }
-      if (!r.deleted && data) {
+      if (!r.deleted && typeof data === 'string') {
         const sealed = await sealBlobRows(db, r.id, b64ToBytes(data))
         blobRows.push(...sealed.rows)
         if (sealed.chunks) out.chunks = sealed.chunks

@@ -82,3 +82,26 @@ test('150MB 한도는 note_files size 합으로 센다', async () => {
   await expect(attachFile(db, n.id, { name: 'y', mime: '', bytes: bytesOf(11) })).rejects.toThrow('150MB')
   await attachFile(db, n.id, { name: 'y', mime: '', bytes: bytesOf(10) })
 })
+
+test('0바이트 첨부: 내보내기 → 새 vault로 들여오기 → readFile 빈 바이트, 다시 내보내기 가능', async () => {
+  const db = openTestVaultDb()
+  const n = await createNote(db)
+  const f = await attachFile(db, n.id, { name: 'empty', mime: '', bytes: new Uint8Array(0) })
+  const snap = await exportSnapshot(db)
+  expect((snap.tables.note_files[0] as { data: string }).data).toBe('')
+  const db2 = openTestVaultDb()
+  await importSnapshot(db2, snap)
+  expect((await readFile(db2, f.id)).bytes).toEqual(new Uint8Array(0))
+  await expect(exportSnapshot(db2)).resolves.toBeTruthy()
+})
+
+test('평문 백업의 0바이트 파일을 vault로 들여오기', async () => {
+  const p = new AppDB('p-' + crypto.randomUUID())
+  const n = await createNote(p)
+  const f = await attachFile(p, n.id, { name: 'empty', mime: '', bytes: new Uint8Array(0) })
+  const snap = await exportSnapshot(p)
+  const v = openTestVaultDb()
+  await importSnapshot(v, snap)
+  expect((await readFile(v, f.id)).bytes.length).toBe(0)
+  await expect(exportSnapshot(v)).resolves.toBeTruthy()
+})
