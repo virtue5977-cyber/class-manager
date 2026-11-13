@@ -12,7 +12,7 @@ const single = process.env.SINGLE === '1'
 export default defineConfig({
   plugins: [react(), ...(single ? [viteSingleFile()] : [])],
   base: './',
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __SINGLE__: JSON.stringify(single) },
   build: single ? { outDir: 'dist-single', emptyOutDir: true } : undefined,
   test: {
     globals: true,

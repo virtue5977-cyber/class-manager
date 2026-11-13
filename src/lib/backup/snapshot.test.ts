@@ -104,3 +104,18 @@ test('JSON이 아닌 바이트를 parse하면 BackupFormatError', () => {
 test('새 표(전달사항·노트·첨부·할 일·내 일정·대화·반성문)도 백업에 들어간다', () => {
   for (const t of ['notice_items', 'notes', 'note_files', 'todos', 'local_events', 'chat_log', 'reflections', 'reflection_phrases']) expect(SYNCED_TABLES).toContain(t)
 })
+
+test('표 목록을 바꾸면 백업 형식 번호도 올린다(형식별 표 목록과 같아야 함)', async () => {
+  const { BACKUP_TABLES_BY_VERSION } = await import('../db/schema')
+  expect([...SYNCED_TABLES]).toEqual([...BACKUP_TABLES_BY_VERSION[SCHEMA_VERSION]])
+})
+
+test('옛 형식(1) 백업에 없는 표는 지우지 않고, 있는 표만 바꾼다', async () => {
+  const target = testDb()
+  await target.classes.add(cls(3))
+  await target.notes.add(newRecord({ title: '남아야 할 노트', blocks: [], pinned: false }) as never)
+  const old = { app: 'class-manager', schemaVersion: 1, exportedAt: '2026-01-01T00:00:00Z', tables: { classes: [cls(1)] } } as unknown as Snapshot
+  await importSnapshot(target, old)
+  expect((await target.classes.toArray()).map((c) => c.grade)).toEqual([1])
+  expect((await target.notes.toArray()).map((n) => n.title)).toEqual(['남아야 할 노트'])
+})

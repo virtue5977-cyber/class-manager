@@ -1,3 +1,4 @@
+import { registerFlush } from '../../lib/ui/flush'
 import AudioDrop from './AudioDrop'
 import { appendTranscript } from '../../lib/stt/stt'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -384,6 +385,17 @@ function LogCard(p: {
   const l = p.log
   const [nuga, setNuga] = useState(l.nuga_text)
   const [writing, setWriting] = useState(false)
+  const [asking, setAsking] = useState(false)
+  // 고치는 중인 누가기록: 칸을 벗어날 때, 창을 닫거나 숨길 때 저장
+  const draft = useRef({ nuga, saved: l.nuga_text })
+  draft.current = { nuga, saved: l.nuga_text }
+  const onSaveNuga = useRef(p.onSaveNuga)
+  onSaveNuga.current = p.onSaveNuga
+  const saveNugaIfChanged = useCallback(() => {
+    const d = draft.current
+    if (d.nuga.trim() !== (d.saved ?? '').trim()) onSaveNuga.current(d.nuga.trim())
+  }, [])
+  useEffect(() => registerFlush(saveNugaIfChanged), [saveNugaIfChanged])
   const hasNuga = !!l.nuga_text || writing
   // AI 정리 등으로 저장값이 바뀌면 칸도 따라간다(카드를 다시 만들지 않아 포커스·클릭이 끊기지 않음).
   useEffect(() => setNuga(l.nuga_text), [l.nuga_text])
@@ -405,7 +417,7 @@ function LogCard(p: {
       <>
       <label className="wide">
         누가기록
-        <textarea className="pii" rows={3} autoFocus={writing && !l.nuga_text} value={nuga} onChange={(e) => setNuga(e.target.value)} onBlur={() => nuga !== l.nuga_text && p.onSaveNuga(nuga.trim())} placeholder="AI로 정리하거나 직접 쓰세요." />
+        <textarea className="pii" rows={3} autoFocus={writing && !l.nuga_text} value={nuga} onChange={(e) => setNuga(e.target.value)} onBlur={saveNugaIfChanged} placeholder="AI로 정리하거나 직접 쓰세요." />
       </label>
       <span className="muted">{`${nuga.length}자`}</span>
       </>
@@ -441,9 +453,21 @@ function LogCard(p: {
             원문 고치기
           </button>
         )}
-        <button type="button" className="link" onClick={p.onDelete}>
-          지우기
-        </button>
+        {asking ? (
+          <span className="row confirm-inline" role="group" aria-label="기록 지우기 확인">
+            <span>지울까요?</span>
+            <button type="button" className="danger" onClick={() => { setAsking(false); p.onDelete() }}>
+              지우기
+            </button>
+            <button type="button" onClick={() => setAsking(false)}>
+              취소
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="link" onClick={() => setAsking(true)}>
+            지우기
+          </button>
+        )}
       </div>
     </article>
   )

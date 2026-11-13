@@ -119,3 +119,18 @@ test('내 일정 장소·메모는 구글 location·description으로(이름은 
   const it = (await buildPushItems(db, '2026-11-01', '2026-11-30', c.id)).find((i) => i.title.includes('협의회'))!
   expect([it.location, it.description]).toEqual(['3층 시청각실', '○○ 자료'])
 })
+
+test('구글로 보내는 메모: 보호자 이름·다른 반 학생·전화번호도 가린다', async () => {
+  const { createDb } = await import('../db/schema')
+  const { createClass, emptyStudent, saveStudent } = await import('../roster/roster')
+  const { addLocalEvent } = await import('../events/localEvents')
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const other = await createClass(db, { school_year: 2026, grade: 1, class_no: 6 })
+  await saveStudent(db, c.id, { ...emptyStudent(3, '김민수'), guardian_name: '이영희' })
+  await saveStudent(db, other.id, emptyStudent(1, '최다른'))
+  await addLocalEvent(db, { date: '2026-11-12', title: '상담', tag: '업무', memo: '이영희 010-1234-5678, 최다른 동석' })
+  const { buildPushItems } = await import('./google')
+  const it = (await buildPushItems(db, '2026-11-01', '2026-11-30', c.id)).find((i) => i.title.includes('상담'))!
+  expect(it.description).toBe('○○ [전화], ○○ 동석')
+})

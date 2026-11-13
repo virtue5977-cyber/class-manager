@@ -73,7 +73,7 @@ test('제출된 신고서에 영향 주는 삭제는 확인(취소하면 그대�
   await updateReport(db, (await listReportsByStudent(db, s1.id))[0].id, { submitted: true })
   renderAt(db, '2026-11-06')
   await user.click(await screen.findByRole('button', { name: /^1번 가나/ }))
-  await user.click(screen.getByRole('button', { name: '삭제' }))
+  await user.click(screen.getByRole('button', { name: '지우기' }))
   expect(await screen.findByText(/제출했거나 직접 고친 신고서\(.*\)에 영향을 줍니다\. 계속할까요\?/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '취소' }))
   expect(await listAttendanceByStudent(db, s1.id)).toHaveLength(1)

@@ -36,3 +36,23 @@ test('두 글자 성·띄어 쓴 이름·영문 이름·국제 전화번호도 �
   expect(m.text).not.toMatch(/민수|지훈|서연|Jisu|1234-5678/)
   expect(nameForms('남궁민수')).toEqual(expect.arrayContaining(['남궁민수', '민수']))
 })
+
+test('주민등록번호·이메일도 가리고 되돌린다', () => {
+  const m = maskText('주민번호 120305-3123456, 메일 kim.ms@example.com 으로 회신', [])
+  expect(m.text).not.toContain('120305')
+  expect(m.text).not.toContain('example.com')
+  expect(m.text).toContain('[주민1]')
+  expect(m.text).toContain('[메일1]')
+  expect(unmaskText(m.text, m.map)).toBe('주민번호 120305-3123456, 메일 kim.ms@example.com 으로 회신')
+})
+
+test('밖으로 보내는 글(hideForExport): 이름 ○○, 전화·주민번호·메일도 가림', async () => {
+  const { hideForExport } = await import('./mask')
+  expect(hideForExport('김민수 어머니 010-1234-5678, mom@example.com', ['김민수'])).toBe('○○ 어머니 [전화], [메일]')
+})
+
+test('밖으로 보내는 글: 학년도·시각 범위·ISBN은 전화·주민번호로 오인하지 않는다', async () => {
+  const { hideForExport } = await import('./mask')
+  expect(hideForExport('2025-2026 학년도 협의, 회의 1400-1600, 0830-0910 1교시, ISBN 9788912345678', [])).toBe('2025-2026 학년도 협의, 회의 1400-1600, 0830-0910 1교시, ISBN 9788912345678')
+  expect(hideForExport('집 02-123-4567, 휴대폰 01012345678, 주민 120305-3123456', [])).toBe('집 [전화], 휴대폰 [전화], 주민 [주민]')
+})

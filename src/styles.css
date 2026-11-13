@@ -42,7 +42,7 @@ button:disabled { opacity: .5; cursor: default; }
 .notice { margin-top: 12px; font-weight: 600; }
 .banner { display: flex; gap: 12px; align-items: center; background: var(--banner); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; }
 @media (max-width: 700px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
   .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
   .nav { flex-direction: row; flex-wrap: wrap; }
   .content { padding: 16px; }
@@ -860,7 +860,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 @media (hover: none) { .notice-row .row-tools { opacity: 1; } }
 /* 좁은 창(노트북 창 줄임): 사이드바·여백을 줄이고, 홈 오른쪽 칸은 아래로 */
 @media (max-width: 1100px) {
-  .layout { grid-template-columns: min(var(--side-w, 224px), 180px) 1fr; }
+  .layout { grid-template-columns: min(var(--side-w, 224px), 180px) minmax(0, 1fr); }
   .content { padding: 16px 20px 96px; }
   .home-body { grid-template-columns: 1fr !important; }
   .home-body .resize-v { display: none; }
@@ -1211,3 +1211,16 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .note-page-tools { gap: 6px; order: 9; }
 .note-folder-pick { height: 32px; font-size: 13px; max-width: 140px; }
 .notes-empty { min-height: 200px; }
+
+/* 0.17 좁은 화면: 본문 열이 표 너비만큼 늘어나지 않게(넘치는 표는 표 안에서 가로로 민다). 좁은 창 규칙은 위 미디어 쿼리에 */
+@media (min-width: 1101px) { .layout { grid-template-columns: var(--side-w, 224px) minmax(0, 1fr); } }
+.content > *, .stack > * { min-width: 0; }
+/* 번호·이름 열은 가로로 밀어도 남는다 */
+table.stats th:first-child, table.stats td:first-child,
+table.roster-all th:first-child, table.roster-all td:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); min-width: 3.2em; width: 3.2em; }
+table.stats th:nth-child(2), table.stats td:nth-child(2),
+table.roster-all th:nth-child(2), table.roster-all td:nth-child(2) { position: sticky; left: 3.2em; z-index: 1; background: var(--panel); box-shadow: 1px 0 0 var(--line); }
+table.stats tr.total td:first-child, table.stats tr.total td:nth-child(2) { background: var(--bg); }
+table.stats th:first-child, table.stats th:nth-child(2), table.roster-all th:first-child, table.roster-all th:nth-child(2) { z-index: 2; }
+tr.warn-row td:first-child, tr.warn-row td:nth-child(2) { background: var(--banner); }
+@media print { table.stats th, table.stats td, table.roster-all th, table.roster-all td { position: static; background: #fff; box-shadow: none; } }

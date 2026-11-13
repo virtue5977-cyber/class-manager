@@ -76,10 +76,13 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
   const toks = tokenize(input)
   const p: Parsed = { cmd: null, sub: null, students: [], ambiguous: [], missing: [], tags: [], date: ctx.today, dateGiven: false, time: null, rest: '', parts: [], errors: [] }
   let i = 0
+  let aliasKind: string | undefined
   if (toks[0]?.kind === 'cmd') {
     const name = toks[0].text.slice(1)
     p.cmd = names[name] ?? null
     if (!p.cmd) p.errors.push(`'/${name}' 명령을 모릅니다. /를 눌러 고르세요.`)
+    // /결석·/지각·/조퇴·/결과: 쓴 이름이 출결 종류(글에 종류를 따로 쓰면 그것)
+    if (p.cmd && (KINDS as readonly string[]).includes(name)) aliasKind = name
     i = 1
     if (p.cmd && subs[p.cmd]?.includes(toks[1]?.text ?? '')) {
       p.sub = toks[1].text
@@ -154,6 +157,7 @@ export function parseCommand(input: string, ctx: ParseCtx, names: Record<string,
     }
     i++
   }
+  if (!p.kind && aliasKind) p.kind = aliasKind
   p.rest = restWords.join(' ')
   // 조각 사이에 띄어쓰기를 넣고 이웃한 글은 합친다.
   for (const [k, item] of seq.entries()) {

@@ -10,7 +10,10 @@ export interface Snapshot {
 }
 
 /** 키 n: 버전 n의 스냅샷을 n+1로 바꾼다. */
-export const MIGRATIONS: Record<number, (s: Snapshot) => Snapshot> = {}
+export const MIGRATIONS: Record<number, (s: Snapshot) => Snapshot> = {
+  // 1 → 2: 표 구성은 같다. 그때 없던 표는 백업에 없을 뿐이고, 복원은 있는 표만 바꾼다.
+  1: (s) => ({ ...s, schemaVersion: 2 }),
+}
 
 export async function exportSnapshot(db: AppDB, now: Date = new Date()): Promise<Snapshot> {
   const tables = {} as Record<SyncedTable, unknown[]>
@@ -45,11 +48,12 @@ export function validateSnapshot(snap: Snapshot): Snapshot {
   return s
 }
 
-/** 모든 동기화 대상 표를 하나의 트랜잭션에서 백업 내용으로 바꾼다. device_local은 건드리지 않는다. */
+/** 백업에 들어 있는 표를 하나의 트랜잭션에서 백업 내용으로 바꾼다. 백업에 없는 표(옛 백업)는 그대로 둔다. device_local은 건드리지 않는다. */
 export async function importSnapshot(db: AppDB, snap: Snapshot): Promise<void> {
   const s = validateSnapshot(snap)
   await db.transaction('rw', SYNCED_TABLES.map((t) => db.syncedTable(t)), async () => {
     for (const t of SYNCED_TABLES) {
+      if (!Object.prototype.hasOwnProperty.call(s.tables, t)) continue
       const table = db.syncedTable(t)
       await table.clear()
       const rows = (s.tables[t] ?? []) as { id: string }[]

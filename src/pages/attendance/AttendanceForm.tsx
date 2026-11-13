@@ -269,7 +269,7 @@ export default function AttendanceForm({
           </button>
           {editingId && (
             <button type="button" className="danger-text push-right" onClick={() => run('delete')}>
-              삭제
+              지우기
             </button>
           )}
         </div>

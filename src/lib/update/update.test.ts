@@ -1,11 +1,14 @@
 // @vitest-environment node
-import { isNewer, checkHtmlUpdate } from './update'
+import { isNewer } from './update'
 
-test('버전 비교·HTML 업데이트 확인', async () => {
+test('버전 비교', () => {
   expect(isNewer('0.2.10', '0.2.9')).toBe(true)
   expect(isNewer('0.2.0', '0.2.0')).toBe(false)
   expect(isNewer('1.0', '0.9.9')).toBe(true)
-  expect(await checkHtmlUpdate(async () => ({ version: '0.3.0', note: '달력' }), '0.2.0')).toEqual({ status: 'html-available', current: '0.2.0', version: '0.3.0', note: '달력' })
-  expect((await checkHtmlUpdate(async () => ({ version: '0.2.0' }), '0.2.0')).status).toBe('latest')
-  expect((await checkHtmlUpdate(async () => { throw new Error('x') }, '0.2.0')).status).toBe('error')
+})
+
+test('HTML판 업데이트 받기 경로는 없다(서명 없는 파일을 받지 않게)', async () => {
+  const mod = (await import('./update')) as Record<string, unknown>
+  expect(mod.checkHtmlUpdate).toBeUndefined()
+  expect(mod.fetchNewHtml).toBeUndefined()
 })

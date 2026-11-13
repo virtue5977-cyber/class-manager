@@ -100,14 +100,24 @@ test('15번째 백업 때 가장 오래된 파일 하나가 지워지고, 이름
   expect(files).toContain('메모.txt')
 })
 
-test('정리는 _2가 기본 파일보다 최신으로 취급된다', async () => {
+test('정리: 지난 날은 날마다 마지막 하나(_2보다 _10이 최신), 최근 날 수만큼', async () => {
   const folder = createMemoryFolder()
-  for (const n of ['백업_20261104_0900_2.enc', '백업_20261104_0900.enc', '백업_20261104_0900_10.enc', '백업_20261103_2359.enc']) {
+  for (const n of ['백업_20261104_0900_2.enc', '백업_20261104_0900.enc', '백업_20261104_0900_10.enc', '백업_20261103_2359.enc', '백업_20261105_0800.enc']) {
     await folder.writeFile(n, new Uint8Array(1))
   }
   const removed = await rotateBackups(folder, 2)
-  expect(removed.sort()).toEqual(['백업_20261103_2359.enc', '백업_20261104_0900.enc'])
-  expect((await folder.listFiles()).sort()).toEqual(['백업_20261104_0900_10.enc', '백업_20261104_0900_2.enc'])
+  expect(removed.sort()).toEqual(['백업_20261103_2359.enc', '백업_20261104_0900.enc', '백업_20261104_0900_2.enc'])
+  expect((await folder.listFiles()).sort()).toEqual(['백업_20261104_0900_10.enc', '백업_20261105_0800.enc'])
+})
+
+test('정리: 하루에 여러 번 백업해도 지난 날 백업이 밀려나지 않는다(오늘 것은 모두 남김)', async () => {
+  const folder = createMemoryFolder()
+  for (let d = 1; d <= 3; d++) await folder.writeFile(`백업_2026110${d}_0900.enc`, new Uint8Array(1))
+  for (let i = 0; i < 14; i++) await folder.writeFile(`백업_20261104_${String(1000 + i)}.enc`, new Uint8Array(1))
+  await rotateBackups(folder, 14)
+  const files = await folder.listFiles()
+  expect(files).toHaveLength(17)
+  expect(files).toContain('백업_20261101_0900.enc')
 })
 
 test('runBackup은 lastBackupAt을 갱신한다', async () => {

@@ -20,13 +20,30 @@ export default function ExportMenu({ items, icon, onPrint }: { items: { format: 
   itemsRef.current = items
   useEffect(() => {
     const take = () => {
-      const f = takeExport()
-      if (!f) return
+      const t = takeExport()
+      if (!t) return
+      const { f, settle } = t
       setTimeout(() => {
-        if (f === 'print') return onPrint ? onPrint() : window.print()
+        if (f === 'print') {
+          if (onPrint) onPrint()
+          else window.print()
+          return settle({ ok: true })
+        }
         const it = itemsRef.current.find((x) => x.format === f)
-        if (it) void it.run()
-        else setOpen(true)
+        if (!it) {
+          setOpen(true)
+          return settle({ ok: false, message: '이 화면에는 그 형식이 없어 메뉴를 열었습니다.' })
+        }
+        Promise.resolve()
+          .then(() => it.run())
+          .then(
+            () => settle({ ok: true }),
+            (e) => {
+              const m = e instanceof Error ? e.message : String(e)
+              setError(`${LABEL[f].replace(/\(.*\)/, '')}로 내보내지 못했습니다: ${m}`)
+              settle({ ok: false, message: m })
+            },
+          )
       }, 0)
     }
     take()

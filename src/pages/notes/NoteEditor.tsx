@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { registerFlush } from '../../lib/ui/flush'
 import { useDb, useFs } from '../../app/context'
 import type { NoteBlock, NoteBlockType, NoteRec } from '../../lib/db/types'
 import { attachFile, MAX_FILE, newBlockId, readFile, saveNoteContent, setNotePage } from '../../lib/notes/notes'
@@ -226,6 +227,21 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
     return () => clearTimeout(t)
   }, [persist, title, blocks])
   useEffect(() => () => persist(latest.current.title, latest.current.blocks), [persist])
+  // 창을 닫거나 숨길 때는 0.5초를 기다리지 않고 바로 저장
+  useEffect(() => registerFlush(() => persist(latest.current.title, latest.current.blocks)), [persist])
+  /** 제목에서 Enter·↓: 본문 첫 글 줄로(글 줄이 없으면 맨 앞에 새 줄) */
+  function toFirstLine() {
+    const first = blocks.find((b) => refs.current.has(b.id))
+    if (first) {
+      const el = refs.current.get(first.id)!
+      el.focus()
+      el.setSelectionRange(0, 0)
+      return
+    }
+    const nb: NoteBlock = { id: newBlockId(), type: 'p', text: '' }
+    focusNext.current = { id: nb.id, caret: 0 }
+    setBlocks([nb, ...blocks])
+  }
   // 다른 곳(전달사항 칸 등)에서 노트가 바뀌면 받아 온다(내가 저장한 것과 다를 때만)
   const live = useLive<NoteRec | undefined>(() => db.notes.get(note.id), [db, note.id], note)
   // 쪽 보기 설정(바꾸면 바로 보이고 저장)
@@ -727,7 +743,20 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
       }}
     >
       <div className="note-head">
-        <input className="note-title" aria-label="노트 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
+        <input
+          className="note-title"
+          aria-label="노트 제목"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return
+            if (e.key === 'Enter' || e.key === 'ArrowDown') {
+              e.preventDefault()
+              toFirstLine()
+            }
+          }}
+          placeholder="제목"
+        />
         <div className="row note-tools">
           {tools && <span className="row note-page-tools">{tools}</span>}
           <button type="button" className="link" title="서식을 살려 복사합니다. 한글·워드에 붙여 넣으세요." onClick={copyForHwp}>한글로 복사</button>

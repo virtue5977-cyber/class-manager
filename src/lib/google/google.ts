@@ -1,4 +1,5 @@
-import { hideNames } from '../ai/mask'
+import { hideForExport } from '../ai/mask'
+import { allStudentNames } from '../roster/roster'
 import type { AppDB } from '../db/schema'
 import type { GoogleEventRec, SchoolCalendarRec } from '../db/types'
 import { listReportsForMonth } from '../absenceReports/list'
@@ -72,15 +73,16 @@ export async function buildPushItems(db: AppDB, from: string, to: string, classI
   const cal = (await db.school_calendar.where('date').between(from, to, true, true).toArray()).filter((r: SchoolCalendarRec) => !r.deleted && r.title && r.title !== '토요휴업일')
   const items: PushItem[] = cal.map((r) => ({ key: `cal-${r.id}`, date: r.date, end_date: r.date, title: r.title, description: r.is_class_day ? '' : '수업 없는 날' }))
   // 내 일정(개인·업무)도 앱 캘린더로. 제목의 학생 이름은 ○○로(학생 자료는 노트북 밖으로 보내지 않음).
-  const names = classId ? (await db.students.where('class_id').equals(classId).toArray()).filter((x) => !x.deleted).map((x) => x.name) : (await db.students.toArray()).filter((x) => !x.deleted).map((x) => x.name)
+  // 모든 반 학생·지운 학생·보호자 이름, 전화·주민번호·메일까지 가린다
+  const names = await allStudentNames(db)
   for (const e of (await db.local_events.where('date').belowOrEqual(to).toArray()).filter((x) => !x.deleted && (x.end_date ?? x.date) >= from))
     items.push({
       key: `local-${e.id}`,
       date: e.date,
       end_date: e.end_date ?? e.date,
-      title: hideNames(`[${e.tag}] ${e.time ? e.time + ' ' : ''}${e.title}`, names),
-      ...(e.memo ? { description: hideNames(e.memo, names) } : {}),
-      ...(e.place ? { location: hideNames(e.place, names) } : {}),
+      title: hideForExport(`[${e.tag}] ${e.time ? e.time + ' ' : ''}${e.title}`, names),
+      ...(e.memo ? { description: hideForExport(e.memo, names) } : {}),
+      ...(e.place ? { location: hideForExport(e.place, names) } : {}),
     })
   if (classId) {
     for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = addDays(`${m}-28`, 7).slice(0, 7)) {

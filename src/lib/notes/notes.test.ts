@@ -27,30 +27,48 @@ test('편집 저장은 최신 노트에 제목·블록만 바꾸고, 지운 노�
   expect(await db.notes.get(n.id)).toMatchObject({ title: '', deleted: true }) // 지우면 글을 비우고, 그 뒤 저장도 되살리지 않음
 })
 
-test('노트를 지우거나 파일 블록을 빼면 첨부 내용은 비운다(백업이 커지지 않게)', async () => {
+test('파일 블록을 빼고 저장해도 첨부는 남는다(되돌리기·다른 노트에 붙여넣기). 노트를 지우면 비운다', async () => {
   const { saveNoteContent } = await import('./notes')
   const db = createDb('test-' + crypto.randomUUID())
   const n = await createNote(db, '가')
   const f1 = await attachFile(db, n.id, { name: 'a', mime: '', bytes: new Uint8Array([1, 2, 3]) })
   const f2 = await attachFile(db, n.id, { name: 'b', mime: '', bytes: new Uint8Array([4]) })
-  await saveNoteContent(db, n.id, { title: '가', blocks: [{ id: 'x', type: 'file', file_id: f1.id }] })
-  expect((await db.note_files.get(f2.id))!.deleted).toBe(false) // 막 붙인 파일은 1분 기다림
-  await saveNoteContent(db, n.id, { title: '가', blocks: [{ id: 'x', type: 'file', file_id: f1.id }] }, Date.now() + 61_000)
-  expect(await db.note_files.get(f2.id)).toMatchObject({ deleted: true, data: '' })
-  expect((await db.note_files.get(f1.id))!.data).not.toBe('')
+  await saveNoteContent(db, n.id, { title: '가', blocks: [{ id: 'x', type: 'file', file_id: f1.id }] }, Date.now() + 86_400_000)
+  expect((await db.note_files.get(f2.id))!.data).not.toBe('')
   await deleteNote(db, n.id)
   expect(await db.note_files.get(f1.id)).toMatchObject({ deleted: true, data: '' })
 })
 
+test('앱을 켤 때: 어느 노트에서도 안 쓰고 하루 지난 첨부만 비운다', async () => {
+  const { cleanupOrphanFiles } = await import('./notes')
+  const db = createDb('test-' + crypto.randomUUID())
+  const a = await createNote(db, '가')
+  const b = await createNote(db, '나')
+  const used = await attachFile(db, a.id, { name: 'u', mime: '', bytes: new Uint8Array([1]) })
+  const moved = await attachFile(db, a.id, { name: 'm', mime: '', bytes: new Uint8Array([2]) })
+  const orphan = await attachFile(db, a.id, { name: 'o', mime: '', bytes: new Uint8Array([3]) })
+  const fresh = await attachFile(db, a.id, { name: 'f', mime: '', bytes: new Uint8Array([4]) })
+  await db.notes.update(a.id, { blocks: [{ id: '1', type: 'image', file_id: used.id }] })
+  // 다른 노트로 잘라 붙인 그림
+  await db.notes.update(b.id, { blocks: [{ id: '2', type: 'image', file_id: moved.id }] })
+  const later = Date.parse(fresh.created_at) + 86_400_000 + 1
+  await db.note_files.update(fresh.id, { created_at: new Date(later - 1000).toISOString() })
+  expect(await cleanupOrphanFiles(db, later)).toBe(1)
+  expect((await db.note_files.get(used.id))!.data).not.toBe('')
+  expect((await db.note_files.get(moved.id))!.data).not.toBe('')
+  expect((await db.note_files.get(fresh.id))!.data).not.toBe('')
+  expect(await db.note_files.get(orphan.id)).toMatchObject({ deleted: true, data: '' })
+})
+
 test('첨부는 모두 합쳐 MAX_TOTAL까지(지운 첨부는 빼고 센다)', async () => {
   const { MAX_TOTAL } = await import('./notes')
-  expect(MAX_TOTAL).toBe(500 * 1024 * 1024)
+  expect(MAX_TOTAL).toBe(150 * 1024 * 1024)
   const db = createDb('test-' + crypto.randomUUID())
   const n = await createNote(db)
   const big = (size: number) => ({ name: 'x', mime: '', size, data: '', note_id: n.id })
   const { newRecord } = await import('../db/records')
-  for (let i = 0; i < 10; i++) await db.note_files.add(newRecord(big(49 * 1024 * 1024)) as never)
-  await expect(attachFile(db, n.id, { name: 'c', mime: '', bytes: { length: 20 * 1024 * 1024 } as Uint8Array })).rejects.toThrow('첨부 파일은 모두 합쳐 500MB까지')
+  for (let i = 0; i < 3; i++) await db.note_files.add(newRecord(big(45 * 1024 * 1024)) as never)
+  await expect(attachFile(db, n.id, { name: 'c', mime: '', bytes: { length: 20 * 1024 * 1024 } as Uint8Array })).rejects.toThrow('첨부 파일은 모두 합쳐 150MB까지')
   const one = (await db.note_files.toArray())[0]
   await db.note_files.update(one.id, { deleted: true })
   await expect(attachFile(db, n.id, { name: 'c', mime: '', bytes: new Uint8Array(3) })).resolves.toBeTruthy()

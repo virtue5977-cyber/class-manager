@@ -1,6 +1,8 @@
 import { useLayoutPrefs } from './lib/ui/layoutPrefs'
 import NotesPage from './pages/notes/NotesPage'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import { flushAll } from './lib/ui/flush'
+import HtmlEndBanner from './components/HtmlEndBanner'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
 import Sidebar from './components/Sidebar'
@@ -27,6 +29,22 @@ import { createDesktopFsAdapter, type DesktopBackupApi } from './lib/fs/desktop'
 import type { FsAdapter } from './lib/fs/adapter'
 
 /** backupIterations는 테스트에서 키 유도를 빠르게 하기 위한 값이다. */
+/** 창을 닫거나 숨길 때 미뤄 둔 저장을 바로 한다(노트·누가기록 입력). */
+function FlushOnLeave() {
+  useEffect(() => {
+    const hide = () => document.visibilityState === 'hidden' && flushAll()
+    window.addEventListener('pagehide', flushAll)
+    window.addEventListener('beforeunload', flushAll)
+    document.addEventListener('visibilitychange', hide)
+    return () => {
+      window.removeEventListener('pagehide', flushAll)
+      window.removeEventListener('beforeunload', flushAll)
+      document.removeEventListener('visibilitychange', hide)
+    }
+  }, [])
+  return null
+}
+
 export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIterations?: number }) {
   const db = useMemo(() => props.db ?? createDb(), [props.db])
   const fs = useMemo(() => {
@@ -42,10 +60,12 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
         <LayoutFrame>
           <button type="button" className="skip-link" onClick={() => document.getElementById('main')?.focus()}>본문으로</button>
           <Shortcuts />
+          <FlushOnLeave />
           <StartupTasks />
           <Sidebar />
           <main className="content" id="main" tabIndex={-1}>
             <HideNamesBar />
+            <HtmlEndBanner />
             <UpdateBanner />
             <GoogleAutoSync />
             <BackupBanner />

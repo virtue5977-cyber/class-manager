@@ -5,6 +5,11 @@ import { createMemoryFolder, createMemoryFsAdapter, type MemoryFsAdapter } from 
 import { AppProviders } from '../../app/context'
 import { setupPassphrase, runBackup } from '../../lib/backup/service'
 import BackupSettings from './BackupSettings'
+import * as reloadMod from '../../lib/ui/reload'
+
+// 복원 뒤 화면 새로 불러오기는 시험에서 막는다
+beforeEach(() => void vi.spyOn(reloadMod, 'reloadApp').mockImplementation(() => {}))
+afterEach(() => vi.restoreAllMocks())
 
 function renderWith(db: AppDB, fs: MemoryFsAdapter) {
   return render(
@@ -60,7 +65,8 @@ test('틀린 암호구로 복원 → BackupDecryptError 문구 표시', async ()
   expect(await screen.findByText('암호구가 틀렸거나 백업 파일이 손상되었습니다.')).toBeInTheDocument()
 })
 
-test('올바른 암호구로 복원 → 복원했습니다.', async () => {
+test('올바른 암호구로 복원 → 복원했습니다, 화면을 새로 불러온다', async () => {
+  const spy = vi.mocked(reloadMod.reloadApp)
   const user = userEvent.setup()
   const db = createDb('test-' + crypto.randomUUID())
   await setupPassphrase(db, '우리반암호구2026', { iterations: 1000 })
@@ -72,7 +78,8 @@ test('올바른 암호구로 복원 → 복원했습니다.', async () => {
   await user.click(screen.getByRole('button', { name: '백업 파일에서 복원' }))
   await user.type(await screen.findByLabelText('백업 암호구'), '우리반암호구2026')
   await user.click(screen.getByRole('button', { name: '복원 실행' }))
-  expect(await screen.findByText('복원했습니다.')).toBeInTheDocument()
+  expect(await screen.findByText('복원했습니다. 화면을 새로 불러옵니다.')).toBeInTheDocument()
+  await waitFor(() => expect(spy).toHaveBeenCalled(), { timeout: 3000 })
 })
 
 async function restoreSetup() {
@@ -95,7 +102,7 @@ test('폴더 권한이 필요하면 복원할 때 허용을 요청하고 그 폴
   await user.click(screen.getByRole('button', { name: '백업 파일에서 복원' }))
   await user.type(await screen.findByLabelText('백업 암호구'), '우리반암호구2026')
   await user.click(screen.getByRole('button', { name: '복원 실행' }))
-  expect(await screen.findByText('복원했습니다.')).toBeInTheDocument()
+  expect(await screen.findByText('복원했습니다. 화면을 새로 불러옵니다.')).toBeInTheDocument()
   expect((await folder.listFiles()).some((f) => f.startsWith('복원전_'))).toBe(true)
 })
 
@@ -108,6 +115,27 @@ test('폴더가 없으면 안전 백업을 내려받는다', async () => {
   await user.click(screen.getByRole('button', { name: '백업 파일에서 복원' }))
   await user.type(await screen.findByLabelText('백업 암호구'), '우리반암호구2026')
   await user.click(screen.getByRole('button', { name: '복원 실행' }))
-  expect(await screen.findByText('복원했습니다.')).toBeInTheDocument()
+  expect(await screen.findByText('복원했습니다. 화면을 새로 불러옵니다.')).toBeInTheDocument()
   expect(fs.downloads.map((d) => d.name)[0]).toMatch(/^복원전_/)
+})
+
+test('암호구가 이미 있으면 바꿀 때 이전 백업 안내가 보이고 단추는 암호구 바꾸기', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  await setupPassphrase(db, '우리반암호구2026', { iterations: 1000 })
+  renderWith(db, createMemoryFsAdapter(createMemoryFolder()))
+  expect(await screen.findByText(/이전 백업 파일은 예전 암호구로만 열립니다/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '암호구 바꾸기' })).toBeInTheDocument()
+})
+
+test('HTML판에서는 폴더를 고를 수 있어도 백업 파일 내려받기 단추가 있다(설치형으로 옮기기)', async () => {
+  const { edition } = await import('../../lib/update/update')
+  edition.single = true
+  try {
+    const db = createDb('test-' + crypto.randomUUID())
+    const fs = createMemoryFsAdapter(createMemoryFolder())
+    renderWith(db, fs)
+    expect(await screen.findByRole('button', { name: '백업 파일 내려받기' })).toBeInTheDocument()
+  } finally {
+    edition.single = false
+  }
 })

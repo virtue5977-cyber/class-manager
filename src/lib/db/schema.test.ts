@@ -5,7 +5,7 @@ import { newRecord } from './records'
 test('SYNCED_TABLES는 24개이고 device_local을 포함하지 않는다', () => {
   expect(SYNCED_TABLES).toHaveLength(24)
   expect(SYNCED_TABLES).not.toContain('device_local')
-  expect(SCHEMA_VERSION).toBe(1)
+  expect(SCHEMA_VERSION).toBe(2)
 })
 
 test('모든 SYNCED_TABLES와 device_local이 DB에 존재한다', () => {

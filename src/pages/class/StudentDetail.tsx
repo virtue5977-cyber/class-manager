@@ -73,15 +73,15 @@ export default function StudentDetail({ classId, student, onDone, closable = tru
         )}
         {student && !confirmDelete && (
           <button type="button" className="danger-text push-right" onClick={() => setConfirmDelete(true)}>
-            삭제
+            지우기
           </button>
         )}
       </div>
       {confirmDelete && (
         <div className="row confirm">
-          <span>이 학생을 삭제할까요?</span>
+          <span>이 학생을 지울까요?</span>
           <button type="button" className="danger" onClick={remove}>
-            삭제 확인
+            지우기 확인
           </button>
           <button type="button" onClick={() => setConfirmDelete(false)}>
             취소
