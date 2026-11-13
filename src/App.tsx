@@ -2,6 +2,7 @@ import { useLayoutPrefs } from './lib/ui/layoutPrefs'
 import NotesPage from './pages/notes/NotesPage'
 import { useEffect, useMemo } from 'react'
 import { flushAll } from './lib/ui/flush'
+import HtmlEndBanner from './components/HtmlEndBanner'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
 import Sidebar from './components/Sidebar'
@@ -64,6 +65,7 @@ export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIteration
           <Sidebar />
           <main className="content" id="main" tabIndex={-1}>
             <HideNamesBar />
+            <HtmlEndBanner />
             <UpdateBanner />
             <GoogleAutoSync />
             <BackupBanner />
