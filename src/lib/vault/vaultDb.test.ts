@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import Dexie from 'dexie'
 import { describe, it, expect, afterEach } from 'vitest'
-import { AppDB, createDb } from '../db/schema'
+import { AppDB } from '../db/schema'
 import { VAULT_STORES, UNENCRYPTED_TABLES } from './vaultDb'
 
 const dbs: AppDB[] = []
@@ -17,7 +17,7 @@ describe('vault schema', () => {
     expect(VAULT_STORES.attendance).toContain('&[student_id+date+kind]')
   })
   it('vault and plain DB expose the same tables', async () => {
-    const v = new AppDB('v-t3', { vault: true }); const p = createDb('p-t3')
+    const v = new AppDB('v-t3', { vault: true }); const p = new AppDB('p-t3') // 평문 DB(시험 스위치와 무관하게)
     dbs.push(v, p)
     await v.open(); await p.open()
     expect(v.isVault).toBe(true); expect(p.isVault).toBe(false)

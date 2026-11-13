@@ -25,23 +25,30 @@ test('newRecord는 uuid와 같은 created_at/updated_at, deleted=false를 붙인
   expect(r.deleted).toBe(false)
 })
 
+// 시계도 넘긴 now에 맞춘다: vault DB는 updated_at을 실제 시계로 도장 찍는다(spec §5.5). 평문 DB에는 차이 없음.
+const atClock = (iso: string) => { vi.setSystemTime(new Date(iso)); return new Date(iso) }
+afterEach(() => { vi.useRealTimers() })
+
 test('save는 updated_at만 갱신한다', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
   const db = testDb()
-  const r = student('가', new Date('2026-11-04T01:00:00Z'))
+  const r = student('가', atClock('2026-11-04T01:00:00Z'))
   await save(db.students, r, new Date('2026-11-04T01:00:00Z'))
-  const later = new Date('2026-11-05T02:00:00Z')
-  await save(db.students, { ...r, name: '나' }, later)
+  const later = atClock('2026-11-05T02:00:00Z')
+  const back = await save(db.students, { ...r, name: '나' }, later)
   const got = await db.students.get(r.id)
   expect(got?.name).toBe('나')
   expect(got?.created_at).toBe('2026-11-04T01:00:00.000Z')
   expect(got?.updated_at).toBe('2026-11-05T02:00:00.000Z')
+  expect(back.updated_at).toBe(got?.updated_at)
 })
 
 test('softDelete는 deleted=true로 바꾸고 행을 남긴다', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
   const db = testDb()
-  const r = student('가')
+  const r = student('가', atClock('2026-11-05T00:00:00Z'))
   await save(db.students, r)
-  await softDelete(db.students, r.id, new Date('2026-11-06T00:00:00Z'))
+  await softDelete(db.students, r.id, atClock('2026-11-06T00:00:00Z'))
   const got = await db.students.get(r.id)
   expect(got?.deleted).toBe(true)
   expect(got?.updated_at).toBe('2026-11-06T00:00:00.000Z')

@@ -129,5 +129,11 @@ export class AppDB extends Dexie {
 }
 
 export function createDb(name = 'class-manager'): AppDB {
+  // 시험 전용: WATSON_VAULT_TEST=1이면 src/test/setup.ts가 이 갈고리를 달아 모든 시험을 암호화 DB로 돌린다.
+  // 빌드에서는 MODE가 'test'가 아니라 이 블록이 통째로 빠진다.
+  if (import.meta.env.MODE === 'test') {
+    const hook = (globalThis as { __watsonTestCreateDb?: (n: string) => AppDB }).__watsonTestCreateDb
+    if (hook) return hook(name)
+  }
   return new AppDB(name)
 }

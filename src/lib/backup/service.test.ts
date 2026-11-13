@@ -10,6 +10,7 @@ import { BackupDecryptError, BackupFormatError, BackupVersionError } from './err
 import { exportSnapshot, serializeSnapshot } from './snapshot'
 import { encrypt } from './crypto'
 import { encodeBackupFile, encodeHeader } from './format'
+import { SKIP_UNTIL_BACKUP_KEY_RAW } from '../../test/vaultMode'
 
 const IT = { iterations: 1000 }
 const PASS = '우리반암호구2026'
@@ -38,7 +39,7 @@ test('8자 미만 암호구 거부', async () => {
   await expect(setupPassphrase(testDb(), '1234567', IT)).rejects.toThrow('암호구는 8자 이상이어야 합니다.')
 })
 
-test('백업 후 같은 암호구로 복원하면 데이터가 같다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('백업 후 같은 암호구로 복원하면 데이터가 같다', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   await db.classes.clear()
@@ -47,7 +48,7 @@ test('백업 후 같은 암호구로 복원하면 데이터가 같다', async ()
   expect((await db.classes.toArray()).map((c) => c.grade)).toEqual([1])
 })
 
-test('다른 기기 시나리오: 새 DB에서 암호구만으로 복원된다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('다른 기기 시나리오: 새 DB에서 암호구만으로 복원된다', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   const other = testDb()
@@ -56,7 +57,7 @@ test('다른 기기 시나리오: 새 DB에서 암호구만으로 복원된다',
   expect((await other.classes.toArray()).map((c) => c.grade)).toEqual([1])
 })
 
-test('틀린 암호구 복원 → BackupDecryptError, 데이터 그대로', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('틀린 암호구 복원 → BackupDecryptError, 데이터 그대로', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   await db.classes.add(cls(2))
@@ -64,7 +65,7 @@ test('틀린 암호구 복원 → BackupDecryptError, 데이터 그대로', asyn
   expect(await db.classes.count()).toBe(2)
 })
 
-test('잘린 파일 복원 → BackupFormatError, 데이터 그대로', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('잘린 파일 복원 → BackupFormatError, 데이터 그대로', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   const bytes = (await folder.readFile(name)).slice(0, 40)
@@ -72,7 +73,7 @@ test('잘린 파일 복원 → BackupFormatError, 데이터 그대로', async ()
   expect(await db.classes.count()).toBe(1)
 })
 
-test('복원 전에 안전 백업 파일이 하나 생긴다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('복원 전에 안전 백업 파일이 하나 생긴다', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder, { now: new Date(2026, 10, 4, 9, 0) })
   const bytes = await folder.readFile(name)
@@ -80,7 +81,7 @@ test('복원 전에 안전 백업 파일이 하나 생긴다', async () => {
   expect((await folder.listFiles()).sort()).toEqual(['백업_20261104_0900.enc', '복원전_20261104_1000.enc'])
 })
 
-test('복원 후 device_local의 aiApiKey와 backupKey가 유지된다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('복원 후 device_local의 aiApiKey와 backupKey가 유지된다', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   await db.device_local.put({ id: 'aiApiKey', value: 'sk-local' })
@@ -89,7 +90,7 @@ test('복원 후 device_local의 aiApiKey와 backupKey가 유지된다', async (
   expect(await getCachedKey(db)).not.toBeNull()
 })
 
-test('15번째 백업 때 가장 오래된 파일 하나가 지워지고, 이름 규칙에 안 맞는 파일은 남는다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('15번째 백업 때 가장 오래된 파일 하나가 지워지고, 이름 규칙에 안 맞는 파일은 남는다', async () => {
   const { db, folder } = await ready()
   await folder.writeFile('메모.txt', new Uint8Array(1))
   for (let i = 0; i < 15; i++) await runBackup(db, folder, { now: new Date(2026, 10, 1 + i, 9, 0) })
@@ -120,7 +121,7 @@ test('정리: 하루에 여러 번 백업해도 지난 날 백업이 밀려나�
   expect(files).toContain('백업_20261101_0900.enc')
 })
 
-test('runBackup은 lastBackupAt을 갱신한다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('runBackup은 lastBackupAt을 갱신한다', async () => {
   const { db, folder } = await ready()
   expect(await getLastBackupAt(db)).toBeUndefined()
   const now = new Date('2026-11-05T00:30:00Z')
@@ -147,7 +148,7 @@ async function fileWithSchemaVersion(db: ReturnType<typeof testDb>, schemaVersio
   return encodeBackupFile(header, iv, ciphertext)
 }
 
-test('더 새로운 버전 백업은 안전 백업·정리 전에 거부되어 기존 백업 파일이 그대로다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('더 새로운 버전 백업은 안전 백업·정리 전에 거부되어 기존 백업 파일이 그대로다', async () => {
   const { db, folder } = await ready()
   for (let i = 0; i < 14; i++) await runBackup(db, folder, { now: new Date(2026, 10, 1 + i, 9, 0) })
   const before = (await folder.listFiles()).sort()
@@ -156,7 +157,7 @@ test('더 새로운 버전 백업은 안전 백업·정리 전에 거부되어 �
   expect((await folder.listFiles()).sort()).toEqual(before)
 })
 
-test('안전 백업은 복원전_ 이름이고 보관 정리로 지워지지 않는다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('안전 백업은 복원전_ 이름이고 보관 정리로 지워지지 않는다', async () => {
   const { db, folder } = await ready()
   for (let i = 0; i < 14; i++) await runBackup(db, folder, { now: new Date(2026, 10, 1 + i, 9, 0) })
   const name = '백업_20261114_0900.enc'
@@ -167,7 +168,7 @@ test('안전 백업은 복원전_ 이름이고 보관 정리로 지워지지 않
   expect(await rotateBackups(folder, 1)).not.toContain('복원전_20261120_0800.enc')
 })
 
-test('폴더가 없으면 안전 백업을 download로 넘긴다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('폴더가 없으면 안전 백업을 download로 넘긴다', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   const downloads: string[] = []
@@ -176,7 +177,7 @@ test('폴더가 없으면 안전 백업을 download로 넘긴다', async () => {
   expect(downloads[0]).toMatch(/^복원전_\d{8}_\d{4}\.enc$/)
 })
 
-test('데이터가 있는데 안전 백업할 곳이 없으면 복원 거부, 데이터 그대로', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('데이터가 있는데 안전 백업할 곳이 없으면 복원 거부, 데이터 그대로', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   await db.classes.add(cls(2))
@@ -184,7 +185,7 @@ test('데이터가 있는데 안전 백업할 곳이 없으면 복원 거부, �
   expect(await db.classes.count()).toBe(2)
 })
 
-test('데이터가 있는데 백업 키가 없으면 복원 거부, 데이터 그대로', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('데이터가 있는데 백업 키가 없으면 복원 거부, 데이터 그대로', async () => {
   const { db, folder } = await ready()
   const name = await runBackup(db, folder)
   const other = testDb()
@@ -201,7 +202,7 @@ test('보관 개수가 0 이하여도 최소 1개는 남는다', async () => {
   expect(await folder.listFiles()).toEqual(['백업_20261105_0900.enc'])
 })
 
-test('설정의 보관 개수가 0이어도 방금 만든 백업은 남는다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('설정의 보관 개수가 0이어도 방금 만든 백업은 남는다', async () => {
   const { db, folder } = await ready()
   await db.app_settings.put({ id: 'app', backup_keep_count: 0 } as never)
   const name = await runBackup(db, folder)

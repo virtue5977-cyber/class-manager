@@ -6,6 +6,7 @@ import { AppProviders } from '../../app/context'
 import { setupPassphrase, runBackup } from '../../lib/backup/service'
 import BackupSettings from './BackupSettings'
 import * as reloadMod from '../../lib/ui/reload'
+import { SKIP_UNTIL_BACKUP_KEY_RAW } from '../../test/vaultMode'
 
 // 복원 뒤 화면 새로 불러오기는 시험에서 막는다
 beforeEach(() => void vi.spyOn(reloadMod, 'reloadApp').mockImplementation(() => {}))
@@ -33,7 +34,7 @@ test('암호구 불일치 문구', async () => {
   expect(await screen.findByText('두 암호구가 일치하지 않습니다.')).toBeInTheDocument()
 })
 
-test('암호구 저장 후 지금 백업 → 메모리 폴더에 백업_ 파일, 마지막 백업 시각 표시', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('암호구 저장 후 지금 백업 → 메모리 폴더에 백업_ 파일, 마지막 백업 시각 표시', async () => {
   const user = userEvent.setup()
   const folder = createMemoryFolder('내 백업')
   const fs = createMemoryFsAdapter(folder)
@@ -49,7 +50,7 @@ test('암호구 저장 후 지금 백업 → 메모리 폴더에 백업_ 파일,
   expect(await screen.findByText(/^마지막 백업: \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)).toBeInTheDocument()
 })
 
-test('틀린 암호구로 복원 → BackupDecryptError 문구 표시', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('틀린 암호구로 복원 → BackupDecryptError 문구 표시', async () => {
   const user = userEvent.setup()
   const db = createDb('test-' + crypto.randomUUID())
   await setupPassphrase(db, '우리반암호구2026', { iterations: 1000 })
@@ -65,7 +66,7 @@ test('틀린 암호구로 복원 → BackupDecryptError 문구 표시', async ()
   expect(await screen.findByText('암호구가 틀렸거나 백업 파일이 손상되었습니다.')).toBeInTheDocument()
 })
 
-test('올바른 암호구로 복원 → 복원했습니다, 화면을 새로 불러온다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('올바른 암호구로 복원 → 복원했습니다, 화면을 새로 불러온다', async () => {
   const spy = vi.mocked(reloadMod.reloadApp)
   const user = userEvent.setup()
   const db = createDb('test-' + crypto.randomUUID())
@@ -92,7 +93,7 @@ async function restoreSetup() {
   return { db, folder, name, bytes: await folder.readFile(name) }
 }
 
-test('폴더 권한이 필요하면 복원할 때 허용을 요청하고 그 폴더에 안전 백업한다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('폴더 권한이 필요하면 복원할 때 허용을 요청하고 그 폴더에 안전 백업한다', async () => {
   const user = userEvent.setup()
   const { db, folder, name, bytes } = await restoreSetup()
   const fs = createMemoryFsAdapter(folder)
@@ -106,7 +107,7 @@ test('폴더 권한이 필요하면 복원할 때 허용을 요청하고 그 폴
   expect((await folder.listFiles()).some((f) => f.startsWith('복원전_'))).toBe(true)
 })
 
-test('폴더가 없으면 안전 백업을 내려받는다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('폴더가 없으면 안전 백업을 내려받는다', async () => {
   const user = userEvent.setup()
   const { db, name, bytes } = await restoreSetup()
   const fs = createMemoryFsAdapter()
@@ -119,7 +120,7 @@ test('폴더가 없으면 안전 백업을 내려받는다', async () => {
   expect(fs.downloads.map((d) => d.name)[0]).toMatch(/^복원전_/)
 })
 
-test('암호구가 이미 있으면 바꿀 때 이전 백업 안내가 보이고 단추는 암호구 바꾸기', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('암호구가 이미 있으면 바꿀 때 이전 백업 안내가 보이고 단추는 암호구 바꾸기', async () => {
   const db = createDb('test-' + crypto.randomUUID())
   await setupPassphrase(db, '우리반암호구2026', { iterations: 1000 })
   renderWith(db, createMemoryFsAdapter(createMemoryFolder()))

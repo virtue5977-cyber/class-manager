@@ -2,6 +2,7 @@ import { render, screen, within, waitFor } from '@testing-library/react'
 import App from './App'
 import { createDb } from './lib/db/schema'
 import { createMemoryFsAdapter } from './lib/fs/memory'
+import { SKIP_UNTIL_BACKUP_KEY_RAW } from './test/vaultMode'
 
 const setup = () => render(<App db={createDb('test-' + crypto.randomUUID())} fs={createMemoryFsAdapter()} />)
 
@@ -30,7 +31,7 @@ test('배너에 설정으로 이동 링크가 있다', async () => {
   expect(screen.getByRole('link', { name: '설정으로 이동' })).toHaveAttribute('href', '#/settings?tab=backup')
 })
 
-test('설정에서 암호구를 저장하면 배너가 바로 사라진다', async () => {
+test.skipIf(SKIP_UNTIL_BACKUP_KEY_RAW)('설정에서 암호구를 저장하면 배너가 바로 사라진다', async () => {
   const { default: userEvent } = await import('@testing-library/user-event')
   const { createMemoryFolder } = await import('./lib/fs/memory')
   const user = userEvent.setup()
