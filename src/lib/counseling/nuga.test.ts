@@ -26,6 +26,7 @@ test('runNuga: 이름을 가려 보내고, 되돌려 저장, 상태 정리됨, �
     sent.push(req)
     const [item] = JSON.parse(req.user)
     expect(item.메모).not.toMatch(/박민수|김지훈/)
+    expect(item.id).toBe('1') // 앱 안 기록 번호(UUID) 대신 요청 안 순번
     const fp = item.메모.match(/학생[A-Z]/g)
     return '```json\n' + JSON.stringify({ items: [{ id: item.id, text: `${fp[0]}와 말다툼함. 김지훈 우울해 보임` }] }) + '\n```'
   }

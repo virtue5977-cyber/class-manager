@@ -56,3 +56,11 @@ test('밖으로 보내는 글: 학년도·시각 범위·ISBN은 전화·주민�
   expect(hideForExport('2025-2026 학년도 협의, 회의 1400-1600, 0830-0910 1교시, ISBN 9788912345678', [])).toBe('2025-2026 학년도 협의, 회의 1400-1600, 0830-0910 1교시, ISBN 9788912345678')
   expect(hideForExport('집 02-123-4567, 휴대폰 01012345678, 주민 120305-3123456', [])).toBe('집 [전화], 휴대폰 [전화], 주민 [주민]')
 })
+
+test('보호자 이름은 보호자A로 가리고(학생으로 읽히지 않게) 되돌린다', async () => {
+  const { GUARDIAN_PREFIX, hideNames } = await import('./mask')
+  const m = maskText('김민수 어머니 이영희 님과 통화', ['김민수', `${GUARDIAN_PREFIX}이영희`])
+  expect(m.text).toBe('학생A 어머니 보호자A 님과 통화')
+  expect(unmaskText(m.text, m.map)).toBe('김민수 어머니 이영희 님과 통화')
+  expect(hideNames('이영희 님', [`${GUARDIAN_PREFIX}이영희`])).toBe('○○ 님')
+})

@@ -2,6 +2,7 @@
 import { extractJson } from '../ai/client'
 import { maskText, unmaskText } from '../ai/mask'
 import { getPrompt } from '../ai/prompts'
+import { effectiveMask, getSettings } from '../settings'
 import { buildBriefingPrompt } from '../briefing/briefing'
 import { listLocalEvents } from '../events/localEvents'
 import { listCalendar } from '../neis/schedule'
@@ -77,7 +78,9 @@ export async function appContext(env: RunEnv, studentIds: string[] = []): Promis
   if (cid) {
     const st = await listStudents(env.db, cid)
     const by = new Map(st.map((s) => [s.id, s]))
-    const who = (id: string) => `${by.get(id)?.number}번 ${by.get(id)?.name}`
+    // 이름 가리기가 켜져 있으면 번호는 빼고 이름만(이름은 보낼 때 가명으로 바뀜)
+    const masked = effectiveMask(await getSettings(env.db))
+    const who = (id: string) => (masked ? `${by.get(id)?.name}` : `${by.get(id)?.number}번 ${by.get(id)?.name}`)
     // 학년도는 3월부터, 2학기는 8월부터
     const y = Number(env.today.slice(0, 4)) - (Number(env.today.slice(5, 7)) < 3 ? 1 : 0)
     const yearFrom = `${y}-03-01`

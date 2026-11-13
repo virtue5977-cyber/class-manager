@@ -110,5 +110,5 @@ test('가릴 이름(allStudentNames): 지운 학생 이름과 보호자 이름�
   const b = await saveStudent(db, c.id, emptyStudent(2, '박지훈'))
   await deleteStudent(db, b.id)
   void a
-  expect((await allStudentNames(db)).sort()).toEqual(['김민수', '박지훈', '이영희'])
+  expect((await allStudentNames(db)).sort()).toEqual(['김민수', '박지훈', '보호자:이영희'])
 })
