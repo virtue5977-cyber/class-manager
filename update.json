@@ -1,9 +1,9 @@
 {
-  "version": "0.15.0",
+  "version": "0.16.0",
   "shell": 1,
-  "bundle": "bundle-0.15.0.zip",
-  "sha256": "7611ac653ef4779aaaa8ca798563b8fa84511a997e3b7c6fafc409705ecb6b5a",
-  "sig": "mTad3uUEvF6VllgxX4Xa6Kzib09TnaufxA29j+XhnaX/URu5GEdlZvFFHwtqhuHdMwndJM6SFYw7vkUMnxWtBw==",
-  "note": "0.15.0: 노트 편집기 — 위쪽 도구 막대(글꼴·글자 크기·굵게·밑줄·색·정렬·줄 간격), 표(Tab 이동·줄칸 더하기·너비 끌기), 그림(붙여넣기·크기), 쪽 보기(A4·여백·격자)·쪽 나누기, 머리말·꼬리말({쪽}{날짜}), 한글로 내보내기에 모두 반영",
-  "date": "2026-11-12"
+  "bundle": "bundle-0.16.0.zip",
+  "sha256": "659edcc25f636587edacbcb16ae2f75a28d7d976f41fb8340d066a108f959f0a",
+  "sig": "UUk9YQ4QMd0CbOlDk1LODCJuryebizjyZqQm1cZRgeedpnRWaRWWnibZI9m1oTycDce68WVmlwvJECPVkSQhCg==",
+  "note": "0.16.0: 노트함 전달사항 노트는 확성기 픽토그램, 긴 제목은 …, 새 노트 단추를 제목 높이로, 노트 지우기 확인 작게 / 자리배치 빈자리 눌러 책상 없음↔놓기, 핀 그림 / 반성문 줄마다 자간 조절, 좋은 글 저장은 쓰기 탭에서 / 설정에 반성문 지시문 / W 창 닫을 때 두루마리처럼",
+  "date": "2026-11-13"
 }
