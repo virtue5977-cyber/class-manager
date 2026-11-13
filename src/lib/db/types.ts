@@ -242,7 +242,7 @@ export interface NoteFolder {
 
 export type SchoolKind = '초등학교' | '중학교' | '고등학교' | ''
 
-export type DeviceLocalId = 'backupKey' | 'backupFolder' | 'lastBackupAt' | 'aiApiKey' | 'neisApiKey' | 'pin' | 'pinFails'
+export type DeviceLocalId = 'backupKey' | 'backupKeyRaw' | 'backupFolder' | 'lastBackupAt' | 'aiApiKey' | 'neisApiKey' | 'pin' | 'pinFails'
 
 /** 이 기기에만 있는 값. 백업·동기화에서 통째로 제외한다. */
 export interface DeviceLocalRec {

@@ -2,6 +2,8 @@ import { BackupDecryptError } from './errors'
 
 export const PBKDF2_ITERATIONS = 600_000
 const KEY_CHECK_TEXT = 'class-manager-key-check'
+const CHECK_AAD = new TextEncoder().encode('watson-check:v1')
+const LEGACY_CHECK_AAD = new Uint8Array(0)
 
 export function randomBytes(n: number): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(n))
@@ -47,7 +49,7 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 export async function makeKeyCheck(key: CryptoKey): Promise<string> {
-  const { iv, ciphertext } = await encrypt(key, new TextEncoder().encode(KEY_CHECK_TEXT), new Uint8Array(0))
+  const { iv, ciphertext } = await encrypt(key, new TextEncoder().encode(KEY_CHECK_TEXT), CHECK_AAD)
   const joined = new Uint8Array(iv.length + ciphertext.length)
   joined.set(iv)
   joined.set(ciphertext, iv.length)
@@ -57,8 +59,13 @@ export async function makeKeyCheck(key: CryptoKey): Promise<string> {
 export async function verifyKeyCheck(key: CryptoKey, check: string): Promise<boolean> {
   try {
     const bytes = fromBase64(check)
-    const pt = await decrypt(key, bytes.slice(0, 12), bytes.slice(12), new Uint8Array(0))
-    return new TextDecoder().decode(pt) === KEY_CHECK_TEXT
+    for (const aad of [CHECK_AAD, LEGACY_CHECK_AAD]) {
+      try {
+        const pt = await decrypt(key, bytes.slice(0, 12), bytes.slice(12), aad)
+        if (new TextDecoder().decode(pt) === KEY_CHECK_TEXT) return true
+      } catch { /* 다음 aad */ }
+    }
+    return false
   } catch {
     return false
   }

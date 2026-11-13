@@ -1,6 +1,7 @@
 import type { AppDB } from '../db/schema'
 import type { BackupFolder } from '../fs/adapter'
-import { decrypt, deriveKey, encrypt, makeKeyCheck, PBKDF2_ITERATIONS, randomBytes } from './crypto'
+import { decrypt, deriveKey, encrypt, fromBase64, makeKeyCheck, PBKDF2_ITERATIONS, randomBytes, toBase64 } from './crypto'
+import { passKeyRaw } from '../vault/keys'
 import { decodeBackupFile, encodeBackupFile, encodeHeader, type BackupHeader } from './format'
 import { exportSnapshot, importSnapshot, parseSnapshot, serializeSnapshot, validateSnapshot } from './snapshot'
 import { SYNCED_TABLES } from '../db/schema'
@@ -29,17 +30,34 @@ export function backupFileName(now: Date, existing: Set<string>, prefix = '백�
   return name
 }
 
+/** device_local.backupKeyRaw: CryptoKey는 봉인할 수 없어 raw(b64)로 둔다. vault DB에서는 행째 암호화된다. */
+interface BackupKeyRaw { salt: string; iter: number; raw: string; check: string }
+
 export async function setupPassphrase(db: AppDB, passphrase: string, opts: { iterations?: number } = {}): Promise<void> {
   if (passphrase.length < MIN_PASSPHRASE) throw new Error('암호구는 8자 이상이어야 합니다.')
   const iterations = opts.iterations ?? PBKDF2_ITERATIONS
   const salt = randomBytes(16)
-  const key = await deriveKey(passphrase, salt, iterations)
-  const cached: CachedKey = { key, salt, iterations, check: await makeKeyCheck(key) }
-  await db.device_local.put({ id: 'backupKey', value: cached })
+  const raw = await passKeyRaw(passphrase, salt, iterations)
+  const key = await importRaw(raw)
+  const value: BackupKeyRaw = { salt: toBase64(salt), iter: iterations, raw: toBase64(raw), check: await makeKeyCheck(key) }
+  await db.device_local.put({ id: 'backupKeyRaw', value })
+  await db.device_local.delete('backupKey') // 옛 CryptoKey 행 정리
+}
+
+function importRaw(raw: Uint8Array): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
 }
 
 export async function getCachedKey(db: AppDB): Promise<CachedKey | null> {
+  const r = (await db.device_local.get('backupKeyRaw'))?.value as BackupKeyRaw | undefined
+  if (r) return { key: await importRaw(fromBase64(r.raw)), salt: fromBase64(r.salt), iterations: r.iter, check: r.check }
+  // 옛 평문 DB(Task 10 이관 전)의 CryptoKey 행
   return ((await db.device_local.get('backupKey'))?.value as CachedKey | undefined) ?? null
+}
+
+/** 백업 열쇠가 설정되어 있는지(raw 또는 옛 CryptoKey 행). */
+export async function hasBackupKey(db: AppDB): Promise<boolean> {
+  return !!(await db.device_local.get('backupKeyRaw')) || !!(await db.device_local.get('backupKey'))
 }
 
 export async function getLastBackupAt(db: AppDB): Promise<string | undefined> {

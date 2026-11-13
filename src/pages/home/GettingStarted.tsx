@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
 import { listClasses } from '../../lib/roster/roster'
 import { getAiKey, getNeisKey, getSettings } from '../../lib/settings'
+import { hasBackupKey } from '../../lib/backup/service'
 import { getClaudeCode } from '../../lib/ai/client'
 
 const HIDE_KEY = 'cm.gettingStartedHidden'
@@ -33,7 +34,7 @@ export default function GettingStarted() {
       const students = classes.length ? await db.students.where('class_id').anyOf(classes.map((c) => c.id)).count() : 0
       const s = await getSettings(db)
       setSteps([
-        { label: '백업 켜기', hint: '암호구와 백업 폴더 정하기(노트북 고장 대비)', to: '/settings?tab=backup', done: !!(await db.device_local.get('backupKey')) },
+        { label: '백업 켜기', hint: '암호구와 백업 폴더 정하기(노트북 고장 대비)', to: '/settings?tab=backup', done: await hasBackupKey(db) },
         { label: '학급 만들기', hint: '학년도·학년·반', to: '/class/roster', done: classes.length > 0 },
         { label: '명렬표 올리기', hint: '나이스 명렬표 엑셀을 그대로 올리고, 양식으로 보호자 정보 덧붙이기', to: '/class/roster', done: students > 0 },
         { label: '나이스 연결', hint: '학사일정·급식·시간표를 불러오기', to: '/settings?tab=school', done: !!(await getNeisKey(db)) && !!s.neis_school_code },

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useDb } from '../../app/context'
 import { getNeisKey, getSettings, isDesktopApp } from '../../lib/settings'
+import { hasBackupKey } from '../../lib/backup/service'
 import BackupSettings from './BackupSettings'
 import SchoolSettings from './SchoolSettings'
 import MyTimetable from './MyTimetable'
@@ -35,7 +36,7 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
   useEffect(() => {
     ;(async () => {
       const s = await getSettings(db)
-      setTodo({ backup: !(await db.device_local.get('backupKey')), school: !((await getNeisKey(db)) && s.neis_school_code) })
+      setTodo({ backup: !(await hasBackupKey(db)), school: !((await getNeisKey(db)) && s.neis_school_code) })
     })()
   }, [db, params])
   const tab = (SETTINGS_TABS.find((t) => t.id === params.get('tab'))?.id ?? 'backup') as SettingsTab
