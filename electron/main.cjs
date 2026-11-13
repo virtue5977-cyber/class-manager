@@ -172,43 +172,13 @@ const handle = (ch, fn) => ipcMain.handle(ch, (e, ...args) => {
   fromApp(e)
   return fn(...args)
 })
-// 열쇠(vault): DEK 평문은 로그에 남기지 않는다.
-const vaultLib = require('./vault.cjs')
-const VAULT_DIR = () => app.getPath('userData')
-async function dpapiWrap(dekB64) {
-  try {
-    if (!(await safeStorage.isAsyncEncryptionAvailable())) return undefined
-    return Buffer.from(await safeStorage.encryptStringAsync(dekB64)).toString('base64')
-  } catch { return undefined }
-}
-async function dpapiUnwrap(b64) {
-  try {
-    if (!(await safeStorage.isAsyncEncryptionAvailable())) return null
-    const buf = Buffer.from(b64, 'base64')
-    let r = await safeStorage.decryptStringAsync(buf)
-    if (r.shouldReEncrypt) {
-      const again = await safeStorage.decryptStringAsync(buf)
-      r = { result: again.result }
-      const cur = vaultLib.readVault(VAULT_DIR())
-      const dp = await dpapiWrap(r.result)
-      if (cur.vault && cur.source === 'main' && dp) vaultLib.writeVaultAtomic(VAULT_DIR(), { ...cur.vault, dpapi: dp })
-    }
-    return typeof r.result === 'string' && r.result ? r.result : null
-  } catch { return null }
-}
-handle('vault:status', () => vaultLib.vaultStatus(VAULT_DIR(), dpapiUnwrap))
-handle('vault:unlock-dpapi', async () => {
-  const r = vaultLib.readVault(VAULT_DIR())
-  return r.vault && typeof r.vault.dpapi === 'string' && r.vault.dpapi ? dpapiUnwrap(r.vault.dpapi) : null
-})
-handle('vault:read-backup', () => vaultLib.readBackupPublic(VAULT_DIR()))
-handle('vault:store', async (p) => {
-  if (!vaultLib.validStorePayload(p)) throw new Error('열쇠 형식이 맞지 않습니다.')
-  const { dekB64, dpapi: _ignored, ...rest } = p
-  const dpapi = await dpapiWrap(dekB64)
-  vaultLib.writeVaultAtomic(VAULT_DIR(), dpapi ? { ...rest, dpapi } : rest)
-  return true
-})
+// 열쇠(vault): 본체는 vault.cjs(시험됨). DEK 평문은 로그에 남기지 않는다.
+let vaultHandlers = null // 쓰기 큐를 하나로 공유하려고 한 번만 만든다
+const vaultH = () => (vaultHandlers ??= require('./vault.cjs').createVaultHandlers(app.getPath('userData'), safeStorage))
+handle('vault:status', () => vaultH().status())
+handle('vault:unlock-dpapi', () => vaultH().unlockDpapi())
+handle('vault:read-backup', () => vaultH().readBackup())
+handle('vault:store', (p) => vaultH().store(p))
 handle('backup:pick', async () => {
   const r = await dialog.showOpenDialog(win, { title: '백업 폴더 고르기', properties: ['openDirectory', 'createDirectory'] })
   if (r.canceled || !r.filePaths[0]) return null
