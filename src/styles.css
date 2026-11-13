@@ -1177,3 +1177,12 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .w-panel.closing { animation: w-rollup .26s cubic-bezier(.4, 0, .8, .4) forwards; pointer-events: none; }
 @keyframes w-rollup { from { clip-path: inset(0 0 0 0 round 14px); opacity: 1; } to { clip-path: inset(0 0 0 calc(100% - 52px) round 14px); opacity: .5; } }
 @media (prefers-reduced-motion: reduce) { .w-panel.closing { animation: none; } }
+
+/* 반성문: 고른 줄 자간, 좋은 글 펼쳐 보기 */
+.line-sp { gap: 4px; align-items: center; font-size: 13px; }
+.line-sp button { min-width: 28px; height: 26px; padding: 0 6px; }
+.line-sp .link.on { font-weight: 700; color: var(--accent); }
+.line-sp-val { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.good-view ol { margin: 4px 0 0; padding-left: 1.6em; }
+.good-view summary { cursor: pointer; }
+.good-save { border-top: 1px solid var(--line); padding-top: 8px; }

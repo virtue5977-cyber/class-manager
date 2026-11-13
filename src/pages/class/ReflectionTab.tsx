@@ -5,7 +5,7 @@ import { useAi, useDb, useFs } from '../../app/context'
 import type { ClassRec, ReflectionPhraseRec, ReflectionRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
 import { DEFAULT_LINES, DEFAULT_T1, DEFAULT_T2, deleteGoodText, listGoodTexts, listReflections, nextGoodTitle, readGoodTexts, renameGoodText, saveGoodText, saveReflection } from '../../lib/reflection/store'
-import { bodyOpts, fitLine, MODES, titleOpts, type PaperMode } from '../../lib/reflection/fit'
+import { fitLine, lineFit, MODES, titleOpts, type PaperMode } from '../../lib/reflection/fit'
 import { distribute } from '../../lib/reflection/split'
 import { buildReflectionHwpx } from '../../lib/reflection/hwpx'
 import { fillByAi } from '../../lib/reflection/ai'
@@ -55,6 +55,9 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
   const [minSp, setMinSp] = useState(-15)
   const [minPt, setMinPt] = useState(10)
   const [sel, setSel] = useState(0)
+  /** 줄마다 손으로 정한 자간(%), null이면 자동 */
+  const [sps, setSps] = useState<(number | null)[]>(() => Array(16).fill(null))
+  const setSp = (i: number, v: number | null) => setSps((xs) => xs.map((x, k) => (k === i ? (v === null ? null : Math.max(-50, Math.min(30, v))) : x)))
   const [raw, setRaw] = useState('')
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
@@ -107,7 +110,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     if (!nameTouched) setGoodName(nextGoodTitle(goods, reason))
   }, [goods, reason, nameTouched])
   const fo = { auto, minSp, minPt }
-  const fits = useMemo(() => lines.map((l, i) => fitLine(l ? `${i + 1}. ${l}` : '', bodyOpts(mode, fo))), [lines, mode, auto, minSp, minPt]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fits = useMemo(() => lines.map((l, i) => lineFit(l ? `${i + 1}. ${l}` : '', mode, fo, sps[i])), [lines, mode, auto, minSp, minPt, sps]) // eslint-disable-line react-hooks/exhaustive-deps
   const tfits = [fitLine(t1, titleOpts(mode, fo)), fitLine(t2, titleOpts(mode, fo))]
   const over = fits.filter((f) => f.over).length
   const thisYear = all.filter((r) => schoolYearOf(r.date) === schoolYearOf(today)).length
@@ -120,7 +123,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     return () => st.remove()
   }, [mode])
 
-  const doc = () => ({ date: dotDate(date), no: student ? studentNo(classRec, student) : '', name: student?.name ?? '', t1, t2, lines, mode, fitOpts: fo })
+  const doc = () => ({ date: dotDate(date), no: student ? studentNo(classRec, student) : '', name: student?.name ?? '', t1, t2, lines, mode, fitOpts: fo, spacing: sps })
   const fileStem = () => `반성문_${student?.name ?? '학생'}_${date}`
   const act = async (fn: () => Promise<unknown>) => {
     setMsg(undefined)
@@ -136,6 +139,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
     setDate(r.date)
     setReason(r.reason)
     setLines([...r.lines])
+    setSps(Array.from({ length: 16 }, (_, k) => r.spacing?.[k] ?? null))
     setT1(r.t1)
     setT2(r.t2)
     setMode(r.mode)
@@ -164,7 +168,7 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           </div>
           <button type="button" onClick={fresh}>새로 쓰기</button>
           <button type="button" className="primary" disabled={!student} onClick={() => act(async () => {
-            const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode }, editId)
+            const r = await saveReflection(db, { student_id: student!.id, date, reason, lines, t1, t2, mode, ...(sps.some((x) => x !== null) ? { spacing: sps } : {}) }, editId)
             setEditId(r.id)
             setBaseline(snap())
             setMsg('저장했습니다.')
@@ -246,6 +250,13 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
             />
             <span className={fits[sel]?.over ? 'error' : 'muted'}>{fits[sel]?.over ? `${fits[sel].overChars}자 넘침` : `${(lines[sel] ?? '').length}자`}</span>
           </label>
+          <span className="row line-sp" role="group" aria-label={`${sel + 1}번 줄 자간`}>
+            <span className="muted">자간</span>
+            <button type="button" aria-label="자간 줄이기" onClick={() => setSp(sel, (sps[sel] ?? fits[sel]?.sp ?? 0) - 1)}>−</button>
+            <span className="line-sp-val">{`${sps[sel] ?? fits[sel]?.sp ?? 0}%`}</span>
+            <button type="button" aria-label="자간 늘리기" onClick={() => setSp(sel, (sps[sel] ?? fits[sel]?.sp ?? 0) + 1)}>+</button>
+            <button type="button" className={`link${sps[sel] === null ? ' on' : ''}`} aria-pressed={sps[sel] === null} onClick={() => setSp(sel, null)}>자동</button>
+          </span>
         </div>
         <section className="paper-wrap" aria-label="반성문 양식" ref={wrap}>
           <div className={`paper print-area paper-${mode}`} style={{ width: `${MODES[mode].pw}mm`, minHeight: `${MODES[mode].ph}mm`, zoom }}>
@@ -321,6 +332,15 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
               }}>
                 16줄로 나누기
               </button>
+              <div className="good-save stack">
+                <label className="wide">
+                  좋은 글로 저장할 이름
+                  <input value={goodName} onChange={(e) => (setGoodName(e.target.value), setNameTouched(true))} placeholder="예: 학교폭력 관련(1)" />
+                </label>
+                <button type="button" disabled={!lines.some((l) => l.trim())} onClick={() => act(async () => { await saveGoodText(db, goodName, lines); setMsg(`'${goodName}'(으)로 좋은 글 모음에 저장했습니다.`); setNameTouched(false) })}>
+                  지금 16줄을 좋은 글로 저장
+                </button>
+              </div>
               <button type="button" className="link" onClick={() => { setLines([...DEFAULT_LINES]); setT1(DEFAULT_T1); setT2(DEFAULT_T2) }}>
                 양식 기본 문장으로 되돌리기
               </button>
@@ -328,19 +348,20 @@ export default function ReflectionTab({ classRec, today = toYmd(new Date()) }: {
           )}
           {panel === 'phrases' && (
             <section className="stack" aria-label="좋은 글 모음">
-              <p className="muted small">16줄 전체를 이름 붙여 모아 두고, 다음에 불러와 고쳐 씁니다.</p>
-              <label className="wide">
-                저장할 이름
-                <input value={goodName} onChange={(e) => (setGoodName(e.target.value), setNameTouched(true))} placeholder="예: 학교폭력 관련(1)" />
-              </label>
-              <button type="button" disabled={!lines.some((l) => l.trim())} onClick={() => act(async () => { await saveGoodText(db, goodName, lines); setMsg(`'${goodName}'(으)로 저장했습니다.`); setNameTouched(false) })}>
-                지금 16줄을 좋은 글로 저장
-              </button>
+              <p className="muted small">쓰기 탭에서 저장한 16줄 글입니다. 펼쳐 보고 불러와 고쳐 씁니다.</p>
+              {goods.length === 0 && <p className="muted">아직 저장한 좋은 글이 없습니다.</p>}
               <ul className="plain good-list" aria-label="좋은 글">
                 {goods.map((g) => (
                   <li key={g.id} className="stack">
                     <input aria-label="좋은 글 이름" defaultValue={g.title} key={g.title} onBlur={(e) => e.target.value.trim() && e.target.value !== g.title && act(() => renameGoodText(db, g.id, e.target.value))} />
-                    <span className="muted small good-first">{(g.lines ?? []).find((l) => l.trim()) ?? ''}</span>
+                    <details className="good-view">
+                      <summary className="muted small good-first">{(g.lines ?? []).find((l) => l.trim()) ?? ''}</summary>
+                      <ol className="small">
+                        {(g.lines ?? []).map((l, k) => (
+                          <li key={k}>{l}</li>
+                        ))}
+                      </ol>
+                    </details>
                     <div className="row">
                       <button type="button" className="link" aria-label={`${g.title} 불러오기`} onClick={() => { setLines(Array.from({ length: 16 }, (_, k) => g.lines?.[k] ?? '')); setMsg(`'${g.title}'을(를) 불러왔습니다.`) }}>
                         불러오기

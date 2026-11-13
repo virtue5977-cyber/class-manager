@@ -89,3 +89,13 @@ test('첫 줄이 다음 줄로 넘어가지 않게: 기본 1번 줄은 글자를
   const rows = sec.match(/<hp:tr>[\s\S]*?<\/hp:tr>/g)!
   for (let i = 0; i < 16; i++) expect(rows[2 + i * 2]).not.toMatch(/lineWrap="BREAK"/)
 })
+
+test('줄마다 자간을 손으로 정하면(자동 대신) 그 자간으로, 넘치면 넘침 표시', async () => {
+  const { lineFit } = await import('./fit')
+  const auto = lineFit('1. 짧은 문장', 'B4', undefined, null)
+  expect(auto.sp).toBe(0)
+  const m = lineFit('1. 짧은 문장', 'B4', undefined, -8)
+  expect([m.sp, m.over]).toEqual([-8, false])
+  const long = lineFit(`1. ${'가'.repeat(120)}`, 'B4', undefined, 5)
+  expect(long.over).toBe(true)
+})
