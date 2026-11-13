@@ -45,3 +45,20 @@ test('설정에서 암호구를 저장하면 배너가 바로 사라진다', asy
   await waitFor(() => expect(screen.queryByText(bannerText)).not.toBeInTheDocument())
   window.location.hash = ''
 })
+
+describe('옛 exe 지킴이', () => {
+  afterEach(() => { delete (window as { desktop?: unknown }).desktop })
+
+  test('SHELL 6 exe에서 watson- DB가 있으면 안내만 보이고 홈은 없다', async () => {
+    ;(window as { desktop?: unknown }).desktop = { shell: 6, isDesktop: true }
+    await new Promise<void>((res, rej) => {
+      const r = indexedDB.open('watson-x')
+      r.onsuccess = () => { r.result.close(); res() }
+      r.onerror = () => rej(r.error)
+    })
+    render(<App fs={createMemoryFsAdapter()} />)
+    expect(await screen.findByText(/이 exe는 오래됐습니다/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '홈' })).not.toBeInTheDocument()
+    indexedDB.deleteDatabase('watson-x')
+  })
+})

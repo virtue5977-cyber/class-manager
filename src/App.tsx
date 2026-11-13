@@ -1,6 +1,9 @@
 import { useLayoutPrefs } from './lib/ui/layoutPrefs'
 import NotesPage from './pages/notes/NotesPage'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { isDesktopApp } from './lib/settings'
+import { newerDataPresent } from './lib/vault/guard'
+import OldExeScreen from './components/OldExeScreen'
 import { flushAll } from './lib/ui/flush'
 import HtmlEndBanner from './components/HtmlEndBanner'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
@@ -45,7 +48,24 @@ function FlushOnLeave() {
   return null
 }
 
-export default function App(props: { db?: AppDB; fs?: FsAdapter; backupIterations?: number }) {
+type AppProps = { db?: AppDB; fs?: FsAdapter; backupIterations?: number }
+
+/** 옛 exe(SHELL ≤6)는 새 암호화 DB가 있으면 DB를 열기 전에 멈춘다. */
+export default function App(props: AppProps) {
+  const old = isDesktopApp() && ((window as { desktop?: { shell?: number } }).desktop?.shell ?? 0) <= 6
+  const [blocked, setBlocked] = useState<boolean | null>(old ? null : false)
+  useEffect(() => {
+    if (!old) return
+    let live = true
+    newerDataPresent().then((b) => live && setBlocked(b))
+    return () => { live = false }
+  }, [old])
+  if (blocked === null) return null
+  if (blocked) return <OldExeScreen />
+  return <AppMain {...props} />
+}
+
+function AppMain(props: AppProps) {
   const db = useMemo(() => props.db ?? createDb(), [props.db])
   const fs = useMemo(() => {
     if (props.fs) return props.fs
