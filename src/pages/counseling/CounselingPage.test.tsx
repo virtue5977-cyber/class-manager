@@ -118,13 +118,16 @@ test('학생 목록에 마지막 상담일을 보이고, 한 달 넘게 기록�
       <CounselingPage today="2026-11-05" />
     </AppProviders>,
   )
-  const ga = await screen.findByRole('button', { name: /^1번 가나/ })
+  const list = await screen.findByRole('list', { name: '학생 목록' })
+  const ga = await within(list).findByRole('button', { name: /^1번 가나/ })
   await waitFor(() => expect(ga).toHaveTextContent('11/2'))
   expect(ga).not.toHaveTextContent('한 달 넘음')
-  expect(screen.getByRole('button', { name: /^2번 다라/ })).toHaveTextContent('한 달 넘음')
+  await waitFor(() => expect(within(list).getByRole('button', { name: /^2번 다라/ })).toHaveTextContent('한 달 넘음'))
   await user.selectOptions(screen.getByLabelText('정렬'), '오래된 순')
-  const names = within(screen.getByRole('list', { name: '학생 목록' })).getAllByRole('button').map((x) => x.textContent)
-  expect(names[0]).toMatch(/^2번 다라/)
+  await waitFor(() => {
+    const names = within(screen.getByRole('list', { name: '학생 목록' })).getAllByRole('button').map((x) => x.textContent)
+    expect(names[0]).toMatch(/^2번 다라/)
+  })
 })
 
 test('새 기록을 저장하면 입력 칸이 닫히고 그 기록이 잠깐 강조된다', async () => {
@@ -228,7 +231,7 @@ test('기본 화면은 학급 전체 누가기록(종류·학생 거르기), 관
   await user.click(within(all).getByText('진로 상담'))
   expect(await screen.findByRole('button', { name: '전체 기록' })).toBeInTheDocument()
   // 새 기록에서 관찰을 고르면 대상·방법이 사라진다
-  await user.click(screen.getByRole('button', { name: '+ 새 기록' }))
+  await user.click(await screen.findByRole('button', { name: '+ 새 기록' }))
   const form = screen.getByLabelText('새 기록')
   await user.click(within(within(form).getByRole('radiogroup', { name: '종류' })).getByRole('radio', { name: '관찰' }))
   expect(within(form).queryByRole('radiogroup', { name: '대상' })).toBeNull()
