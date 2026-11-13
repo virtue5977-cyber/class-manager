@@ -1203,3 +1203,11 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .notice-box.has-links:not(.editing) > textarea.notice-text { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
 .notice-view { flex: 1; min-width: 0; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; line-height: 1.5; }
 .notice-row.done .notice-view { color: var(--sub); text-decoration: line-through; }
+
+/* 노트함: 편집기가 맨 위부터(제목은 왼쪽 열), 새 노트·내보내기·폴더는 편집기 머리에 */
+.notes-title { display: flex; align-items: baseline; gap: 10px; min-height: 36px; }
+.notes-title h2 { margin: 0; }
+.note-head .note-tools { flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; }
+.note-page-tools { gap: 6px; order: 9; }
+.note-folder-pick { height: 32px; font-size: 13px; max-width: 140px; }
+.notes-empty { min-height: 200px; }
