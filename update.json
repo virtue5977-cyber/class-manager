@@ -1,9 +1,9 @@
 {
-  "version": "0.16.1",
+  "version": "0.16.2",
   "shell": 1,
-  "bundle": "bundle-0.16.1.zip",
-  "sha256": "edcb46b6a6b94a5261b85ba338b339ff07bc25e04b23582a72d25f5b32486ac4",
-  "sig": "vQSYI4Vf9lgFptacsHg1MMKXmA2q4vqlycxd1C0b2cVEH0vThbA5u+58mJ/0t7gwAMNsfLLWPZiRn+66VR+kDQ==",
-  "note": "0.16.1: 전달사항에 쓴 @노트이름이 글 안에서 바로 링크(할 일처럼)",
+  "bundle": "bundle-0.16.2.zip",
+  "sha256": "b1d7a7caf40717c513904eaed093935ff9b4ed98d10b7104aa8af1c02548782d",
+  "sig": "9aDXZ7Oi5ve3eZj42ADhnpxS0Rd14wgXNi1pxN3o8P/nFwnkPWexwg3VvVt9yLVPn7isAgtQ9sCsx1tIsXYYDw==",
+  "note": "노트 편집기를 화면 맨 위에서 시작(새 노트·내보내기를 편집기 머리로)",
   "date": "2026-11-13"
 }
