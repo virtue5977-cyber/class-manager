@@ -172,6 +172,7 @@ export default function AiSettings() {
       <PromptEditor kind="briefing" />
       <PromptEditor kind="command" />
       <PromptEditor kind="message" />
+      <PromptEditor kind="reflection" />
       <details>
         <summary>누가기록 쓰기 도움말</summary>
         <ul>
@@ -216,6 +217,10 @@ function PromptEditor({ kind }: { kind: PromptKind }) {
         const req = buildNugaPrompt(text, [{ id: 'sample', date: '2026-11-05', place: rest.length ? place.trim() : '', memo: (rest.length ? rest.join('/') : place).trim() }], settings.nuga_max_chars)
         const reply = extractJson<{ items?: { text: string }[] }>(await ai(req))
         setResult(reply.items?.[0]?.text ?? '(결과 없음)')
+      } else if (kind === 'reflection') {
+        const { reflectionRequest } = await import('../../lib/reflection/ai')
+        const reply = extractJson<{ lines?: string[] }>(await ai(reflectionRequest(text, sample.replace(/^사유:\s*/, ''))))
+        setResult((reply.lines ?? []).map((l, k) => `${k + 1}. ${l}`).join('\n') || '(결과 없음)')
       } else {
         const req = buildBriefingPrompt(text, sample, '2026-11-05')
         const reply = extractJson<{ 조례?: string[]; 종례?: string[] }>(await ai(req))
