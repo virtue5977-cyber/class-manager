@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDb } from '../../app/context'
@@ -64,7 +65,7 @@ export default function GettingStarted() {
       <div className="steps-compact">
         {steps.map((s, i) => (
           <Link key={s.label} to={s.to} title={s.hint} className={s.done ? 'done' : undefined}>
-            {`${s.done ? '✓' : `${i + 1}.`} ${s.label}${s.optional ? '(선택)' : ''}`}
+            {s.done ? <Icon name="done" size={14} /> : `${i + 1}.`} {`${s.label}${s.optional ? '(선택)' : ''}`}
           </Link>
         ))}
       </div>

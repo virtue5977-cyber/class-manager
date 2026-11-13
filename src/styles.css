@@ -1224,3 +1224,8 @@ table.stats tr.total td:first-child, table.stats tr.total td:nth-child(2) { back
 table.stats th:first-child, table.stats th:nth-child(2), table.roster-all th:first-child, table.roster-all th:nth-child(2) { z-index: 2; }
 tr.warn-row td:first-child, tr.warn-row td:nth-child(2) { background: var(--banner); }
 @media print { table.stats th, table.stats td, table.roster-all th, table.roster-all td { position: static; background: #fff; box-shadow: none; } }
+
+/* 0.18 아이콘 단추: 누르는 면 28px, 아이콘은 가운데 */
+.seat-tools button, .col-tools button, .row-tools button { min-width: 28px; min-height: 28px; display: inline-grid; place-items: center; border-radius: 6px; color: var(--sub); }
+.seat-tools button:hover, .col-tools button:hover, .row-tools button:hover { background: var(--hover); color: var(--ink); }
+.icon-btn svg, .tb-btn svg, button svg { vertical-align: -2px; }

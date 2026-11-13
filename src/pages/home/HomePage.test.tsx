@@ -84,7 +84,7 @@ test('처음에는 시작하기 단계가 보이고, 학급을 만들면 체크�
     </MemoryRouter>,
   )
   expect(await screen.findByText('시작하기 · 남은 단계 4개')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '✓ 학급 만들기' })).toHaveClass('done')
+  expect(screen.getByRole('link', { name: '학급 만들기' })).toHaveClass('done')
 })
 
 test('할 일에 없는 학생 @를 쓰면 추가하지 않고 알린다', async () => {
@@ -132,7 +132,7 @@ test('할 일 @는 노트만 후보(학생은 안 나옴), 바깥을 누르면 �
   const todo = await screen.findByRole('region', { name: '할 일' })
   await user.type(within(todo).getByRole('combobox', { name: '할 일 추가' }), '@가나')
   const opts = await within(todo).findAllByRole('option')
-  expect(opts.map((o) => o.textContent)).toEqual(['📄가나 회의록'])
+  expect(opts.map((o) => o.textContent)).toEqual(['가나 회의록'])
   await user.click(document.body)
   expect(within(todo).queryByRole('listbox')).toBeNull()
 })

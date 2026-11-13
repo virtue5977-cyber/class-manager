@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { MENU } from '../../components/Nav'
 import { movePref, PANEL_LABEL, panelPlace, resetPrefs, savePrefs, setPlace, togglePref, useLayoutPrefs, type PanelPlace, type PrefItem } from '../../lib/ui/layoutPrefs'
 
@@ -14,8 +15,8 @@ export default function LayoutSettings() {
             <input type="checkbox" aria-label={`${label(x.key)} 보이기`} checked={!x.hidden} disabled={locked?.(x.key)} onChange={(e) => onChange(togglePref(items, x.key, !e.target.checked))} />
             <span className="fields-name">{label(x.key)}</span>
             <span className="spacer" />
-            <button type="button" className="link" aria-label={`${label(x.key)} 위로`} disabled={i === 0} onClick={() => onChange(movePref(items, x.key, -1))}>↑</button>
-            <button type="button" className="link" aria-label={`${label(x.key)} 아래로`} disabled={i === items.length - 1} onClick={() => onChange(movePref(items, x.key, 1))}>↓</button>
+            <button type="button" className="link" aria-label={`${label(x.key)} 위로`} disabled={i === 0} onClick={() => onChange(movePref(items, x.key, -1))}><Icon name="arrowUp" size={14} /></button>
+            <button type="button" className="link" aria-label={`${label(x.key)} 아래로`} disabled={i === items.length - 1} onClick={() => onChange(movePref(items, x.key, 1))}><Icon name="arrowDown" size={14} /></button>
           </li>
         ))}
       </ul>
@@ -24,7 +25,7 @@ export default function LayoutSettings() {
   return (
     <section className="card stack wide" aria-label="메뉴와 홈 배치">
       <h3>메뉴와 홈 배치</h3>
-      <p className="muted">이 컴퓨터에만 기억합니다. 홈과 설정은 숨길 수 없습니다. 홈 칸은 오른쪽에 두거나 대화·전달사항 옆 탭으로 옮길 수 있습니다(홈에서 칸에 마우스를 올려 ⇤ 단추로도 옮깁니다). 대화 높이·오른쪽 칸 너비·칸마다 높이는 홈에서 경계선을 끌어 바꿉니다.</p>
+      <p className="muted">이 컴퓨터에만 기억합니다. 홈과 설정은 숨길 수 없습니다. 홈 칸은 오른쪽에 두거나 대화·전달사항 옆 탭으로 옮길 수 있습니다(홈에서 칸에 마우스를 올려 '탭으로' 단추로도 옮깁니다). 대화 높이·오른쪽 칸 너비·칸마다 높이는 홈에서 경계선을 끌어 바꿉니다.</p>
       <div className="layout-prefs">
         <div className="stack">
           <h4>왼쪽 메뉴</h4>
@@ -42,8 +43,8 @@ export default function LayoutSettings() {
                   <option value="tab">왼쪽 탭</option>
                   <option value="hidden">숨김</option>
                 </select>
-                <button type="button" className="link" aria-label={`홈 ${PANEL_LABEL[x.key]} 위로`} disabled={i === 0} onClick={() => savePrefs({ ...p, panels: movePref(p.panels, x.key, -1) })}>↑</button>
-                <button type="button" className="link" aria-label={`홈 ${PANEL_LABEL[x.key]} 아래로`} disabled={i === p.panels.length - 1} onClick={() => savePrefs({ ...p, panels: movePref(p.panels, x.key, 1) })}>↓</button>
+                <button type="button" className="link" aria-label={`홈 ${PANEL_LABEL[x.key]} 위로`} disabled={i === 0} onClick={() => savePrefs({ ...p, panels: movePref(p.panels, x.key, -1) })}><Icon name="arrowUp" size={14} /></button>
+                <button type="button" className="link" aria-label={`홈 ${PANEL_LABEL[x.key]} 아래로`} disabled={i === p.panels.length - 1} onClick={() => savePrefs({ ...p, panels: movePref(p.panels, x.key, 1) })}><Icon name="arrowDown" size={14} /></button>
               </li>
             ))}
           </ul>

@@ -145,7 +145,7 @@ export default function TodoList({ ctx }: { ctx: ParseCtx }) {
           <ul className="suggest" role="listbox" aria-label="연결할 노트">
             {list.map((s, i) => (
               <li key={s.kind + s.label} role="option" aria-selected={i === sel} className={i === sel ? 'on' : undefined} onMouseDown={(e) => (e.preventDefault(), pick(i))}>
-                <span className="sg-kind" aria-hidden="true">{s.kind === 'note' ? '📄' : '@'}</span>
+                <span className="sg-kind" aria-hidden="true">{s.kind === 'note' ? <Icon name="note" size={14} /> : '@'}</span>
                 <span className="pii">{s.label}</span>
               </li>
             ))}

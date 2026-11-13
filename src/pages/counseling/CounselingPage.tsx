@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { registerFlush } from '../../lib/ui/flush'
 import AudioDrop from './AudioDrop'
 import { appendTranscript } from '../../lib/stt/stt'
@@ -203,7 +204,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
           {!student && classId && <AllLogs students={students} today={today} onOpen={(sid) => { setSelected(sid); setMessages([]) }} />}
           {student && (
             <>
-              <button type="button" className="link back-all" onClick={() => setSelected(undefined)}>← 전체 기록</button>
+              <button type="button" className="link back-all" onClick={() => setSelected(undefined)}><Icon name="arrowLeft" size={14} /> 전체 기록</button>
               <div className="page-head">
                 <div className="pii">
                   <h3 style={{ fontSize: 18, margin: 0 }}>{`${student.number}번 ${student.name}`}</h3>
@@ -424,7 +425,7 @@ function LogCard(p: {
       )}
       {p.warnings.map((w) => (
         <p key={w} className="warn">
-          {`⚠ ${w}`}
+          <Icon name="alert" size={14} /> {w}
         </p>
       ))}
       <div className="row log-actions">

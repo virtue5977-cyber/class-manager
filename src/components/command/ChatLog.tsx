@@ -1,3 +1,4 @@
+import Icon from '../Icon'
 import { useEffect, useRef, useState } from 'react'
 import { useDb } from '../../app/context'
 import type { ChatRec } from '../../lib/db/types'
@@ -34,7 +35,7 @@ export default function ChatLog({ today, onRun }: { today: string; onRun: (input
             <div className="chat-me">
               <span className="bubble pii">{c.input}</span>
               <details className="chat-menu">
-                <summary aria-label="메뉴">⋯</summary>
+                <summary aria-label="메뉴"><Icon name="more" /></summary>
                 <div className="menu-list">
                   <button type="button" onClick={() => onRun(c.input)}>다시 실행</button>
                   <button type="button" onClick={() => createNote(db, c.input.slice(0, 40), [{ id: newBlockId(), type: 'p', text: c.input }, { id: newBlockId(), type: 'p', text: c.summary }, ...c.links.map((l) => ({ id: newBlockId(), type: 'bullet' as const, text: `${l.label}: #${l.to}` })), { id: newBlockId(), type: 'p', text: `— 홈 대화 기록(${new Date(c.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })})에서` }])}>노트로 보내기</button>

@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { AUDIO_EXT, DIRECT_EXT, getSttBridge, MODEL_ORDER, toWav16k, type SttModel } from '../../lib/stt/stt'
 
@@ -72,7 +73,7 @@ export default function AudioDrop({ onText }: { onText: (text: string) => void }
         </div>
       ) : (
         <button type="button" className="link" onClick={() => input.current?.click()}>
-          🎙 녹음 파일을 끌어다 놓거나 눌러 고르세요 (mp3·m4a·wav·ogg) · 이 컴퓨터 안에서만 글로 바꿉니다
+          <Icon name="mic" size={16} /> 녹음 파일을 끌어다 놓거나 눌러 고르세요 (mp3·m4a·wav·ogg) · 이 컴퓨터 안에서만 글로 바꿉니다
         </button>
       )}
       <input ref={input} type="file" accept=".mp3,.m4a,.wav,.ogg,.flac,.aac,.webm,audio/*" hidden onChange={(e) => { void take(e.target.files?.[0]); e.target.value = '' }} />

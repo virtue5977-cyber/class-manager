@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { PANEL_LABEL, panelPlace, placePanel, savePrefs, setPlace, useLayoutPrefs, type PanelKey } from '../../lib/ui/layoutPrefs'
 import { startPointerDrag } from '../../lib/ui/pointerDrag'
 import { newThread } from '../../lib/command/chatThreads'
@@ -199,7 +200,7 @@ export default function HomePage({ today = toYmd(new Date()) }: { today?: string
             ) : (
               <div className="home-tabpanel" role="tabpanel" aria-label={PANEL_LABEL[tab]}>
                 <button type="button" className="link panel-move" aria-label={`${PANEL_LABEL[tab]} 오른쪽으로`} title="오른쪽 칸으로 보내기" onClick={() => movePanel(tab, 'side')}>
-                  오른쪽으로 ⇥
+                  오른쪽으로 <Icon name="panelRight" size={14} />
                 </button>
                 {renderPanel(tab)}
               </div>
@@ -256,7 +257,7 @@ function PanelFrame({ label, height, onHeight, onMove, onGrip, children }: { lab
         ⠿ 옮기기
       </span>
       <button type="button" className="icon-btn panel-move" aria-label={`${label} 왼쪽 탭으로`} title="왼쪽 탭으로 옮기기" onClick={onMove}>
-        ⇤ 탭으로
+        <Icon name="panelLeft" size={14} /> 탭으로
       </button>
       <div className={`panel-body${h ? ' sized' : ''}`} ref={box} style={h ? { height: h } : undefined}>
         {children}
