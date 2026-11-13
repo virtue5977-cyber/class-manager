@@ -4,7 +4,7 @@ import {
   newDek, dbNameFor, passKeyRaw, wrapDek, unwrapDek, newRecoveryCode, normalizeRecoveryCode,
   recoveryKeyRaw, buildVaultPayload,
 } from './keys'
-import { makeKeyCheck, verifyKeyCheck, deriveKey, toBase64, encrypt } from '../backup/crypto'
+import { makeKeyCheck, verifyKeyCheck, deriveKey, toBase64, fromBase64, encrypt } from '../backup/crypto'
 
 const require = createRequire(import.meta.url)
 const { validStorePayload } = require('../../../electron/vault.cjs') as { validStorePayload: (p: unknown) => boolean }
@@ -22,13 +22,13 @@ test('wrap/unwrap 왕복', async () => {
   const { dek, keyId } = newDek()
   const raw = await passKeyRaw('암호구-테스트', salt(), LOW)
   expect(raw.length).toBe(32)
-  const w = wrapDek(dek, raw, keyId, 'pass')
+  const w = wrapDek(dek, raw, keyId, 'pass', salt(), LOW)
   expect(unwrapDek(w, raw, keyId, 'pass')).toEqual(dek)
 })
 
 test('틀린 열쇠 → 열쇠가 맞지 않습니다', async () => {
   const { dek, keyId } = newDek()
-  const w = wrapDek(dek, await passKeyRaw('aaaaaaaa', salt(), LOW), keyId, 'pass')
+  const w = wrapDek(dek, await passKeyRaw('aaaaaaaa', salt(), LOW), keyId, 'pass', salt(), LOW)
   expect(() => unwrapDek(w, await0(), keyId, 'pass')).toThrow('열쇠가 맞지 않습니다')
 })
 function await0() { return new Uint8Array(32) }
@@ -36,7 +36,7 @@ function await0() { return new Uint8Array(32) }
 test('pass로 감싼 것을 recovery로 풀면 오류(aad 분리), keyId가 달라도 오류', async () => {
   const { dek, keyId } = newDek()
   const raw = await passKeyRaw('aaaaaaaa', salt(), LOW)
-  const w = wrapDek(dek, raw, keyId, 'pass')
+  const w = wrapDek(dek, raw, keyId, 'pass', salt(), LOW)
   expect(() => unwrapDek(w, raw, keyId, 'recovery')).toThrow('열쇠가 맞지 않습니다')
   expect(() => unwrapDek(w, raw, crypto.randomUUID(), 'pass')).toThrow('열쇠가 맞지 않습니다')
 })
@@ -88,4 +88,16 @@ test('buildVaultPayload는 vault:store 검사를 통과하고 풀린다', async 
   const noRec = buildVaultPayload({ keyId, dek, passRaw, passSalt: ps })
   expect(noRec.recovery).toBeUndefined()
   expect(validStorePayload(noRec)).toBe(true)
+})
+
+test('wrapDek: salt는 16바이트여야 하고 저장된 salt로 다시 유도해 풀린다', async () => {
+  const { dek, keyId } = newDek()
+  const s = salt()
+  const raw = await passKeyRaw('암호구-테스트', s, LOW)
+  // @ts-expect-error salt·iter는 필수
+  expect(() => wrapDek(dek, raw, keyId, 'pass')).toThrow()
+  expect(() => wrapDek(dek, raw, keyId, 'pass', new Uint8Array(8), LOW)).toThrow('salt')
+  const w = wrapDek(dek, raw, keyId, 'pass', s, LOW)
+  const again = await passKeyRaw('암호구-테스트', fromBase64(w.salt), w.iter)
+  expect(unwrapDek(w, again, keyId, 'pass')).toEqual(dek)
 })

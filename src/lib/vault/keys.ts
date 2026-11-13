@@ -22,6 +22,7 @@ export interface VaultPayload {
 
 const RECOVERY_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 const CODE_LEN = 25
+const SALT_LEN = 16
 const MSG_BAD_CODE = '복구 코드 형식이 맞지 않습니다. 25자(영문 대문자·숫자)를 확인해 주세요.'
 
 export function newDek(): { dek: Uint8Array; keyId: string } {
@@ -48,7 +49,10 @@ export function recoveryKeyRaw(code: string, salt: Uint8Array, iter = RECOVERY_I
 
 const aadFor = (kind: WrapKind, keyId: string) => `watson-dek:v1:${kind}:${keyId}`
 
-export function wrapDek(dek: Uint8Array, keyRaw: Uint8Array, keyId: string, kind: WrapKind, salt: Uint8Array = new Uint8Array(16), iter = kind === 'pass' ? PASS_ITER : RECOVERY_ITER): Wrapped {
+export function wrapDek(dek: Uint8Array, keyRaw: Uint8Array, keyId: string, kind: WrapKind, salt: Uint8Array, iter: number): Wrapped {
+  // salt·iter는 열쇠를 유도할 때 쓴 값 그대로여야 한다(기본값 없음). 어긋나면 비밀번호로 열 수 없다.
+  if (!(salt instanceof Uint8Array) || salt.length !== SALT_LEN) throw new Error(`salt는 ${SALT_LEN}바이트여야 합니다`)
+  if (!Number.isInteger(iter)) throw new Error('iter가 필요합니다')
   const sealed = encryptBytes(keyRaw, dek, aadFor(kind, keyId))
   return { salt: toBase64(salt), iter, iv: toBase64(sealed.slice(1, 13)), ct: toBase64(sealed.slice(13)) }
 }

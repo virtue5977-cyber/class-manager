@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useContext, useEffect, useState, type FormEvent } from 'react'
 import { useBackupEvents, useDb, useFs } from '../../app/context'
 import type { BackupFolder } from '../../lib/fs/adapter'
 import type { SafetyTarget } from '../../lib/backup/service'
 import { PBKDF2_ITERATIONS } from '../../lib/backup/crypto'
-import { getCachedKey, getLastBackupAt, restoreFromBytes, runBackup, setupPassphrase } from '../../lib/backup/service'
+import { getCachedKey, getLastBackupAt, changePassphrase, restoreFromBytes, runBackup } from '../../lib/backup/service'
+import { VaultRewrapContext } from '../../lib/vault/rewrapContext'
 import * as reload from '../../lib/ui/reload'
 import { edition } from '../../lib/update/update'
 
@@ -18,6 +19,7 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
   const db = useDb()
   const fs = useFs()
   const { notifyChanged } = useBackupEvents()
+  const rewrapVault = useContext(VaultRewrapContext)
   const [hasKey, setHasKey] = useState(false)
   const [folder, setFolder] = useState<BackupFolder | null>(null)
   const [lastBackup, setLastBackup] = useState<string>()
@@ -61,7 +63,7 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
       return
     }
     run(async () => {
-      await setupPassphrase(db, pass1, { iterations })
+      await changePassphrase(db, pass1, { iterations, rewrapVault: rewrapVault ?? undefined })
       setPass1('')
       setPass2('')
       return '암호구를 저장했습니다.'

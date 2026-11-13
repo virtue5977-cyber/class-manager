@@ -33,15 +33,49 @@ export function backupFileName(now: Date, existing: Set<string>, prefix = '백�
 /** device_local.backupKeyRaw: CryptoKey는 봉인할 수 없어 raw(b64)로 둔다. vault DB에서는 행째 암호화된다. */
 interface BackupKeyRaw { salt: string; iter: number; raw: string; check: string }
 
-export async function setupPassphrase(db: AppDB, passphrase: string, opts: { iterations?: number } = {}): Promise<void> {
+export interface DerivedPassKey { salt: Uint8Array; iter: number; raw: Uint8Array }
+
+async function derivePass(passphrase: string, iterations?: number): Promise<DerivedPassKey> {
   if (passphrase.length < MIN_PASSPHRASE) throw new Error('암호구는 8자 이상이어야 합니다.')
-  const iterations = opts.iterations ?? PBKDF2_ITERATIONS
+  const iter = iterations ?? PBKDF2_ITERATIONS
   const salt = randomBytes(16)
-  const raw = await passKeyRaw(passphrase, salt, iterations)
-  const key = await importRaw(raw)
-  const value: BackupKeyRaw = { salt: toBase64(salt), iter: iterations, raw: toBase64(raw), check: await makeKeyCheck(key) }
-  await db.device_local.put({ id: 'backupKeyRaw', value })
-  await db.device_local.delete('backupKey') // 옛 CryptoKey 행 정리
+  return { salt, iter, raw: await passKeyRaw(passphrase, salt, iter) }
+}
+
+async function storeBackupKey(db: AppDB, k: DerivedPassKey): Promise<void> {
+  const key = await importRaw(k.raw)
+  const check = await makeKeyCheck(key)
+  if (db.isVault) {
+    const value: BackupKeyRaw = { salt: toBase64(k.salt), iter: k.iter, raw: toBase64(k.raw), check }
+    await db.device_local.put({ id: 'backupKeyRaw', value })
+    await db.device_local.delete('backupKey')
+  } else {
+    // 평문 DB는 이관 전까지 옛 방식(비추출 CryptoKey 행) 그대로
+    const cached: CachedKey = { key, salt: k.salt, iterations: k.iter, check }
+    await db.device_local.put({ id: 'backupKey', value: cached })
+  }
+}
+
+/** 한 번 유도해 저장하고 같은 값을 돌려준다(열쇠 파일 재감싸기에 쓴다). */
+export async function setupPassphrase(db: AppDB, passphrase: string, opts: { iterations?: number } = {}): Promise<DerivedPassKey> {
+  const k = await derivePass(passphrase, opts.iterations)
+  await storeBackupKey(db, k)
+  return k
+}
+
+/**
+ * 암호구 바꾸기: 한 번 유도하고, rewrapVault(열쇠 파일의 pass 감싸기 교체)를 먼저 부른다.
+ * 그게 실패하면 아무것도 바꾸지 않고 오류를 그대로 올린다. 성공하면 백업 열쇠를 쓴다.
+ */
+export async function changePassphrase(
+  db: AppDB,
+  passphrase: string,
+  opts: { iterations?: number; rewrapVault?: (k: DerivedPassKey) => Promise<void> } = {},
+): Promise<DerivedPassKey> {
+  const k = await derivePass(passphrase, opts.iterations)
+  if (opts.rewrapVault) await opts.rewrapVault(k)
+  await storeBackupKey(db, k)
+  return k
 }
 
 function importRaw(raw: Uint8Array): Promise<CryptoKey> {
@@ -50,7 +84,14 @@ function importRaw(raw: Uint8Array): Promise<CryptoKey> {
 
 export async function getCachedKey(db: AppDB): Promise<CachedKey | null> {
   const r = (await db.device_local.get('backupKeyRaw'))?.value as BackupKeyRaw | undefined
-  if (r) return { key: await importRaw(fromBase64(r.raw)), salt: fromBase64(r.salt), iterations: r.iter, check: r.check }
+  if (r) {
+    try {
+      if (typeof r.raw !== 'string' || typeof r.salt !== 'string' || typeof r.check !== 'string' || !Number.isInteger(r.iter)) return null
+      const raw = fromBase64(r.raw)
+      if (raw.length !== 32) return null
+      return { key: await importRaw(raw), salt: fromBase64(r.salt), iterations: r.iter, check: r.check }
+    } catch { return null }
+  }
   // 옛 평문 DB(Task 10 이관 전)의 CryptoKey 행
   return ((await db.device_local.get('backupKey'))?.value as CachedKey | undefined) ?? null
 }

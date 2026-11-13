@@ -3,7 +3,7 @@ import { createDb } from '../db/schema'
 import { newRecord } from '../db/records'
 import { createMemoryFolder } from '../fs/memory'
 import {
-  backupFileName, setupPassphrase, getCachedKey, runBackup, rotateBackups, restoreFromBytes,
+  backupFileName, setupPassphrase, changePassphrase, getCachedKey, runBackup, rotateBackups, restoreFromBytes,
   needsAutoBackup, getLastBackupAt, BACKUP_KEEP_DEFAULT,
 } from './service'
 import { BackupDecryptError, BackupFormatError, BackupVersionError } from './errors'
@@ -213,18 +213,67 @@ test('마지막 백업 시각이 미래면 자동 백업이 필요하다', () =>
   expect(needsAutoBackup('2027-01-01T00:00:00.000Z', new Date('2026-11-05T12:00:00Z'))).toBe(true)
 })
 
-test('setupPassphrase는 backupKeyRaw(salt·iter·raw·check)를 두고 CryptoKey 행은 두지 않는다', async () => {
+test.skipIf(VAULT_MODE)('평문 DB: 옛 CryptoKey 행 그대로, backupKeyRaw 없음', async () => {
+  const db = testDb()
+  await setupPassphrase(db, PASS, IT)
+  expect(await db.device_local.get('backupKeyRaw')).toBeUndefined()
+  const v = (await db.device_local.get('backupKey'))?.value as { key: CryptoKey; iterations: number }
+  expect(v.key.extractable).toBe(false)
+  expect(v.iterations).toBe(1000)
+})
+
+test.skipIf(!VAULT_MODE)('vault DB: backupKeyRaw(salt·iter·raw·check)만 있고 CryptoKey 행 없음', async () => {
   const db = testDb()
   await setupPassphrase(db, PASS, IT)
   const v = (await db.device_local.get('backupKeyRaw'))?.value as { salt: string; iter: number; raw: string; check: string }
-  expect(typeof v.salt).toBe('string')
-  expect(v.iter).toBe(1000)
   expect(atob(v.raw).length).toBe(32)
+  expect(v.iter).toBe(1000)
   expect(typeof v.check).toBe('string')
   expect(await db.device_local.get('backupKey')).toBeUndefined()
   const c = await getCachedKey(db)
   expect(c?.iterations).toBe(1000)
   expect(c?.key.extractable).toBe(false)
+})
+
+test('setupPassphrase는 { salt, iter, raw }를 돌려준다', async () => {
+  const r = await setupPassphrase(testDb(), PASS, IT)
+  expect(r.salt.length).toBe(16)
+  expect(r.iter).toBe(1000)
+  expect(r.raw.length).toBe(32)
+})
+
+test('changePassphrase: rewrapVault가 저장되는 것과 같은 raw/salt/iter를 받는다', async () => {
+  const db = testDb()
+  await setupPassphrase(db, PASS, IT)
+  let got: { raw: Uint8Array; salt: Uint8Array; iter: number } | undefined
+  await changePassphrase(db, '새로운암호구2026', { iterations: 1000, rewrapVault: async (k) => { got = k } })
+  expect(got!.raw.length).toBe(32)
+  const cached = await getCachedKey(db)
+  expect(cached!.salt).toEqual(got!.salt)
+  expect(cached!.iterations).toBe(got!.iter)
+  const f = createMemoryFolder()
+  const name = await runBackup(db, f)
+  await restoreFromBytes(db, await f.readFile(name), '새로운암호구2026', { safety: { folder: f } })
+})
+
+test('changePassphrase: rewrapVault 실패 → 오류 전달, 기존 열쇠 그대로', async () => {
+  const db = testDb()
+  await setupPassphrase(db, PASS, IT)
+  const before = await getCachedKey(db)
+  await expect(changePassphrase(db, '새로운암호구2026', { iterations: 1000, rewrapVault: async () => { throw new Error('감싸기 실패') } })).rejects.toThrow('감싸기 실패')
+  const after = await getCachedKey(db)
+  expect(after!.salt).toEqual(before!.salt)
+  expect(after!.check).toBe(before!.check)
+})
+
+test('changePassphrase: 8자 미만 거부', async () => {
+  await expect(changePassphrase(testDb(), '1234567', { iterations: 1000 })).rejects.toThrow('8자')
+})
+
+test.skipIf(!VAULT_MODE)('깨진 backupKeyRaw → getCachedKey는 null', async () => {
+  const db = testDb()
+  await db.device_local.put({ id: 'backupKeyRaw', value: { salt: '!!', iter: 'x', raw: 5, check: 1 } })
+  expect(await getCachedKey(db)).toBeNull()
 })
 
 // 옛 평문 DB 전용: vault DB는 CryptoKey를 봉인하지 못한다(spec §5.3)
