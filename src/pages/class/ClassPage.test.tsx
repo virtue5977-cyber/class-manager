@@ -106,9 +106,9 @@ test('학생 삭제는 화면 안 확인 후 실행된다', async () => {
   await saveStudent(db, c.id, emptyStudent(1, '가'))
   renderPage(db)
   await user.click(await screen.findByRole('button', { name: '1번 가' }))
-  await user.click(screen.getByRole('button', { name: '삭제' }))
-  expect(screen.getByText('이 학생을 삭제할까요?')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: '삭제 확인' }))
+  await user.click(screen.getByRole('button', { name: '지우기' }))
+  expect(screen.getByText('이 학생을 지울까요?')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '지우기 확인' }))
   await waitFor(() => expect(screen.queryByRole('button', { name: '1번 가' })).not.toBeInTheDocument())
 })
 
