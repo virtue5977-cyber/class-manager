@@ -343,7 +343,10 @@ export interface NoteFileRec extends BaseRecord {
   name: string
   mime: string
   size: number
-  data: string
+  /** 평문 DB: 내용(base64). 암호화 DB에는 없고 내용은 note_blobs에 있다. */
+  data?: string
+  /** 조각 수(8MB 넘는 파일만, 암호화 DB) */
+  chunks?: number
 }
 
 export type TodoPart = string | { note: string } | { student: string }

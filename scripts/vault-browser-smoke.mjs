@@ -15,6 +15,7 @@ const entry = `
 import { liveQuery } from 'dexie'
 import { openTestVaultDb } from ${vault('testing.ts')}
 import { readRaw, rawWrite, onBrokenRow } from ${vault('middleware.ts')}
+import { attachFile, readFile, createNote } from ${JSON.stringify(path.join(root, 'src/lib/notes/notes.ts'))}
 
 const T0 = '2020-01-01T00:00:00.000Z'
 const st = (id, n, over = {}) => ({ id, class_id: 'c1', number: n, name: '가상학생', address: '', birth_date: '',
@@ -94,6 +95,17 @@ window.run = async () => {
     await db.students.toCollection().delete()
     return (await readRaw(db, 'students')).length
   }, 0)
+  await check('9MB attachment round-trip (chunked)', async () => {
+    const n = await createNote(db)
+    const bytes = new Uint8Array(9 * 1024 * 1024)
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31 + 7) & 0xff
+    const f = await attachFile(db, n.id, { name: 'big.bin', mime: '', bytes })
+    const back = (await readFile(db, f.id)).bytes
+    let eq = back.length === bytes.length
+    for (let i = 0; eq && i < bytes.length; i++) if (back[i] !== bytes[i]) eq = false
+    const raw = await readRaw(db, 'note_blobs')
+    return [eq, raw.length, (await db.note_files.get(f.id)).chunks]
+  }, [true, 9, 9])
   db.close()
   await db.delete()
   return out

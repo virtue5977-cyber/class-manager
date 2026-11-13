@@ -1,5 +1,9 @@
+import type { AppDB } from '../db/schema'
 import { createDb } from '../db/schema'
 import { attachFile, createNote, deleteNote, listNotes, readFile, saveNote, MAX_FILE } from './notes'
+
+/** 첨부 내용이 남아 있는가(평문 DB: data 칸, 암호화 DB: note_blobs 행) */
+const hasContent = async (db: AppDB, id: string) => (db.isVault ? !!(await db.note_blobs.get(id)) : (await db.note_files.get(id))!.data !== '')
 
 test('노트 만들기·고정 먼저·첨부 읽기·50MB 넘으면 거절·지우면 첨부도', async () => {
   const db = createDb('test-' + crypto.randomUUID())
@@ -34,9 +38,10 @@ test('파일 블록을 빼고 저장해도 첨부는 남는다(되돌리기·다
   const f1 = await attachFile(db, n.id, { name: 'a', mime: '', bytes: new Uint8Array([1, 2, 3]) })
   const f2 = await attachFile(db, n.id, { name: 'b', mime: '', bytes: new Uint8Array([4]) })
   await saveNoteContent(db, n.id, { title: '가', blocks: [{ id: 'x', type: 'file', file_id: f1.id }] }, Date.now() + 86_400_000)
-  expect((await db.note_files.get(f2.id))!.data).not.toBe('')
+  expect(await hasContent(db, f2.id)).toBe(true)
   await deleteNote(db, n.id)
-  expect(await db.note_files.get(f1.id)).toMatchObject({ deleted: true, data: '' })
+  expect(await db.note_files.get(f1.id)).toMatchObject({ deleted: true })
+  expect(await hasContent(db, f1.id)).toBe(false)
 })
 
 test('앱을 켤 때: 어느 노트에서도 안 쓰고 하루 지난 첨부만 비운다', async () => {
@@ -54,10 +59,11 @@ test('앱을 켤 때: 어느 노트에서도 안 쓰고 하루 지난 첨부만 
   const later = Date.parse(fresh.created_at) + 86_400_000 + 1
   await db.note_files.update(fresh.id, { created_at: new Date(later - 1000).toISOString() })
   expect(await cleanupOrphanFiles(db, later)).toBe(1)
-  expect((await db.note_files.get(used.id))!.data).not.toBe('')
-  expect((await db.note_files.get(moved.id))!.data).not.toBe('')
-  expect((await db.note_files.get(fresh.id))!.data).not.toBe('')
-  expect(await db.note_files.get(orphan.id)).toMatchObject({ deleted: true, data: '' })
+  expect(await hasContent(db, used.id)).toBe(true)
+  expect(await hasContent(db, moved.id)).toBe(true)
+  expect(await hasContent(db, fresh.id)).toBe(true)
+  expect(await db.note_files.get(orphan.id)).toMatchObject({ deleted: true })
+  expect(await hasContent(db, orphan.id)).toBe(false)
 })
 
 test('첨부는 모두 합쳐 MAX_TOTAL까지(지운 첨부는 빼고 센다)', async () => {

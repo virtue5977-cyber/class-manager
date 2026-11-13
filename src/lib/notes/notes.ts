@@ -3,6 +3,7 @@ import type { NoteFileRec, NoteRec } from '../db/types'
 import { newRecord, save, scrubDelete } from '../db/records'
 import { syncNoteToNotices, unlinkNoticeNote } from '../notices/noteSync'
 import { toYmd } from '../schoolDays'
+import { b64ToBytes, blobIds, bytesToB64, openBlobBytes, sealBlobRows } from './blobs'
 
 export const MAX_FILE = 50 * 1024 * 1024
 /** 모든 노트 첨부 합계 한도(백업은 한 덩어리 글이라 base64로 커지는 만큼 여유를 둔다) */
@@ -69,28 +70,27 @@ export async function listNotes(db: AppDB, today: string = toYmd(new Date())): P
 /** 첨부 지우기: 삭제 표시와 함께 내용(base64)을 비운다. */
 async function dropFile(db: AppDB, fileId: string): Promise<void> {
   const f = await db.note_files.get(fileId)
-  if (f) await save(db.note_files, { ...f, deleted: true, data: '' })
+  if (!f) return
+  if (db.isVault) {
+    // 내용(note_blobs)은 지우고, 메타에는 삭제 표시만 한다
+    await db.transaction('rw', [db.note_files, db.note_blobs], async () => {
+      await db.note_blobs.bulkDelete(blobIds(f))
+      const { data: _d, ...meta } = f
+      void _d
+      await save(db.note_files, { ...meta, deleted: true })
+    })
+    return
+  }
+  await save(db.note_files, { ...f, deleted: true, data: '' })
 }
 
 export async function deleteNote(db: AppDB, id: string): Promise<void> {
   // 짝 전달사항은 남기고 연결만 끊는다
   await unlinkNoticeNote(db, id)
-  await db.transaction('rw', db.notes, db.note_files, async () => {
+  await db.transaction('rw', [db.notes, db.note_files, db.note_blobs], async () => {
     await scrubDelete(db.notes, id, { title: '', blocks: [] })
-    for (const f of await db.note_files.where('note_id').equals(id).toArray()) if (!f.deleted || f.data) await dropFile(db, f.id)
+    for (const f of await db.note_files.where('note_id').equals(id).toArray()) if (!f.deleted || f.data || (db.isVault && (await db.note_blobs.bulkGet(blobIds(f))).some(Boolean))) await dropFile(db, f.id)
   })
-}
-
-function toB64(bytes: Uint8Array): string {
-  let s = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(s)
-}
-function fromB64(b: string): Uint8Array {
-  const s = atob(b)
-  const out = new Uint8Array(s.length)
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i)
-  return out
 }
 
 export async function attachFile(db: AppDB, noteId: string, file: { name: string; mime: string; bytes: Uint8Array }): Promise<NoteFileRec> {
@@ -98,7 +98,18 @@ export async function attachFile(db: AppDB, noteId: string, file: { name: string
   let used = 0
   await db.note_files.each((f) => { if (!f.deleted) used += f.size || 0 })
   if (used + file.bytes.length > MAX_TOTAL) throw new Error(`첨부 파일은 모두 합쳐 150MB까지입니다(지금 ${Math.round(used / 1048576)}MB). 쓰지 않는 첨부를 지우세요.`)
-  const rec = newRecord({ note_id: noteId, name: file.name, mime: file.mime || 'application/octet-stream', size: file.bytes.length, data: toB64(file.bytes) }) as NoteFileRec
+  const meta = { note_id: noteId, name: file.name, mime: file.mime || 'application/octet-stream', size: file.bytes.length }
+  if (db.isVault) {
+    const rec = newRecord(meta) as NoteFileRec
+    const { rows, chunks } = await sealBlobRows(db, rec.id, file.bytes) // 묶음 밖에서 암호화
+    if (chunks) rec.chunks = chunks
+    await db.transaction('rw', [db.note_files, db.note_blobs], async () => {
+      await db.note_blobs.bulkPut(rows)
+      await db.note_files.add(rec)
+    })
+    return rec
+  }
+  const rec = newRecord({ ...meta, data: bytesToB64(file.bytes) }) as NoteFileRec
   await db.note_files.add(rec)
   return rec
 }
@@ -106,7 +117,7 @@ export async function attachFile(db: AppDB, noteId: string, file: { name: string
 export async function readFile(db: AppDB, fileId: string): Promise<{ name: string; mime: string; bytes: Uint8Array }> {
   const f = await db.note_files.get(fileId)
   if (!f || f.deleted) throw new Error('첨부 파일을 찾을 수 없습니다.')
-  return { name: f.name, mime: f.mime, bytes: fromB64(f.data) }
+  return { name: f.name, mime: f.mime, bytes: db.isVault ? await openBlobBytes(db, f) : b64ToBytes(f.data ?? '') }
 }
 
 /** 노트 본문 글(검색·내보내기용) */

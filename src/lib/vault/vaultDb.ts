@@ -1,5 +1,8 @@
 import { AppDB } from '../db/schema'
 import { encryptionMiddleware } from './middleware'
+import { stashDek } from './blobCrypto'
+
+export { blobCrypto } from './blobCrypto'
 
 export { VAULT_STORES, UNENCRYPTED_TABLES } from '../db/schema'
 
@@ -7,5 +10,6 @@ export { VAULT_STORES, UNENCRYPTED_TABLES } from '../db/schema'
 export function openVaultDb(name: string, dek: Uint8Array): AppDB {
   const db = new AppDB(name, { vault: true, immutableCache: true })
   db.use(encryptionMiddleware(dek))
+  stashDek(db, dek)
   return db
 }
