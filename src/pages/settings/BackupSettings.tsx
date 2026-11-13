@@ -4,6 +4,7 @@ import type { BackupFolder } from '../../lib/fs/adapter'
 import type { SafetyTarget } from '../../lib/backup/service'
 import { PBKDF2_ITERATIONS } from '../../lib/backup/crypto'
 import { getCachedKey, getLastBackupAt, restoreFromBytes, runBackup, setupPassphrase } from '../../lib/backup/service'
+import * as reload from '../../lib/ui/reload'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function formatLocal(iso: string): string {
@@ -120,7 +121,9 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
       await restoreFromBytes(db, restoreFile.bytes, restorePass, { safety: await safetyTarget() })
       setRestoreFile(null)
       setRestorePass('')
-      return '복원했습니다.'
+      // 학급·명단·노트가 모두 바뀌었으니 화면을 새로 불러온다
+      setTimeout(() => reload.reloadApp(), 1200)
+      return '복원했습니다. 화면을 새로 불러옵니다.'
     })
   }
 
@@ -135,6 +138,7 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
       <form onSubmit={savePassphrase} className="stack">
         <h4>{hasKey ? '백업 암호구 변경' : '백업 암호구 설정'}</h4>
         <p className="muted">암호구를 잃으면 백업 파일을 복구할 수 없습니다. 종이 등에 적어 보관하세요.</p>
+        {hasKey && <p className="muted">암호구를 바꾸면 앞으로의 백업만 새 암호구를 씁니다. 이전 백업 파일은 예전 암호구로만 열립니다.</p>}
         <div className="row">
         <label>
           새 암호구
@@ -145,7 +149,7 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
           <input type="password" value={pass2} onChange={(e) => setPass2(e.target.value)} autoComplete="new-password" />
         </label>
         <button type="submit" className={hasKey ? undefined : 'primary'} disabled={busy}>
-          암호구 저장
+          {hasKey ? '암호구 바꾸기' : '암호구 저장'}
         </button>
         </div>
       </form>
