@@ -129,7 +129,7 @@ function createVaultHandlers(dir, safe) {
       return Buffer.from(await safe.encryptStringAsync(dekB64)).toString('base64')
     } catch { return undefined }
   }
-  // 풀기. shouldReEncrypt면 다시 풀어 새 값을 받고, 큐 안에서 같은 keyId일 때만 dpapi를 갈아 끼운다.
+  // 풀기. shouldReEncrypt면 다시 풀어 새 값을 받고, 큐 안에서 지금 dpapi가 방금 푼 그 blob과 같을 때만 dpapi를 갈아 끼운다.
   async function unwrap(b64) {
     try {
       if (!(await safe.isAsyncEncryptionAvailable())) return null
@@ -138,14 +138,13 @@ function createVaultHandlers(dir, safe) {
       let dek = first.result
       if (typeof dek !== 'string' || !dek) return null
       if (first.shouldReEncrypt) {
-        const startKeyId = (readVault(dir).vault || {}).keyId
         try {
           await queue(async () => {
             const cur = readVault(dir)
-            if (!cur.vault || cur.source !== 'main' || cur.vault.keyId !== startKeyId) return
+            if (!cur.vault || cur.source !== 'main' || cur.vault.dpapi !== b64) return
             const dp = await wrap(dek)
             const again = readVault(dir) // 감싸는 동안 바뀌었는지 다시 본다
-            if (!dp || !again.vault || again.source !== 'main' || again.vault.keyId !== startKeyId) return
+            if (!dp || !again.vault || again.source !== 'main' || again.vault.dpapi !== b64) return
             writeVaultAtomic(dir, { ...again.vault, dpapi: dp })
           })
         } catch { /* 재감싸기 실패는 열기를 막지 않는다 */ }

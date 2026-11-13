@@ -110,7 +110,6 @@ test('I1 재감싸기는 느려도 동시 store를 덮지 않는다(keyId 보호
   })
   const h = V2.createVaultHandlers(dir, slowSafe)
   await h.store(goodPayload())
-  const fresh = fakeSafe()
   const h2 = V2.createVaultHandlers(dir, { ...slowSafe, decryptStringAsync: slowSafe.decryptStringAsync })
   const p1 = h2.unlockDpapi()
   const newId = '9a2b3c4d-1111-4222-8333-444455556666'
@@ -118,7 +117,6 @@ test('I1 재감싸기는 느려도 동시 store를 덮지 않는다(keyId 보호
   await Promise.all([p1, p2])
   const r = V.readVault(dir)
   expect(r.vault.keyId).toBe(newId)
-  void fresh
 })
 test('I3 store는 렌더러의 dpapi를 버리고 safe로 채운다', async () => {
   const h = V2.createVaultHandlers(dir, fakeSafe())
@@ -181,4 +179,29 @@ test('I2 dbName은 watson-<keyId 앞 8자>와 같아야 한다', () => {
   expect(V.validStorePayload(goodPayload({ dbName: 'watson-deadbeef' }))).toBe(false)
   expect(V.validStorePayload(goodPayload({ keyId: '9a2b3c4d-1111-4222-8333-444455556666' }))).toBe(false)
   expect(V.validStorePayload(goodPayload({ keyId: '9a2b3c4d-1111-4222-8333-444455556666', dbName: 'watson-9a2b3c4d' }))).toBe(true)
+})
+
+test('I1b decrypt가 걸린 사이 새 store가 끝나면 재감싸기는 새 dpapi를 덮지 않는다', async () => {
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  let hold = false
+  const safe = fakeSafe({
+    decryptStringAsync: async (b: Buffer) => {
+      const out = { result: b.toString().replace(/^E:/, ''), shouldReEncrypt: true }
+      if (hold) await gate
+      return out
+    },
+  })
+  const h = V2.createVaultHandlers(dir, safe)
+  await h.store(goodPayload())
+  hold = true
+  const pending = h.unlockDpapi() // 옛 blob을 푸는 중
+  const newId = '9a2b3c4d-1111-4222-8333-444455556666'
+  const newDek = Buffer.alloc(32, 9).toString('base64')
+  await h.store(goodPayload({ keyId: newId, dbName: 'watson-9a2b3c4d', dekB64: newDek }))
+  const newDpapi = V.readVault(dir).vault.dpapi
+  release(); await pending
+  const v = V.readVault(dir).vault
+  expect(v.keyId).toBe(newId)
+  expect(v.dpapi).toBe(newDpapi)
 })
