@@ -5,7 +5,7 @@ import { useDb } from '../../app/context'
 import type { NoteRec } from '../../lib/db/types'
 import { createNote } from '../../lib/notes/notes'
 import { toYmd } from '../../lib/schoolDays'
-import NoticeTag, { shownTitle } from '../notes/NoticeTag'
+import { NoteIcon, shownTitle } from '../notes/NoticeTag'
 import { linkNoteToDate, noticeNoteOf, unlinkNoticeNote } from '../../lib/notices/noteSync'
 
 /** 최근 노트: 오늘·앞날짜 전달사항 노트 → 고정 → 최근에 고친 순(끌어서 정한 순서와 상관없이) 10개 */
@@ -39,8 +39,7 @@ export default function NoteBox({ notes, today = toYmd(new Date()) }: { notes: N
         {recentNotes(notes, today).map((n) => (
           <li key={n.id} className="notebox-item">
             <Link to={`/notes?id=${n.id}`} className="note-link notebox-row">
-              <span className="tree-ico" aria-hidden="true"><Icon name="doc" size={15} /></span>
-              <NoticeTag note={n} />
+              <NoteIcon note={n} />
               <span className="notebox-title">{shownTitle(n)}</span>
               {n.pinned && <Icon name="pin" size={12} />}
               <span className="notebox-peek muted pii">{n.blocks.map((b) => b.text ?? "").join(" ").trim().slice(0, 60)}</span>

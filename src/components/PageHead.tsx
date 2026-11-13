@@ -2,9 +2,10 @@ import { useLayoutEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 /** 화면 머리: 제목(+선택 한 줄 요약)과 같은 줄 오른쪽에 도구. 하위 탭의 도구도 HeadTools로 이 줄에 모은다. */
-export default function PageHead({ title, summary, children }: { title: ReactNode; summary?: ReactNode; children?: ReactNode }) {
+/** compact: 요약을 제목 옆 한 줄에, 도구는 제목 줄 높이에(내용이 위에서 시작) */
+export default function PageHead({ title, summary, children, compact }: { title: ReactNode; summary?: ReactNode; children?: ReactNode; compact?: boolean }) {
   return (
-    <div className="page-head">
+    <div className={`page-head${compact ? ' compact' : ''}`}>
       <div className="page-title">
         <h2>{title}</h2>
         {typeof summary === 'string' ? <span className="muted">{summary}</span> : summary}
