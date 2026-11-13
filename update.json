@@ -1,9 +1,9 @@
 {
-  "version": "0.18.0",
+  "version": "0.18.1",
   "shell": 1,
-  "bundle": "bundle-0.18.0.zip",
-  "sha256": "7a8961b6fb335ad3b910f23b39824f75818a296e87543a577e401e135a905c5b",
-  "sig": "lMb4i9DnF2csiQu7k+A58sE9dPyzOMMpJT8H5tVvo+P4C1BmVvzDQ+rv1ZLZ36cUElSGznA+TNI71A/IeFbyAQ==",
-  "note": "화면 정리: 아이콘·글자 크기 통일, 빈 화면 안내, 홈 명령 칩, 달력 일정 추가 접기, AI 가명 보완",
+  "bundle": "bundle-0.18.1.zip",
+  "sha256": "5c7429c7d730c42ffc73eb8e8b29370db4ac3bfc3777d7528cf24e3d3973f6b5",
+  "sig": "v9M5p8ZjeX457odxQDY0e+bOCrBACOImMJSa1izGlKQE936FcBY1D1JFrNuQBzA3vbGxTUEC6Yay9J2EFs41DQ==",
+  "note": "옛 exe 지킴이: 새 Watson(1.0) 자료가 있는 PC에서 옛 exe가 옛 자료를 열지 않게 함",
   "date": "2026-11-13"
 }
