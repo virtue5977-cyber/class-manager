@@ -8,15 +8,17 @@ import { currentSchoolYear } from '../lib/roster/schoolYear'
 import { getNeisKey, getSettings } from '../lib/settings'
 import { migrateBriefings } from '../lib/notices/notices'
 import { pruneChat } from '../lib/command/chatLog'
+import { cleanupOrphanFiles } from '../lib/notes/notes'
 import { addDays, toYmd } from '../lib/schoolDays'
 import { weekRange } from '../lib/neis/cache'
 
-/** 켤 때 한 번: 예전 조례·종례 → 전달사항 옮기기, 지난 학년도 대화 정리. */
+/** 켤 때 한 번: 예전 조례·종례 → 전달사항 옮기기, 지난 학년도 대화 정리, 안 쓰는 노트 첨부 비우기. */
 export default function StartupTasks() {
   const db = useDb()
   useEffect(() => {
     migrateBriefings(db).catch(() => {})
     pruneChat(db, toYmd(new Date())).catch(() => {})
+    cleanupOrphanFiles(db).catch(() => {})
   }, [db])
   // 나이스 자동 받기: 켜고 8초 뒤(첫 화면을 막지 않게), 켜 있는 동안 1시간마다 '받을 때가 됐는지' 확인.
   // 학사일정 7일마다(학년도 전체), 급식은 이번 주·다음 주, 시간표는 이번 주를 하루마다.

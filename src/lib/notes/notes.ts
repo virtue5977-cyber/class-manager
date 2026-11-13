@@ -5,8 +5,8 @@ import { syncNoteToNotices, unlinkNoticeNote } from '../notices/noteSync'
 import { toYmd } from '../schoolDays'
 
 export const MAX_FILE = 50 * 1024 * 1024
-/** 모든 노트 첨부 합계 한도(브라우저 저장 공간·백업 크기 보호) */
-export const MAX_TOTAL = 500 * 1024 * 1024
+/** 모든 노트 첨부 합계 한도(백업은 한 덩어리 글이라 base64로 커지는 만큼 여유를 둔다) */
+export const MAX_TOTAL = 150 * 1024 * 1024
 
 export const newBlockId = () => crypto.randomUUID().slice(0, 8)
 
@@ -29,10 +29,24 @@ export async function saveNoteContent(db: AppDB, id: string, content: Pick<NoteR
   })
   // 그날 전달사항과 짝인 노트면 전달사항도 맞춘다
   if (paired) await syncNoteToNotices(db, id)
-  // 블록에서 빠진 지 1분 넘은 첨부는 내용을 비운다(백업이 커지지 않게). 막 붙인 파일은 블록이 저장되기 전일 수 있어 기다린다.
-  const used = new Set(content.blocks.filter((b) => b.file_id).map((b) => b.file_id))
-  for (const f of await db.note_files.where('note_id').equals(id).toArray())
-    if (!f.deleted && !used.has(f.id) && Date.parse(f.created_at) < now - 60_000) await dropFile(db, f.id)
+  // 블록에서 빠진 첨부는 여기서 지우지 않는다(되돌리기·다른 노트에 붙여넣기). 앱을 켤 때 cleanupOrphanFiles가 정리한다.
+  void now
+}
+
+/** 어느 살아 있는 노트에서도 쓰지 않고 하루 넘은 첨부의 내용을 비운다(앱을 켤 때 한 번). 비운 개수. */
+export async function cleanupOrphanFiles(db: AppDB, now = Date.now()): Promise<number> {
+  const used = new Set<string>()
+  for (const n of await db.notes.toArray()) if (!n.deleted) for (const b of n.blocks) if (b.file_id) used.add(b.file_id)
+  let dropped = 0
+  const ids = (await db.note_files.toCollection().primaryKeys()) as string[]
+  for (const id of ids) {
+    if (used.has(id)) continue
+    const f = await db.note_files.get(id)
+    if (!f || f.deleted || Date.parse(f.created_at) > now - 86_400_000) continue
+    await dropFile(db, id)
+    dropped++
+  }
+  return dropped
 }
 
 /** 고정만 바꾼다(최신 노트 기준). */
@@ -83,7 +97,7 @@ export async function attachFile(db: AppDB, noteId: string, file: { name: string
   if (file.bytes.length > MAX_FILE) throw new Error('50MB까지 붙일 수 있습니다.')
   let used = 0
   await db.note_files.each((f) => { if (!f.deleted) used += f.size || 0 })
-  if (used + file.bytes.length > MAX_TOTAL) throw new Error(`첨부 파일은 모두 합쳐 500MB까지입니다(지금 ${Math.round(used / 1048576)}MB). 쓰지 않는 첨부를 지우세요.`)
+  if (used + file.bytes.length > MAX_TOTAL) throw new Error(`첨부 파일은 모두 합쳐 150MB까지입니다(지금 ${Math.round(used / 1048576)}MB). 쓰지 않는 첨부를 지우세요.`)
   const rec = newRecord({ note_id: noteId, name: file.name, mime: file.mime || 'application/octet-stream', size: file.bytes.length, data: toB64(file.bytes) }) as NoteFileRec
   await db.note_files.add(rec)
   return rec
