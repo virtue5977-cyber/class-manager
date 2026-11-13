@@ -142,7 +142,7 @@ test('전달사항 줄에서 @를 치면 노트 후보, 고르면 노트 링크(
   expect(box).toHaveValue('자세히는 @수학올림피아드 안내 ')
   await user.keyboard('{Enter}')
   await waitFor(async () => expect((await noticesOn(db, '2026-11-11')).find((n) => n.text.startsWith('자세히는'))?.parts).toEqual(['자세히는 ', { note: ref.id }]))
-  expect(await screen.findByRole('link', { name: '📄 수학올림피아드 안내' })).toHaveAttribute('href', `/notes?id=${ref.id}`)
+  expect(await screen.findByRole('link', { name: '@수학올림피아드 안내' })).toHaveAttribute('href', `/notes?id=${ref.id}`)
 })
 
 test('날짜 표시: 보고 있는 날 하루짜리는 날짜 없음, 여러 날은 오른쪽 끝에 기간. 날짜별 목록에서 다른 날을 보고 지운다', async () => {
@@ -171,4 +171,22 @@ test('전달사항 줄 왼쪽 손잡이(끌어서 순서 바꾸기)가 있다', 
   await setup()
   await screen.findByDisplayValue('체육복')
   expect(screen.getByRole('button', { name: '체육복 끌어서 순서 바꾸기' })).toBeInTheDocument()
+})
+
+test('@노트: 글 안의 "@새 노트"가 그대로 링크(따로 📄 칩 없음), 링크 밖을 누르면 고치기', async () => {
+  const user = userEvent.setup()
+  const { db } = await setup()
+  const { createNote } = await import('../../lib/notes/notes')
+  const { parseNoteParts } = await import('../../lib/notes/noteLinks')
+  const n = await createNote(db, '새 노트')
+  const text = '안내문은 @새 노트 확인'
+  await addNotice(db, { text, start_date: '2026-11-11', parts: parseNoteParts(text, [n]) })
+  const link = await screen.findByRole('link', { name: '@새 노트' })
+  expect(link).toHaveAttribute('href', `/notes?id=${n.id}`)
+  expect(screen.queryByText('📄 새 노트')).toBeNull()
+  const row = link.closest('li')!
+  await user.click(row.querySelector('.notice-view') as HTMLElement)
+  const box = row.querySelector('textarea.notice-text') as HTMLTextAreaElement
+  await waitFor(() => expect(box).toHaveFocus())
+  expect(box).toHaveValue(text)
 })
