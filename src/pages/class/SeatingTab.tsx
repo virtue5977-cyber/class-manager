@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { HeadTools } from '../../components/PageHead'
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
 import ExportMenu from '../../components/ExportMenu'
@@ -59,10 +60,12 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
   }
   function clickSeat(row: number, col: number) {
     const seat = seatAt(chart!.seats, row, col)!
-    if (picked) {
+    if (picked && !seat.disabled) {
       seatsChange(placeStudent(chart!.seats, picked, row, col))
       setPicked(null)
     } else if (seat.student_id) setPicked(seat.student_id)
+    // 빈자리를 누르면 책상 없음, 책상 없는 칸을 누르면 다시 놓기
+    else seatsChange(toggleDisabled(chart!.seats, row, col))
   }
   const dragProps = (sid: string) => ({
     draggable: true,
@@ -214,19 +217,17 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
                   className={`seat${seat.disabled ? ' off' : ''}${st ? ' taken' : ''}${seat.fixed ? ' fixed' : ''}${st && picked === st.id ? ' picked' : ''}`}
                   onDragOver={(e) => !seat.disabled && e.preventDefault()}
                   onDrop={(e) => dropOnSeat(e, r, c)}
-                  onClick={() => !seat.disabled && clickSeat(r, c)}
+                  onClick={() => clickSeat(r, c)}
+                  title={seat.disabled ? '누르면 책상 다시 놓기' : st ? undefined : '누르면 책상 없음'}
                   {...(st ? dragProps(st.id) : {})}
                 >
                   <span className="seat-name pii">{seat.disabled ? '' : st ? seatLabel(st) : ''}</span>
                   <span className="seat-tools">
                     {st && (
-                      <button type="button" aria-label={`${label} 고정`} aria-pressed={seat.fixed} onClick={(e) => { e.stopPropagation(); seatsChange(toggleFixed(chart.seats, r, c)) }}>
-                        📌
+                      <button type="button" className={`seat-pin${seat.fixed ? ' on' : ''}`} aria-label={`${label} 고정`} aria-pressed={seat.fixed} title={seat.fixed ? '고정 풀기' : '이 자리에 고정'} onClick={(e) => { e.stopPropagation(); seatsChange(toggleFixed(chart.seats, r, c)) }}>
+                        <Icon name="pin" size={13} />
                       </button>
                     )}
-                    <button type="button" aria-label={`${label} 책상 없음`} aria-pressed={seat.disabled} onClick={(e) => { e.stopPropagation(); seatsChange(toggleDisabled(chart.seats, r, c)) }}>
-                      ✕
-                    </button>
                   </span>
                 </div>
               )

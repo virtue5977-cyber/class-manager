@@ -1186,3 +1186,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; min-hei
 .good-view ol { margin: 4px 0 0; padding-left: 1.6em; }
 .good-view summary { cursor: pointer; }
 .good-save { border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* 자리: 고정 핀(단색), 빈자리는 눌러서 책상 없음↔놓기 */
+.seat:not(.taken) { cursor: pointer; }
+.seat-pin { color: var(--sub); background: transparent; border: 0; padding: 2px; }
+.seat-pin.on { color: var(--accent); }
+.seat.fixed .seat-tools { opacity: 1; }
