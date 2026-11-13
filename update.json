@@ -1,9 +1,9 @@
 {
-  "version": "0.17.0",
+  "version": "0.18.0",
   "shell": 1,
-  "bundle": "bundle-0.17.0.zip",
-  "sha256": "ac3b52cd681832423686a262810f4e3c46b81e73cac9c5ef5f7c98786ae6b842",
-  "sig": "yOSJ9lCiD6nC4zac1FGam0mv6/ZxO6uxCGKOJFU1ttWmpoDmjLH8Pd7u2irz9/ik95l762Tp5OwmjhgVE+B8AQ==",
-  "note": "안전 보강: 백업 형식·자동 백업·창 닫을 때 저장·개인정보 가리기 확대, HTML판 종료 안내",
+  "bundle": "bundle-0.18.0.zip",
+  "sha256": "7a8961b6fb335ad3b910f23b39824f75818a296e87543a577e401e135a905c5b",
+  "sig": "lMb4i9DnF2csiQu7k+A58sE9dPyzOMMpJT8H5tVvo+P4C1BmVvzDQ+rv1ZLZ36cUElSGznA+TNI71A/IeFbyAQ==",
+  "note": "화면 정리: 아이콘·글자 크기 통일, 빈 화면 안내, 홈 명령 칩, 달력 일정 추가 접기, AI 가명 보완",
   "date": "2026-11-13"
 }
