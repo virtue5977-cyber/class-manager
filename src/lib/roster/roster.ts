@@ -45,8 +45,10 @@ export async function listStudents(db: AppDB, classId: string, opts: { includeIn
 }
 
 /** AI로 보내기 전에 가릴 이름: 앱에 있는 모든 학생(다른 반·전출 포함, 지운 학생 제외). */
+/** AI·밖으로 보낼 때 가릴 이름: 모든 학생(지운 학생 포함)과 보호자 이름 */
 export async function allStudentNames(db: AppDB): Promise<string[]> {
-  return [...new Set((await db.students.toArray()).filter((s) => !s.deleted).map((s) => s.name))]
+  const all = await db.students.toArray()
+  return [...new Set(all.flatMap((s) => [s.name, s.guardian_name ?? '']).map((x) => x.trim()).filter(Boolean))]
 }
 
 export async function saveStudent(db: AppDB, classId: string, fields: StudentFields, id?: string): Promise<StudentRec> {

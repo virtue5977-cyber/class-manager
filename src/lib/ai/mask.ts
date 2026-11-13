@@ -6,6 +6,9 @@ export interface Masked {
   map: Record<string, string>
 }
 
+/** 주민등록번호(앞 6자리-뒤 7자리, 붙여 쓴 것도) */
+const RRN_RE = /\b\d{6}-?[1-4]\d{6}\b/g
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
 const PHONE_RE = /\+82[-. ]?\d{1,2}[-. ]?\d{3,4}[-. ]?\d{4}\b|\b01[016789][-. ]?\d{3,4}[-. ]?\d{4}\b|\b0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}\b|\b\d{3,4}-\d{4}\b/g
 /** 학번: "학번 1503", "1503번"처럼 학번으로 보이는 것만(연도·금액은 그대로) */
 const STUDENT_NO_RE = /(?<=학번\s*:?\s*)\d{4,5}\b|\b\d{4,5}(?=번)/g
@@ -51,8 +54,19 @@ export function nameForms(full: string): string[] {
 export function maskText(text: string, names: string[], map: Record<string, string> = {}): Masked {
   const out: Record<string, string> = { ...map }
   const reverse = new Map(Object.entries(out).map(([k, v]) => [v, k]))
-  let n = { phone: Object.keys(out).filter((k) => k.startsWith('[전화')).length, no: Object.keys(out).filter((k) => k.startsWith('[번호')).length }
-  let s = text.replace(PHONE_RE, (m) => {
+  const count = (p: string) => Object.keys(out).filter((k) => k.startsWith(p)).length
+  let n = { phone: count('[전화'), no: count('[번호'), rrn: count('[주민'), mail: count('[메일') }
+  let s = text.replace(RRN_RE, (m) => {
+    const t = `[주민${++n.rrn}]`
+    out[t] = m
+    return t
+  })
+  s = s.replace(EMAIL_RE, (m) => {
+    const t = `[메일${++n.mail}]`
+    out[t] = m
+    return t
+  })
+  s = s.replace(PHONE_RE, (m) => {
     const t = `[전화${++n.phone}]`
     out[t] = m
     return t
@@ -121,4 +135,9 @@ export function hideNames(text: string, names: string[]): string {
   let s = text
   for (const f of forms) s = s.replace(new RegExp(escapeRe(f), 'g'), '○○')
   return s.replace(/○○이(?=[가는를와랑의도에])/g, '○○')
+}
+
+/** 밖(구글 캘린더 등)으로 보내는 글: 이름은 ○○, 전화·주민번호·메일은 [전화]·[주민]·[메일](되돌리지 않음). */
+export function hideForExport(text: string, names: string[]): string {
+  return hideNames(text.replace(RRN_RE, '[주민]').replace(EMAIL_RE, '[메일]').replace(PHONE_RE, '[전화]'), names)
 }

@@ -100,3 +100,15 @@ test('엑셀 올리기: 추가 칸 값(extra)은 합쳐 저장, 빈 칸은 있�
   await upsertRosterRows(db, c.id, [{ number: 2, fields: { name: '다라', extra: { x_aaaaaaaa: '달걀' } } }])
   expect((await listStudents(db, c.id))[1].extra).toEqual({ x_aaaaaaaa: '달걀' })
 })
+
+test('가릴 이름(allStudentNames): 지운 학생 이름과 보호자 이름도 넣는다', async () => {
+  const { createDb } = await import('../db/schema')
+  const { createClass, emptyStudent, saveStudent, deleteStudent, allStudentNames } = await import('./roster')
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  const a = await saveStudent(db, c.id, { ...emptyStudent(1, '김민수'), guardian_name: '이영희' })
+  const b = await saveStudent(db, c.id, emptyStudent(2, '박지훈'))
+  await deleteStudent(db, b.id)
+  void a
+  expect((await allStudentNames(db)).sort()).toEqual(['김민수', '박지훈', '이영희'])
+})
