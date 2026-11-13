@@ -198,3 +198,14 @@ test('리뷰 고침: 학생이 연결된 할 일을 고쳐도 학생 연결은 �
   await user.type(box, ' 걷기{Enter}')
   await waitFor(async () => expect((await db.todos.toArray())[0].parts).toEqual([{ student: st.id }, ' 동의서 걷기']))
 })
+
+test('대화가 비었으면 자주 쓰는 명령 칩, 누르면 입력칸에 채우고 커서를 둔다', async () => {
+  const user = userEvent.setup()
+  ;(await home()).show()
+  await waitFor(() => expect(screen.getByLabelText('명령 입력')).toBeEnabled())
+  const chips = await screen.findByRole('group', { name: '자주 쓰는 명령' })
+  await user.click(within(chips).getByRole('button', { name: '/출결' }))
+  const box = screen.getByLabelText('명령 입력')
+  expect(box).toHaveValue('/출결 ')
+  await waitFor(() => expect(box).toHaveFocus())
+})

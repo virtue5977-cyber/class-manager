@@ -1,5 +1,6 @@
 import Icon from '../../components/Icon'
 import { registerFlush } from '../../lib/ui/flush'
+import EmptyState from '../../components/EmptyState'
 import AudioDrop from './AudioDrop'
 import { appendTranscript } from '../../lib/stt/stt'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -506,6 +507,10 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
   }
   return (
     <section className="stack wide all-logs" aria-label="전체 누가기록">
+      {all.length === 0 ? (
+        <EmptyState title="아직 누가기록이 없습니다" hint="왼쪽에서 학생을 골라 첫 기록을 쓰거나, 홈에서 /상담 · /관찰 명령을 쓰세요." />
+      ) : (
+      <>
       <div className="row log-toolbar">
         <label className="inline">
           종류
@@ -581,6 +586,8 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
             })}
           </tbody>
         </table>
+      )}
+      </>
       )}
     </section>
   )

@@ -11,8 +11,19 @@ import ResultCard from './ResultCard'
 import { usePending } from '../../lib/command/pending'
 import TypingBubble from './TypingBubble'
 
+/** 대화가 비었을 때 보이는 자주 쓰는 명령(누르면 입력칸에 채움) */
+const QUICK = [
+  { text: '/출결', hint: '/출결 @3 결석 질병 감기' },
+  { text: '/결석', hint: '/결석 @3 내일 감기' },
+  { text: '/상담', hint: '/상담 @3 오늘 교실 메모' },
+  { text: '/일정', hint: '/일정 금요일 학부모 상담' },
+  { text: '/할일', hint: '/할일 가정통신문 걷기' },
+  { text: '!전달', hint: '!전달 학부모 내일 준비물' },
+  { text: '/설명서', hint: '명령 전체 설명' },
+]
+
 /** 대화 기록: 지금 대화 묶음의 내 입력(오른쪽)과 결과 카드(왼쪽). 이번 학년도만. 지난 대화는 왼쪽 메뉴 '최근 대화'. */
-export default function ChatLog({ today, onRun }: { today: string; onRun: (input: string) => void }) {
+export default function ChatLog({ today, onRun, onPick }: { today: string; onRun: (input: string) => void; onPick?: (text: string) => void }) {
   const db = useDb()
   const thread = useCurrentThread()
   const [askClear, setAskClear] = useState(false)
@@ -25,7 +36,20 @@ export default function ChatLog({ today, onRun }: { today: string; onRun: (input
   }, [list.length, waiting.length])
   return (
     <section className="chat-log" aria-label="대화 기록">
-      {list.length === 0 && waiting.length === 0 && <p className="muted chat-empty"><b>/</b> 빠른 실행(예: /출결 @3 결석 질병) · <b>!</b> AI 실행(예: !전달 학부모, !일정, ! 뒤에 공문 붙여넣기) · <b>@</b> 학생·노트 · 질문은 그냥 쓰세요. 모르면 <b>/설명서</b></p>}
+      {list.length === 0 && waiting.length === 0 && (
+        <div className="chat-empty">
+          <p className="muted"><b>/</b> 빠른 실행 · <b>!</b> AI 실행 · <b>@</b> 학생·노트 · 질문은 그냥 쓰세요.</p>
+          {onPick && (
+            <div className="row chip-row" role="group" aria-label="자주 쓰는 명령">
+              {QUICK.map((q) => (
+                <button key={q.text} type="button" className="chip" title={q.hint} onClick={() => onPick(q.text + ' ')}>
+                  {q.text}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {list.map((c, i) => {
         const day = toYmd(new Date(c.at))
         const prev = list[i - 1] ? toYmd(new Date(list[i - 1].at)) : ''

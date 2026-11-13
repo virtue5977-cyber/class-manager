@@ -302,3 +302,17 @@ test('기록 지우기는 한 번 더 묻는다(취소하면 남음)', async () 
   await user.click(within(within(card).getByRole('group', { name: '기록 지우기 확인' })).getByRole('button', { name: '지우기' }))
   await waitFor(async () => expect(await listLogsByStudent(db, s.id)).toHaveLength(0))
 })
+
+test('기록이 하나도 없으면 거르기 줄 대신 첫 기록 안내', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  const all = await screen.findByRole('region', { name: '전체 누가기록' })
+  expect(await within(all).findByText('아직 누가기록이 없습니다')).toBeInTheDocument()
+  expect(within(all).queryByLabelText('종류')).toBeNull()
+})
