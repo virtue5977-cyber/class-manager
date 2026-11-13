@@ -1,9 +1,9 @@
 {
-  "version": "0.16.2",
+  "version": "0.17.0",
   "shell": 1,
-  "bundle": "bundle-0.16.2.zip",
-  "sha256": "b1d7a7caf40717c513904eaed093935ff9b4ed98d10b7104aa8af1c02548782d",
-  "sig": "9aDXZ7Oi5ve3eZj42ADhnpxS0Rd14wgXNi1pxN3o8P/nFwnkPWexwg3VvVt9yLVPn7isAgtQ9sCsx1tIsXYYDw==",
-  "note": "노트 편집기를 화면 맨 위에서 시작(새 노트·내보내기를 편집기 머리로)",
+  "bundle": "bundle-0.17.0.zip",
+  "sha256": "ac3b52cd681832423686a262810f4e3c46b81e73cac9c5ef5f7c98786ae6b842",
+  "sig": "yOSJ9lCiD6nC4zac1FGam0mv6/ZxO6uxCGKOJFU1ttWmpoDmjLH8Pd7u2irz9/ik95l762Tp5OwmjhgVE+B8AQ==",
+  "note": "안전 보강: 백업 형식·자동 백업·창 닫을 때 저장·개인정보 가리기 확대, HTML판 종료 안내",
   "date": "2026-11-13"
 }
