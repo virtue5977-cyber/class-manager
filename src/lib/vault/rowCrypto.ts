@@ -7,7 +7,12 @@ const enc = new TextEncoder()
 const dec = new TextDecoder('utf-8', { fatal: true })
 
 /** 형식 v1: 0x01 ‖ iv(12) ‖ AES-256-GCM(암호문+태그). 동기식. */
+function checkKey(key: Uint8Array): void {
+  if (key.length !== 32) throw new TypeError('열쇠는 32바이트(AES-256)여야 합니다')
+}
+
 export function encryptBytes(key: Uint8Array, plain: Uint8Array, aad: string): Uint8Array {
+  checkKey(key)
   const iv = crypto.getRandomValues(new Uint8Array(IV_LEN))
   const ct = gcm(key, iv, enc.encode(aad)).encrypt(plain)
   const out = new Uint8Array(1 + IV_LEN + ct.length)
@@ -18,6 +23,7 @@ export function encryptBytes(key: Uint8Array, plain: Uint8Array, aad: string): U
 }
 
 export function decryptBytes(key: Uint8Array, sealed: Uint8Array, aad: string): Uint8Array {
+  checkKey(key)
   if (sealed.length < 1 + IV_LEN + 16) throw new Error('암호문이 너무 짧습니다')
   if (sealed[0] !== VERSION) throw new Error(`지원하지 않는 암호문 판: ${sealed[0]}`)
   const iv = sealed.subarray(1, 1 + IV_LEN)
@@ -34,6 +40,7 @@ export function sealRow(
   key: Uint8Array,
   plain: ReadonlySet<string>,
 ): Record<string, unknown> {
+  if (row.id == null) throw new TypeError('id 없는 행은 암호화할 수 없습니다')
   const out: Record<string, unknown> = {}
   for (const f of plain) if (f in row && row[f] !== undefined) out[f] = row[f]
   const { _enc: _drop, ...whole } = row

@@ -24,6 +24,10 @@ describe('canonicalJson', () => {
     expect(() => canonicalJson({ k: NaN })).toThrow(TypeError)
     expect(() => canonicalJson({ k: Infinity })).toThrow(TypeError)
   })
+  it('성긴 배열 구멍은 null로 쓴다', () => {
+    // eslint-disable-next-line no-sparse-arrays
+    expect(canonicalJson([, 1])).toBe('[null,1]')
+  })
   it('sha256Hex', () => {
     expect(sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
   })

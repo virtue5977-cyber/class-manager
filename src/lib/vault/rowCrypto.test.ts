@@ -50,4 +50,19 @@ describe('rowCrypto', () => {
     expect(openRow('t', { id: 1 }, k, PLAIN)).toEqual({ id: 1, _broken: true })
     expect(openRow('t', { id: 1, _enc: new Uint8Array(3) }, k, PLAIN)).toEqual({ id: 1, _broken: true })
   })
+  it('성긴 배열 칸 왕복', () => {
+    const k = key()
+    // eslint-disable-next-line no-sparse-arrays
+    const r = { id: 1, list: [, 2] }
+    const o = openRow('t', sealRow('t', r, k, PLAIN), k, PLAIN)
+    expect(o).toEqual({ id: 1, list: [null, 2] })
+  })
+  it('열쇠 길이가 32가 아니면 TypeError', () => {
+    expect(() => encryptBytes(new Uint8Array(16), new Uint8Array(1), 'a')).toThrow()
+    expect(() => decryptBytes(new Uint8Array(31), new Uint8Array(40), 'a')).toThrow()
+  })
+  it('id 없는 행은 암호화 불가', () => {
+    expect(() => sealRow('t', { name: 'x' }, key(), PLAIN)).toThrow('id 없는 행은 암호화할 수 없습니다')
+    expect(() => sealRow('t', { id: null }, key(), PLAIN)).toThrow(TypeError)
+  })
 })

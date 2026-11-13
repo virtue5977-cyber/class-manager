@@ -37,7 +37,11 @@ function ser(v: unknown): string {
       if (!Number.isFinite(v)) throw new TypeError(`저장할 수 없는 값: ${v}`)
       return JSON.stringify(v)
     case 'object': {
-      if (Array.isArray(v)) return '[' + v.map((x) => (x === undefined ? 'null' : ser(x))).join(',') + ']'
+      if (Array.isArray(v)) {
+        const items: string[] = []
+        for (let i = 0; i < v.length; i++) items.push(v[i] === undefined ? 'null' : ser(v[i]))
+        return '[' + items.join(',') + ']'
+      }
       if (v instanceof Uint8Array) return '{"$u8":"' + bytesToB64(v) + '"}'
       if (!isPlainObject(v)) throw new TypeError(`저장할 수 없는 값: ${label(v)}`)
       const o = v as Record<string, unknown>
