@@ -124,3 +124,13 @@ test('/설명서 → 명령·스킬·단축키 안내 카드', async () => {
   expect(d.sections[0].rows.some((x) => x.keys === '/출결')).toBe(true)
   expect(d.sections[1].rows.some((x) => x.keys === '!상담')).toBe(true)
 })
+
+test('/내보내기 통계 엑셀: 받은 화면이 없으면 내보냈다고 하지 않는다', async () => {
+  const { EXPORT_WAIT } = await import('../ui/exportRequest')
+  const keep = EXPORT_WAIT.ms
+  EXPORT_WAIT.ms = 30
+  const { env, ctx } = await setup()
+  const r = await executeInput('/내보내기 통계 엑셀', ctx, env)
+  expect(r.chat.summary).toContain('내보내지 못했습니다')
+  EXPORT_WAIT.ms = keep
+})

@@ -208,8 +208,13 @@ export const HANDLERS: Record<string, Handler> = {
       const f = exportFormatOf(p.rest ?? '')
       env.navigate(to)
       if (f) {
-        requestExport(to, f)
-        return { summary: `${p.sub} ${f === 'print' ? '인쇄 창을 열었습니다' : `${FORMAT_WORD[f]} 파일로 내보냈습니다`}.`, links: [{ label: p.sub!, to }] }
+        // 그 화면이 실제로 내보낸 뒤에 결과를 말한다(받지 못했거나 실패하면 그대로)
+        const r = await requestExport(to, f)
+        const what = f === 'print' ? '인쇄' : `${FORMAT_WORD[f]} 파일`
+        return {
+          summary: r.ok ? `${p.sub} ${f === 'print' ? '인쇄 창을 열었습니다' : `${FORMAT_WORD[f]} 파일로 내보냈습니다`}.` : `${p.sub}을(를) ${what}로 내보내지 못했습니다${r.message ? `: ${r.message}` : '.'}`,
+          links: [{ label: p.sub!, to }],
+        }
       }
       env.openExport?.()
       return { summary: `${p.sub} 화면의 내보내기 메뉴를 열었습니다. 형식도 쓰면 바로 됩니다(예: /내보내기 ${p.sub} 엑셀).`, links: [{ label: p.sub!, to }] }
