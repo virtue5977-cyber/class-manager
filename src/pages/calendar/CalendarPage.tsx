@@ -219,6 +219,13 @@ function AddEvent({ date, onAdded }: { date: string; onAdded: () => void }) {
   const [time, setTime] = useState('')
   const [tag, setTag] = useState<'개인' | '업무'>('업무')
   const [err, setErr] = useState<string>()
+  const [open, setOpen] = useState(false)
+  if (!open)
+    return (
+      <button type="button" className="cal-add-open" onClick={() => setOpen(true)}>
+        + 일정 추가
+      </button>
+    )
   return (
     <form
       className="stack cal-add"
@@ -237,8 +244,14 @@ function AddEvent({ date, onAdded }: { date: string; onAdded: () => void }) {
         }
       }}
     >
-      <strong>일정 추가</strong>
-      <input aria-label="일정 제목" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
+      <div className="row">
+        <strong>일정 추가</strong>
+        <span className="spacer" />
+        <button type="button" className="link" onClick={() => setOpen(false)}>
+          닫기
+        </button>
+      </div>
+      <input aria-label="일정 제목" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" />
       <div className="row">
         <input type="date" aria-label="날짜" value={day} onChange={(e) => setDay(e.target.value)} />
         <span className="muted">~</span>

@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { HeadTools } from '../../components/PageHead'
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
 import ExportMenu from '../../components/ExportMenu'
@@ -118,13 +119,13 @@ export default function CleaningTab({ classRec }: { classRec: ClassRec }) {
                   <input aria-label={`${i + 1}번째 열 이름`} value={c.name} onChange={(e) => setChart(renameColumn(chart, c.id, e.target.value))} onBlur={() => commit(chart)} />
                   <span className="col-tools">
                     <button type="button" aria-label={`${c.name} 왼쪽으로`} onClick={() => commit(moveColumn(chart, c.id, -1))}>
-                      ◀
+                      <Icon name="chevronLeft" size={14} />
                     </button>
                     <button type="button" aria-label={`${c.name} 오른쪽으로`} onClick={() => commit(moveColumn(chart, c.id, 1))}>
-                      ▶
+                      <Icon name="chevronRight" size={14} />
                     </button>
                     <button type="button" aria-label={`${c.name} 열 지우기`} onClick={() => commit(removeColumn(chart, c.id))}>
-                      ✕
+                      <Icon name="close" size={14} />
                     </button>
                   </span>
                 </th>
@@ -178,13 +179,13 @@ export default function CleaningTab({ classRec }: { classRec: ClassRec }) {
                 )}
                 <td className="row-tools">
                   <button type="button" aria-label={`${ri + 1}번째 줄 위로`} onClick={() => commit(moveRow(chart, r.id, -1))}>
-                    ▲
+                    <Icon name="chevronUp" size={14} />
                   </button>
                   <button type="button" aria-label={`${ri + 1}번째 줄 아래로`} onClick={() => commit(moveRow(chart, r.id, 1))}>
-                    ▼
+                    <Icon name="chevronDown" size={14} />
                   </button>
                   <button type="button" aria-label={`${ri + 1}번째 줄 지우기`} onClick={() => commit(removeRow(chart, r.id))}>
-                    ✕
+                    <Icon name="close" size={14} />
                   </button>
                 </td>
               </tr>

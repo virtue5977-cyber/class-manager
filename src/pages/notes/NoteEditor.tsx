@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { registerFlush } from '../../lib/ui/flush'
 import { useDb, useFs } from '../../app/context'
@@ -860,19 +861,19 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
                 <hr />
               ) : b.type === 'file' ? (
                 <button type="button" className="nb-file" onClick={async () => { const f = await readFile(db, b.file_id!); fs.downloadFile(f.name, f.bytes) }}>
-                  {`📎 ${fileInfo[b.file_id!]?.name ?? '첨부 파일'} (${fmtSize(fileInfo[b.file_id!]?.size ?? 0)})`}
+                  <Icon name="paperclip" size={14} /> {`${fileInfo[b.file_id!]?.name ?? '첨부 파일'} (${fmtSize(fileInfo[b.file_id!]?.size ?? 0)})`}
                 </button>
               ) : b.type === 'folder' ? (
                 <div className="nb-folder">
                   <button type="button" className="link" onClick={async () => { const br = getFolderBridge(); if (!br) return setMsg(NEED_EXE); try { await br.open(b.path!) } catch (e) { setMsg(e instanceof Error ? e.message : String(e)) } }}>
-                    {`📁 ${b.path}`}
+                    <Icon name="folder" size={14} /> {b.path}
                   </button>
                   <button type="button" className="link muted" onClick={async () => { const br = getFolderBridge(); if (!br) return setMsg(NEED_EXE); try { setFolderList((m) => ({ ...m, [b.id]: [] })); const l = await br.list(b.path!); setFolderList((m) => ({ ...m, [b.id]: l })) } catch (e) { setMsg(e instanceof Error ? e.message : String(e)) } }}>
                     안의 파일 보기
                   </button>
                   {folderList[b.id] && (
                     <ul className="plain nb-folder-list">
-                      {folderList[b.id].map((x) => <li key={x.name}>{`${x.dir ? '📁' : '·'} ${x.name}`}</li>)}
+                      {folderList[b.id].map((x) => <li key={x.name}>{x.dir ? <Icon name="folder" size={12} /> : '·'} {x.name}</li>)}
                     </ul>
                   )}
                 </div>

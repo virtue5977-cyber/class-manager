@@ -121,6 +121,9 @@ test('달력에 내 일정(태그) 추가·지우기, 구글로 보낼 목록에
   expect(await within(await screen.findByRole('gridcell', { name: '11월 13일' })).findByText('병원')).toHaveClass('cal-tag-개인')
   await user.click(screen.getByRole('gridcell', { name: '11월 12일' }))
   const side = screen.getByRole('complementary', { name: '고른 날' })
+  // 일정 추가 칸은 접혀 있다가 눌러 펼친다
+  expect(within(side).queryByLabelText('일정 제목')).toBeNull()
+  await user.click(within(side).getByRole('button', { name: '+ 일정 추가' }))
   await user.type(within(side).getByLabelText('일정 제목'), '학년 협의회')
   await user.type(within(side).getByLabelText('시각'), '15:30')
   await user.selectOptions(within(side).getByLabelText('태그'), '업무')
@@ -145,6 +148,7 @@ test('일정 추가에서 날짜(와 끝 날짜)를 직접 고를 수 있다(고
   )
   await user.click(await screen.findByRole('gridcell', { name: '11월 12일' }))
   const side = screen.getByRole('complementary', { name: '고른 날' })
+  await user.click(within(side).getByRole('button', { name: '+ 일정 추가' }))
   const day = within(side).getByLabelText('날짜')
   expect(day).toHaveValue('2026-11-12')
   await user.clear(day)

@@ -364,8 +364,8 @@ export default function NoticeTab({ date: home }: { date: string }) {
             <button type="button" className={`icon-btn${n.pinned ? ' on' : ''}`} aria-label={`${n.text} 고정`} aria-pressed={n.pinned} onClick={() => act(() => updateNotice(db, n.id, { pinned: !n.pinned }))}>
               <Icon name="pin" size={14} />
             </button>
-            <button type="button" className="icon-btn" aria-label={`${n.text} 위로`} disabled={i === 0} onClick={() => act(() => moveNotice(db, date, n.id, -1))}>↑</button>
-            <button type="button" className="icon-btn" aria-label={`${n.text} 아래로`} disabled={i === list.length - 1} onClick={() => act(() => moveNotice(db, date, n.id, 1))}>↓</button>
+            <button type="button" className="icon-btn" aria-label={`${n.text} 위로`} disabled={i === 0} onClick={() => act(() => moveNotice(db, date, n.id, -1))}><Icon name="arrowUp" size={14} /></button>
+            <button type="button" className="icon-btn" aria-label={`${n.text} 아래로`} disabled={i === list.length - 1} onClick={() => act(() => moveNotice(db, date, n.id, 1))}><Icon name="arrowDown" size={14} /></button>
             <button type="button" className="icon-btn" aria-label={`${n.text} 지우기`} onClick={() => act(async () => setUndo({ text: n.text, run: await deleteNotice(db, n.id) }))}>×</button>
             </span>
             <button type="button" className="notice-period link" aria-label={`${n.text} 기간 고치기`} onClick={() => setRangeFor(rangeFor === n.id ? undefined : n.id)}>

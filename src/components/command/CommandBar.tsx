@@ -1,3 +1,4 @@
+import Icon from '../Icon'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { applySuggestion, suggest, type Suggestion } from '../../lib/command/suggest'
 import { describe, parseCommand } from '../../lib/command/parse'
@@ -108,7 +109,7 @@ export default function CommandBar({ onRan, autoFocus, onEscape, inputRef, today
         <ul className="suggest" role="listbox" aria-label="자동완성">
           {list.map((s, i) => (
             <li key={s.kind + s.label} role="option" aria-selected={i === sel} className={i === sel ? 'on' : undefined} onMouseDown={(e) => (e.preventDefault(), pick(s))}>
-              <span className={`sg-kind sg-${s.kind}`} aria-hidden="true">{s.kind === 'note' ? '📄' : s.kind === 'student' ? '@' : s.kind === 'cmd' ? '' : s.kind === 'tag' ? '#' : '·'}</span>
+              <span className={`sg-kind sg-${s.kind}`} aria-hidden="true">{s.kind === 'note' ? <Icon name="note" size={14} /> : s.kind === 'student' ? '@' : s.kind === 'cmd' ? '' : s.kind === 'tag' ? '#' : '·'}</span>
               <span className="pii">{s.label}</span>
               {s.detail && <span className="muted">{s.detail}</span>}
             </li>

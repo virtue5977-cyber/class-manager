@@ -50,12 +50,17 @@ export default function SettingsPage({ backupIterations }: { backupIterations?: 
           </button>
         ))}
       </div>
+      {Object.values(todo).some(Boolean) && (
+        <p className="muted todo-legend">
+          <span className="todo-dot" aria-hidden="true" /> 설정할 것이 남은 메뉴
+        </p>
+      )}
       <div className="stack gap settings-body" role="tabpanel">
         {tab === 'backup' && (
           <>
             {!isDesktopApp() && (
               <p className="banner" role="note">
-                브라우저(HTML) 버전입니다. 이 방식은 같은 노트북에서 연 다른 HTML 파일이 앱 자료를 읽을 수 있어 학생 자료 보호가 약합니다. 학생 자료는 설치형(Windows 앱)에서 쓰고, HTML 버전은 잠깐 볼 때만 쓰세요.
+                브라우저에서 열린 판입니다. HTML판은 0.17로 끝났고 학생 자료 보호가 약합니다. 학생 자료는 설치형(Windows 앱)에서 쓰세요.
               </p>
             )}
             <PinSettings />

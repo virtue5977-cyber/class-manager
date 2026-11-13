@@ -1,3 +1,4 @@
+import { GUARDIAN_PREFIX } from '../ai/mask'
 import type { AppDB } from '../db/schema'
 import { listActive, newRecord, save, softDelete } from '../db/records'
 import type { BaseRecord, ClassRec, StudentRec } from '../db/types'
@@ -45,10 +46,12 @@ export async function listStudents(db: AppDB, classId: string, opts: { includeIn
 }
 
 /** AI로 보내기 전에 가릴 이름: 앱에 있는 모든 학생(다른 반·전출 포함, 지운 학생 제외). */
-/** AI·밖으로 보낼 때 가릴 이름: 모든 학생(지운 학생 포함)과 보호자 이름 */
+/** AI·밖으로 보낼 때 가릴 이름: 모든 학생(지운 학생 포함)과 보호자 이름. 보호자는 '보호자:' 표를 붙여 가명이 보호자A가 된다. */
 export async function allStudentNames(db: AppDB): Promise<string[]> {
   const all = await db.students.toArray()
-  return [...new Set(all.flatMap((s) => [s.name, s.guardian_name ?? '']).map((x) => x.trim()).filter(Boolean))]
+  const students = all.map((s) => s.name.trim()).filter(Boolean)
+  const guardians = all.map((s) => (s.guardian_name ?? '').trim()).filter((g) => g && !students.includes(g)).map((g) => GUARDIAN_PREFIX + g)
+  return [...new Set([...students, ...guardians])]
 }
 
 export async function saveStudent(db: AppDB, classId: string, fields: StudentFields, id?: string): Promise<StudentRec> {

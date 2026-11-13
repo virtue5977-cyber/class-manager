@@ -162,7 +162,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       <span className="tree-twisty" aria-hidden="true" />
       <NoteIcon note={n} />
       <Link to={`/notes?id=${n.id}`} draggable={false} className="tree-title" title={shownTitle(n)}>{shownTitle(n)}</Link>
-      {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음">📎</span>}
+      {n.blocks.some((b) => b.type === 'file') && <span title="첨부 있음" aria-label="첨부 있음"><Icon name="paperclip" size={13} /></span>}
       {n.pinned && <span className="tree-pinned" aria-hidden="true"><Icon name="pin" size={12} /></span>}
       {/* 마우스를 올리면 오른쪽이 흐려지며 도구가 뜬다(제목이 …로 잘리지 않게 자리를 차지하지 않음) */}
       <span className="hover-tools">
@@ -191,7 +191,7 @@ export default function NotesPage({ today = toYmd(new Date()) }: { today?: strin
       const open = openF.has(f.id)
       return [
         <li key={`f-${f.id}`} data-kind="folder" data-id={f.id} data-parent={f.parent ?? ''} className={`folder-item tree-row${folder === f.id ? ' on' : ''}${drop?.kind === 'into' && drop.id === f.id ? ' drop' : ''}${drag?.id === f.id ? ' dragging' : ''}`} style={{ paddingLeft: 4 + depth * 16 }} onPointerDown={(e) => edit?.id !== f.id && beginDrag(e, 'folder', f.id)}>
-          <button type="button" className="icon-btn folder-twisty tree-twisty" aria-label={`${f.name} ${open ? '접기' : '펴기'}`} aria-expanded={open} onClick={() => toggleF(f.id)}>{open ? '▾' : '▸'}</button>
+          <button type="button" className="icon-btn folder-twisty tree-twisty" aria-label={`${f.name} ${open ? '접기' : '펴기'}`} aria-expanded={open} onClick={() => toggleF(f.id)}><Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} /></button>
           <span className="tree-ico" aria-hidden="true"><Icon name="folder" size={15} /></span>
           {edit?.id === f.id ? (
             <input

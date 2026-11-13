@@ -1,4 +1,6 @@
+import Icon from '../../components/Icon'
 import { registerFlush } from '../../lib/ui/flush'
+import EmptyState from '../../components/EmptyState'
 import AudioDrop from './AudioDrop'
 import { appendTranscript } from '../../lib/stt/stt'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -203,7 +205,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
           {!student && classId && <AllLogs students={students} today={today} onOpen={(sid) => { setSelected(sid); setMessages([]) }} />}
           {student && (
             <>
-              <button type="button" className="link back-all" onClick={() => setSelected(undefined)}>← 전체 기록</button>
+              <button type="button" className="link back-all" onClick={() => setSelected(undefined)}><Icon name="arrowLeft" size={14} /> 전체 기록</button>
               <div className="page-head">
                 <div className="pii">
                   <h3 style={{ fontSize: 18, margin: 0 }}>{`${student.number}번 ${student.name}`}</h3>
@@ -424,7 +426,7 @@ function LogCard(p: {
       )}
       {p.warnings.map((w) => (
         <p key={w} className="warn">
-          {`⚠ ${w}`}
+          <Icon name="alert" size={14} /> {w}
         </p>
       ))}
       <div className="row log-actions">
@@ -482,7 +484,8 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
   const fs = useFs()
   const alertOff = useLive<boolean>(async () => !!(await db.app_settings.get(APP_SETTINGS_ID))?.nuga_alert_off, [db], false)
   const ids = students.map((s) => s.id)
-  const all = useLive<CounselingLogRec[]>(() => listAllLogs(db, ids), [db, ids.join(',')], [])
+  const loaded = useLive<CounselingLogRec[] | undefined>(() => listAllLogs(db, ids), [db, ids.join(',')], undefined)
+  const all = loaded ?? []
   const [kind, setKind] = useState<KindFilter>('전체')
   const [sid, setSid] = useState('')
   const [from, setFrom] = useState('')
@@ -505,6 +508,10 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
   }
   return (
     <section className="stack wide all-logs" aria-label="전체 누가기록">
+      {!loaded ? null : all.length === 0 ? (
+        <EmptyState title="아직 누가기록이 없습니다" hint="왼쪽에서 학생을 골라 첫 기록을 쓰거나, 홈에서 /상담 · /관찰 명령을 쓰세요." />
+      ) : (
+      <>
       <div className="row log-toolbar">
         <label className="inline">
           종류
@@ -580,6 +587,8 @@ function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: s
             })}
           </tbody>
         </table>
+      )}
+      </>
       )}
     </section>
   )

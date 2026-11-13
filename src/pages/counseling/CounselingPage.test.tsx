@@ -226,7 +226,7 @@ test('기본 화면은 학급 전체 누가기록(종류·학생 거르기), 관
   expect(within(all).getAllByRole('row')).toHaveLength(2)
   expect(within(all).getAllByRole('row')[1]).toHaveTextContent('진로 상담')
   await user.click(within(all).getByText('진로 상담'))
-  expect(await screen.findByRole('button', { name: '← 전체 기록' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: '전체 기록' })).toBeInTheDocument()
   // 새 기록에서 관찰을 고르면 대상·방법이 사라진다
   await user.click(screen.getByRole('button', { name: '+ 새 기록' }))
   const form = screen.getByLabelText('새 기록')
@@ -256,7 +256,7 @@ test('0.14: 전체 목록 내보내기, 대상에 교사 없음, 관찰도 분�
   await waitFor(async () => expect((await getSettings(db)).nuga_alert_off).toBe(true))
   // 학생 고르기 → 다시 누르면 전체
   await user.click(within(screen.getByRole('list', { name: '학생 목록' })).getByRole('button', { name: /^1번 김지훈/ }))
-  expect(await screen.findByRole('button', { name: '← 전체 기록' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: '전체 기록' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '+ 새 기록' }))
   const form = screen.getByLabelText('새 기록')
   expect(within(within(form).getByRole('radiogroup', { name: '대상' })).queryByRole('radio', { name: '교사' })).toBeNull()
@@ -301,4 +301,18 @@ test('기록 지우기는 한 번 더 묻는다(취소하면 남음)', async () 
   await user.click(within(card).getByRole('button', { name: '지우기' }))
   await user.click(within(within(card).getByRole('group', { name: '기록 지우기 확인' })).getByRole('button', { name: '지우기' }))
   await waitFor(async () => expect(await listLogsByStudent(db, s.id)).toHaveLength(0))
+})
+
+test('기록이 하나도 없으면 거르기 줄 대신 첫 기록 안내', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  const c = await createClass(db, { school_year: 2026, grade: 1, class_no: 5 })
+  await saveStudent(db, c.id, emptyStudent(1, '김지훈'))
+  render(
+    <AppProviders db={db} fs={createMemoryFsAdapter()}>
+      <CounselingPage today="2026-11-05" />
+    </AppProviders>,
+  )
+  const all = await screen.findByRole('region', { name: '전체 누가기록' })
+  expect(await within(all).findByText('아직 누가기록이 없습니다')).toBeInTheDocument()
+  expect(within(all).queryByLabelText('종류')).toBeNull()
 })

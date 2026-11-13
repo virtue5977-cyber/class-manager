@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { useState } from 'react'
 import { useDb } from '../../app/context'
 import type { RosterField } from '../../lib/db/types'
@@ -25,8 +26,8 @@ export default function RosterFieldsEditor({ fields, onClose }: { fields: Roster
             {f.builtin ? <span className="fields-name">{f.label}</span> : <input aria-label={`${f.label} 이름`} aria-invalid={bad.some((x) => x.key === f.key) ? 'true' : undefined} value={f.label} onChange={(e) => setList(renameField(list, f.key, e.target.value))} />}
             {!f.builtin && <span className="tag">추가 칸</span>}
             <span className="spacer" />
-            <button type="button" className="link" aria-label={`${f.label} 위로`} disabled={i === 0} onClick={() => setList(moveField(list, f.key, -1))}>↑</button>
-            <button type="button" className="link" aria-label={`${f.label} 아래로`} disabled={i === list.length - 1} onClick={() => setList(moveField(list, f.key, 1))}>↓</button>
+            <button type="button" className="link" aria-label={`${f.label} 위로`} disabled={i === 0} onClick={() => setList(moveField(list, f.key, -1))}><Icon name="arrowUp" size={14} /></button>
+            <button type="button" className="link" aria-label={`${f.label} 아래로`} disabled={i === list.length - 1} onClick={() => setList(moveField(list, f.key, 1))}><Icon name="arrowDown" size={14} /></button>
             {!f.builtin && (
               <button type="button" className="danger-text" aria-label={`${f.label} 지우기`} onClick={() => setList(removeField(list, f.key))}>
                 지우기

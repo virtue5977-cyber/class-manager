@@ -13,7 +13,10 @@ const PHONE_RE = /\+82[-. ]?\d{1,2}[-. ]?\d{3,4}[-. ]?\d{4}\b|\b01[016789][-. ]?
 /** 학번: "학번 1503", "1503번"처럼 학번으로 보이는 것만(연도·금액은 그대로) */
 const STUDENT_NO_RE = /(?<=학번\s*:?\s*)\d{4,5}\b|\b\d{4,5}(?=번)/g
 
-const pseudonym = (i: number) => `학생${String.fromCharCode(65 + (i % 26))}${i >= 26 ? Math.floor(i / 26) : ''}`
+/** 가릴 이름 목록에서 보호자 이름 앞에 붙이는 표(가명이 '보호자A'가 된다) */
+export const GUARDIAN_PREFIX = '보호자:'
+const role = (raw: string) => (raw.startsWith(GUARDIAN_PREFIX) ? { full: raw.slice(GUARDIAN_PREFIX.length).trim(), who: '보호자' } : { full: raw.trim(), who: '학생' })
+const pseudonym = (who: string, i: number) => `${who}${String.fromCharCode(65 + (i % 26))}${i >= 26 ? Math.floor(i / 26) : ''}`
 
 function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -76,17 +79,21 @@ export function maskText(text: string, names: string[], map: Record<string, stri
     out[t] = m
     return t
   })
-  const people = [...new Set(names.map((x) => x.trim()))].map((full) => ({ full, forms: nameForms(full) })).filter((p) => p.forms.length)
+  const people = [...new Set(names.map((x) => x.trim()))].map(role).map((r) => ({ ...r, forms: nameForms(r.full) })).filter((p) => p.forms.length)
   // 긴 꼴부터 바꿔야 "김민수"가 "민수"보다 먼저 잡힌다.
   const all = people.flatMap((p) => p.forms.map((f) => ({ f, p }))).sort((a, b) => b.f.length - a.f.length)
   const pseudoOf = new Map<string, string>()
+  // 두 사람이 같이 쓰는 꼴(김민수·이민수의 '민수')은 다른 사람의 가명을 빌리거나 되돌릴 꼴로 쓰지 않는다
+  const owners = new Map<string, number>()
+  for (const p of people) for (const x of new Set(p.forms)) owners.set(x, (owners.get(x) ?? 0) + 1)
+  const shared = (x: string) => (owners.get(x) ?? 0) > 1
   for (const { f, p } of all) {
     if (!s.includes(f)) continue
-    let ps = pseudoOf.get(p.full) ?? reverse.get(p.full) ?? [...reverse].find(([v]) => p.forms.includes(v))?.[1]
+    let ps = pseudoOf.get(p.full) ?? reverse.get(p.full) ?? [...reverse].find(([v, t]) => p.forms.includes(v) && !shared(v) && t.startsWith(p.who))?.[1]
     if (!ps) {
-      ps = pseudonym(Object.keys(out).filter((k) => k.startsWith('학생')).length)
-      // 되돌릴 꼴: 글에 가장 먼저 나온 꼴. "지훈이"로 썼으면 "지훈"(조사는 따로 고친다)
-      const first = p.forms.filter((x) => s.includes(x)).sort((a, b) => s.indexOf(a) - s.indexOf(b) || b.length - a.length)[0] ?? f
+      ps = pseudonym(p.who, Object.keys(out).filter((k) => k.startsWith(p.who)).length)
+      // 되돌릴 꼴: 글에 가장 먼저 나온(이 사람만의) 꼴. "지훈이"로 썼으면 "지훈"(조사는 따로 고친다)
+      const first = p.forms.filter((x) => s.includes(x) && !shared(x)).sort((a, b) => s.indexOf(a) - s.indexOf(b) || b.length - a.length)[0] ?? f
       out[ps] = first.endsWith('이') && p.forms.includes(first.slice(0, -1)) ? first.slice(0, -1) : first
       reverse.set(out[ps], ps)
     }
@@ -131,7 +138,7 @@ export function unmaskText(text: string, map: Record<string, string>): string {
 
 /** 밖(구글 등)으로 보내는 글에서 학생 이름을 ○○로(되돌리지 않음). "민수가" 같은 꼴도. */
 export function hideNames(text: string, names: string[]): string {
-  const forms = [...new Set(names.flatMap((n) => nameForms(n)))].sort((a, b) => b.length - a.length)
+  const forms = [...new Set(names.flatMap((n) => nameForms(role(n).full)))].sort((a, b) => b.length - a.length)
   let s = text
   for (const f of forms) s = s.replace(new RegExp(escapeRe(f), 'g'), '○○')
   return s.replace(/○○이(?=[가는를와랑의도에])/g, '○○')

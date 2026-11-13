@@ -1,3 +1,4 @@
+import Icon from '../../components/Icon'
 import { useState } from 'react'
 import type { NoteBlock, NoteBlockType } from '../../lib/db/types'
 import { COLORS, FONTS, HIGHLIGHTS, PT_MAX, PT_MIN, type Style } from '../../lib/notes/marks'
@@ -67,10 +68,10 @@ export default function NoteToolbar(p: {
             </option>
           ))}
         </select>
-        <button type="button" className="tb-btn" aria-label="수준 올리기(내어쓰기)" title="수준 ▲(Shift+Tab)" onClick={() => p.onIndent(-1)}>
+        <button type="button" className="tb-btn" aria-label="수준 올리기(내어쓰기)" title="수준 올리기(Shift+Tab)" onClick={() => p.onIndent(-1)}>
           <Svg d="M20 6H9M20 12H9M20 18H9M6 9l-3 3 3 3" />
         </button>
-        <button type="button" className="tb-btn" aria-label="수준 내리기(들여쓰기)" title="수준 ▼(Tab)" onClick={() => p.onIndent(1)}>
+        <button type="button" className="tb-btn" aria-label="수준 내리기(들여쓰기)" title="수준 내리기(Tab)" onClick={() => p.onIndent(1)}>
           <Svg d="M20 6H9M20 12H9M20 18H9M3 9l3 3-3 3" />
         </button>
         <span className="tb-sep" />
@@ -159,8 +160,8 @@ export default function NoteToolbar(p: {
           />
           <span className="tb-pt-unit">pt</span>
           <span className="tb-pt-step">
-            <button type="button" aria-label="글자 크게" onClick={() => setPt(pt + 1)}>▲</button>
-            <button type="button" aria-label="글자 작게" onClick={() => setPt(pt - 1)}>▼</button>
+            <button type="button" aria-label="글자 크게" onClick={() => setPt(pt + 1)}><Icon name="chevronUp" size={12} /></button>
+            <button type="button" aria-label="글자 작게" onClick={() => setPt(pt - 1)}><Icon name="chevronDown" size={12} /></button>
           </span>
         </span>
         <span className="tb-sep" />

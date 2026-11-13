@@ -200,7 +200,10 @@ export default function SeatingTab({ classRec, today = toYmd(new Date()) }: { cl
           ))}
         </div>
       )}
-      <p className="muted">학생을 끌어다 놓거나, 학생을 누른 뒤 칸을 누르세요. 칸끼리 끌면 맞바꿉니다. 핀을 누르면 고정석(무작위 배치에서 빠짐), 빈자리를 누르면 책상 없음 ↔ 다시 놓기입니다.</p>
+      <details className="help">
+        <summary>사용법</summary>
+        <p className="muted">학생을 끌어다 놓거나, 학생을 누른 뒤 칸을 누르세요. 칸끼리 끌면 맞바꿉니다. 핀을 누르면 고정석(무작위 배치에서 빠짐), 빈자리를 누르면 책상을 빼거나 다시 놓습니다.</p>
+      </details>
       <div className="seating-wrap print-area">
         <h3 className="print-title">{chart.title}</h3>
         {chart.podium_position === 'top' && podium}

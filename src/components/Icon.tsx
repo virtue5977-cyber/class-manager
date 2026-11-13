@@ -25,11 +25,24 @@ const P: Record<string, string> = {
   done: 'M5 12l5 5 9-10',
   megaphone: 'M4 10v4h3l7 4V6l-7 4zM18 9a4 4 0 0 1 0 6M7 14l1 5h2l-1-5',
   grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
+  chevronLeft: 'M15 6l-6 6 6 6',
+  chevronRight: 'M9 6l6 6-6 6',
+  chevronUp: 'M6 15l6-6 6 6',
+  close: 'M6 6l12 12M18 6 6 18',
+  arrowUp: 'M12 19V5M6 11l6-6 6 6',
+  arrowDown: 'M12 5v14M6 13l6 6 6-6',
+  arrowLeft: 'M19 12H5M11 6l-6 6 6 6',
+  more: 'M5.5 12h.01M12 12h.01M18.5 12h.01',
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  alert: 'M12 4 2.5 20h19zM12 10v4M12 17h.01',
+  paperclip: 'M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7',
+  panelLeft: 'M4 4h16v16H4zM9 4v16M16 9l-3 3 3 3',
+  panelRight: 'M4 4h16v16H4zM15 4v16M8 9l3 3-3 3',
   eyeOff: 'M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
 }
 export default function Icon({ name, size = 16 }: { name: keyof typeof P | string; size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={name === 'more' ? 3 : 1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={P[name] ?? ''} />
     </svg>
   )

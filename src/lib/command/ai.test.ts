@@ -125,3 +125,11 @@ test('리뷰 고침: 질문과 앱 자료는 같은 가명 표를 쓴다(다른 
   expect(sysTok).toBeTruthy()
   expect(sysTok).not.toBe(qTok)
 })
+
+test('@3으로 물으면 보낼 때 @번호를 그 학생 가명으로 바꿔, 앱 자료의 가명과 이어진다', async () => {
+  const { env, ctx, sent } = await setup(() => '{"answer":"박도윤 결석 0건"}')
+  await executeInput('@3 이번 달 결석 몇 번?', ctx, env, aiFallback)
+  const req = sent.at(-1)!
+  expect(req.user).toBe('@학생A 이번 달 결석 몇 번?')
+  expect(JSON.stringify(sent)).not.toContain('박도윤')
+})

@@ -50,19 +50,22 @@ export async function runNuga(db: AppDB, ai: AiCaller, student: StudentRec, rost
   const settings = await getSettings(db)
   const names = effectiveMask(settings) ? [...new Set([...roster.map((s) => s.name), student.name, ...(await allStudentNames(db))])] : []
   let map: Record<string, string> = {}
-  const items = logs.map((l) => {
+  // AI에는 앱 안 기록 번호 대신 이 요청 안 순번(1, 2, 3)을 보낸다
+  const seq = (i: number) => String(i + 1)
+  const items = logs.map((l, i) => {
     const m = maskText(`${l.content}`, names, map)
     map = m.map
     const place = maskText(l.place, names, map)
     map = place.map
-    return { id: l.id, kind: l.kind ?? '상담', date: l.date, place: place.text, memo: m.text }
+    return { id: seq(i), kind: l.kind ?? '상담', date: l.date, place: place.text, memo: m.text }
   })
   const { system, user } = buildNugaPrompt(await getPrompt(db, 'nuga'), items, settings.nuga_max_chars)
-  const reply = extractJson<{ items?: { id: string; text: string }[] }>(await ai({ system, user, maxTokens: 1500 + logs.length * 400 }))
-  const got = new Map((reply.items ?? []).map((i) => [i.id, String(i.text ?? '').trim()]))
+  const reply = extractJson<{ items?: { id: string | number; text: string }[] }>(await ai({ system, user, maxTokens: 1500 + logs.length * 400 }))
+  // AI가 순번을 숫자로 돌려줘도 맞춘다
+  const got = new Map((reply.items ?? []).map((i) => [String(i.id).trim(), String(i.text ?? '').trim()]))
   const out: NugaResult[] = []
-  for (const l of logs) {
-    const raw = got.get(l.id)
+  for (const [i, l] of logs.entries()) {
+    const raw = got.get(seq(i))
     if (!raw) {
       out.push({ id: l.id, text: '', warnings: ['AI가 이 기록을 정리하지 않았습니다. 다시 시도하세요.'] })
       continue
