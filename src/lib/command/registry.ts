@@ -16,7 +16,7 @@ export interface CommandMeta {
 
 export const COMMAND_META: CommandMeta[] = [
   {
-    id: 'attendance', names: ['출결'], group: '기록', mode: 'rule', help: '/출결 @학생 결석 질병 사유 — 출결 저장(신고서 자동)',
+    id: 'attendance', names: ['출결', '결석', '지각', '조퇴', '결과'], group: '기록', mode: 'rule', help: '/출결 @학생 결석 질병 사유 — 출결 저장(신고서 자동). /결석·/지각·/조퇴로 바로 써도 됩니다',
     expects: (p) => (!p.kind ? [...KINDS] : !p.category ? CATEGORY_WORDS : []),
   },
   { id: 'counsel', names: ['상담기록', '상담'], group: '기록', mode: 'rule', help: '/상담기록 @학생 내용 — 상담 기록 저장' },

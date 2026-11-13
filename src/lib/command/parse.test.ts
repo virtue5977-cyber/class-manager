@@ -88,3 +88,12 @@ test('출결은 지난 요일로, 미리보기에 다른 해면 연도', () => {
   const f = parseCommand('/일정 달력 11월12일 협의회', { ...ctx, today: '2026-11-10' }, names, subs)
   expect([f.date, f.rest]).toEqual(['2026-11-12', '협의회'])
 })
+
+test('/결석·/지각·/조퇴·/결과는 /출결의 다른 이름이고 쓴 이름이 종류가 된다', async () => {
+  const { commandNames, commandSubs } = await import('./registry')
+  const st = [{ id: 's3', number: 3, name: '김민수' }] as never
+  const q = (t: string) => parseCommand(t, { students: st, notes: [], today: '2026-11-13' }, commandNames(), commandSubs())
+  expect(q('/결석 @3 감기')).toMatchObject({ cmd: 'attendance', kind: '결석', errors: [] })
+  expect(q('/지각 @3 내일').kind).toBe('지각')
+  expect(q('/결석 @3 조퇴').kind).toBe('조퇴')
+})
