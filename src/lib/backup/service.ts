@@ -53,13 +53,23 @@ function sortKey(name: string): [string, number] | null {
   return [`${m[1]}${m[2]}`, m[3] ? Number(m[3]) : 1]
 }
 
+/**
+ * 보관 정리: 가장 최근 날짜(오늘)의 백업은 모두 남기고, 지난 날은 날마다 마지막 하나만 남긴다.
+ * 그렇게 남은 것 중 최근 keep일치만 둔다(하루에 여러 번 눌러도 지난 날 백업이 밀려나지 않게).
+ */
 export async function rotateBackups(folder: BackupFolder, keep: number): Promise<string[]> {
   const backups = (await folder.listFiles())
     .map((n) => ({ n, k: sortKey(n) }))
     .filter((x): x is { n: string; k: [string, number] } => x.k !== null)
     .sort((a, b) => (a.k[0] === b.k[0] ? a.k[1] - b.k[1] : a.k[0] < b.k[0] ? -1 : 1))
   const safeKeep = Number.isFinite(keep) ? Math.max(1, Math.floor(keep)) : BACKUP_KEEP_DEFAULT
-  const remove = backups.slice(0, Math.max(0, backups.length - safeKeep)).map((x) => x.n)
+  const day = (x: { k: [string, number] }) => x.k[0].slice(0, 8)
+  const days = [...new Set(backups.map(day))]
+  const newest = days.at(-1)
+  const keptDays = new Set(days.slice(-safeKeep))
+  const lastOfDay = new Map<string, string>()
+  for (const x of backups) lastOfDay.set(day(x), x.n)
+  const remove = backups.filter((x) => !keptDays.has(day(x)) || (day(x) !== newest && lastOfDay.get(day(x)) !== x.n)).map((x) => x.n)
   for (const n of remove) await folder.deleteFile(n)
   return remove
 }
