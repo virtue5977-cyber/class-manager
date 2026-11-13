@@ -6,8 +6,8 @@ import type {
   NoticeItemRec, NoteRec, NoteFileRec, TodoRec, LocalEventRec, ChatRec, ReflectionRec, ReflectionPhraseRec,
 } from './types'
 
-/** 백업 파일 형식 번호(표 구성이 바뀔 때만 올린다) */
-export const SCHEMA_VERSION = 1
+/** 백업 파일 형식 번호(표 구성이 바뀔 때 올린다). Dexie 판 번호와는 따로다. 1 = 0.16까지(표가 늘어도 1이었음) */
+export const SCHEMA_VERSION = 2
 
 export const SYNCED_TABLES = [
   'classes', 'students', 'attendance', 'absence_reports', 'report_attendance', 'counseling_logs',
@@ -17,6 +17,11 @@ export const SYNCED_TABLES = [
 ] as const
 
 export type SyncedTable = (typeof SYNCED_TABLES)[number]
+
+/** 형식 번호별 백업 표 목록. SYNCED_TABLES를 바꾸면 SCHEMA_VERSION을 올리고 여기에 더한다(시험이 확인). */
+export const BACKUP_TABLES_BY_VERSION: Record<number, readonly string[]> = {
+  2: SYNCED_TABLES,
+}
 
 export class AppDB extends Dexie {
   classes!: Table<ClassRec, string>
@@ -49,7 +54,7 @@ export class AppDB extends Dexie {
 
   constructor(name: string) {
     super(name)
-    this.version(SCHEMA_VERSION).stores({
+    this.version(1).stores({
       classes: 'id, [school_year+grade+class_no]',
       students: 'id, class_id',
       attendance: 'id, student_id, date, &[student_id+date+kind]',
