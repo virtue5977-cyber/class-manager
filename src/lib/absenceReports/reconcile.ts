@@ -137,8 +137,14 @@ export async function reconcileStudent(db: AppDB, studentId: string): Promise<{ 
       let id = reportId(d)
       let old = await db.absence_reports.get(id)
       if (old && !old.deleted) {
-        id = `${id}:${[...d.attendance_ids].sort()[0]}`
+        const fallback = `${id}:${[...d.attendance_ids].sort()[0]}`
+        // 살아 있는 신고서는 절대 덮어쓰지 않는다: 비었거나 지움 표시인 id가 나올 때까지 :2, :3 …
+        id = fallback
         old = await db.absence_reports.get(id)
+        for (let n = 2; old && !old.deleted; n++) {
+          id = `${fallback}:${n}`
+          old = await db.absence_reports.get(id)
+        }
       }
       rec.id = id
       // 같은 id가 지움 표시로 있으면 새로 만들지 않고 되살린다(처음 만든 때는 유지).

@@ -230,3 +230,29 @@ test('가운데 날 삭제 시나리오를 같은 자료의 두 DB에서 → 신
   expect(x).toHaveLength(2)
   expect(x).toEqual(y)
 })
+
+test('결정적 id와 대체 id가 모두 살아 있어도 살아 있는 신고서를 덮어쓰지 않고 :2를 쓴다', async () => {
+  const { db, s } = await setup()
+  const x = await add(db, s.id, '2026-11-09')
+  const base = `report:${s.id}:2026-11-09:결석:질병`
+  const [r] = await listReportsByStudent(db, s.id)
+  expect(r.id).toBe(base)
+  // 연결을 끊어 둘 다 고아(제출됨 → 살아 남음)로 만든다.
+  await db.report_attendance.clear()
+  const keep1 = { ...r, submitted: true, detail: 'KEEP-1' }
+  const keep2 = { ...r, id: `${base}:${x.id}`, submitted: true, detail: 'KEEP-2' }
+  await db.absence_reports.put(keep1)
+  await db.absence_reports.put(keep2)
+  await reconcileStudent(db, s.id)
+  const all = await db.absence_reports.toArray()
+  expect(all).toHaveLength(3)
+  const fresh = all.find((q) => q.id === `${base}:${x.id}:2`)!
+  expect(fresh).toBeTruthy()
+  expect(fresh.submitted).toBe(false)
+  expect(all.find((q) => q.id === base)!).toMatchObject({ detail: 'KEEP-1', submitted: true })
+  expect(all.find((q) => q.id === `${base}:${x.id}`)!).toMatchObject({ detail: 'KEEP-2', submitted: true })
+  expect(await getReportAttendanceIds(db, fresh.id)).toEqual([x.id])
+  // 다시 돌려도 같은 결과(새 행이 늘지 않는다)
+  await reconcileStudent(db, s.id)
+  expect(await db.absence_reports.count()).toBe(3)
+})
