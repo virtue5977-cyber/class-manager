@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useDb } from '../app/context'
 import { ensureGoogleClient, getGoogle, hasCalendar, syncGoogle } from '../lib/google/google'
 import { BUILTIN_GOOGLE_CLIENT } from '../lib/google/client-config'
+import { clearGoogleError, recordGoogleError } from '../lib/google/syncError'
 import { createSyncRunner, withGoogleLock } from '../lib/google/runner'
 import { getCurrentClassId } from '../lib/roster/roster'
 import { toYmd } from '../lib/schoolDays'
@@ -18,7 +19,14 @@ export default function GoogleAutoSync() {
     () =>
       g
         ? createSyncRunner(async () => {
-            if (hasCalendar(await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT))) await withGoogleLock(async () => syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db)))
+            try {
+              if (!hasCalendar(await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT))) return
+              await withGoogleLock(async () => syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db)))
+              await clearGoogleError(db)
+            } catch (e) {
+              await recordGoogleError(db, e).catch(() => {})
+              throw e
+            }
           }, GOOGLE_AFTER_CHANGE_MS)
         : null,
     [db, g],

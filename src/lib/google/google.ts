@@ -255,7 +255,7 @@ export async function listGoogleEvents(db: AppDB, from: string, to: string): Pro
 }
 
 /** 옛 exe의 status({client, loggedIn})도 새 모양으로 */
-function normStatus(st: unknown): GoogleStatus {
+export function normStatus(st: unknown): GoogleStatus {
   const o = (st ?? {}) as Partial<GoogleStatus> & { loggedIn?: boolean }
   const connected = typeof o.connected === 'boolean' ? o.connected : !!o.loggedIn
   return { client: !!o.client, connected, email: typeof o.email === 'string' ? o.email : null, scopes: Array.isArray(o.scopes) ? o.scopes : connected ? CALENDAR_SCOPES.slice() : [], ...(o.sessionOnly ? { sessionOnly: true } : {}) }

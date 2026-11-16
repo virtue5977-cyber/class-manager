@@ -21,7 +21,7 @@ export const SETTINGS_TABS = [
   { id: 'timetable', label: '내 시간표' },
   { id: 'reports', label: '결석신고서' },
   { id: 'ai', label: 'AI' },
-  { id: 'google', label: '구글 캘린더' },
+  { id: 'google', label: '구글 계정' },
   { id: 'screen', label: '화면' },
   { id: 'update', label: '업데이트' },
 ] as const

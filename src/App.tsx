@@ -16,6 +16,7 @@ import WButton from './components/command/WButton'
 import StartupTasks from './components/StartupTasks'
 import HideNamesBar from './components/HideNames'
 import BackupBanner from './components/BackupBanner'
+import GoogleErrorBanner from './components/GoogleErrorBanner'
 import PinGate from './components/PinGate'
 import UpdateBanner from './components/UpdateBanner'
 import GoogleAutoSync from './components/GoogleAutoSync'
@@ -96,6 +97,7 @@ function AppMain(props: AppProps & { db: AppDB }) {
             <UpdateBanner />
             <GoogleAutoSync />
             <BackupBanner />
+            <GoogleErrorBanner />
             <AppRoutes backupIterations={props.backupIterations} />
           </main>
           <WButton />
