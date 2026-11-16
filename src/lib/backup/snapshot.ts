@@ -2,6 +2,7 @@ import { type AppDB, SCHEMA_VERSION, SYNCED_TABLES, type SyncedTable } from '../
 import { BackupFormatError, BackupVersionError } from './errors'
 import { fromBase64, toBase64 } from './crypto'
 import { b64ToBytes, bytesToB64, openBlobBytes, sealBlobRows } from '../notes/blobs'
+import { mergeWrite } from '../vault/middleware'
 import type { NoteBlobRec, NoteFileRec } from '../db/types'
 
 export interface Snapshot {
@@ -84,7 +85,8 @@ export async function importSnapshot(db: AppDB, snap: Snapshot): Promise<void> {
       fileRows.push(out)
     }
   }
-  await db.transaction('rw', [...SYNCED_TABLES.map((t) => db.syncedTable(t)), db.note_blobs], async () => {
+  // 병합 쓰기: 백업의 updated_at을 그대로 둔다(동기화 켠 뒤의 '도장 + 지움 표시' 복원은 1.0.x)
+  await mergeWrite(db, [...SYNCED_TABLES.map((t) => db.syncedTable(t)), db.note_blobs], async () => {
     if (blobRows) {
       await db.note_blobs.clear()
       if (blobRows.length) await db.note_blobs.bulkAdd(blobRows)

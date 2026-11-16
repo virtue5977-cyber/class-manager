@@ -8,7 +8,8 @@ import { SYNCED_TABLES } from '../db/schema'
 
 export const BACKUP_KEEP_DEFAULT = 14
 export const AUTO_BACKUP_INTERVAL_MS = 86_400_000
-export const BACKUP_FILE_RE = /^백업_(\d{8})_(\d{4})(?:_(\d+))?\.enc$/
+/** 백업_날짜_시각[_기기표시4][_번호].enc (기기 표시·번호 모두 없는 옛 이름도 받는다) */
+export const BACKUP_FILE_RE = /^백업_(\d{8})_(\d{4})(?:_([0-9a-f]{4}))?(?:_(\d+))?\.enc$/
 export const APP_SETTINGS_ID = 'app'
 /** 복원 직전 안전 백업 파일 접두어. 보관 정리 대상이 아니다. */
 export const SAFETY_FILE_PREFIX = '복원전_'
@@ -23,8 +24,17 @@ export interface CachedKey {
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0')
 
-export function backupFileName(now: Date, existing: Set<string>, prefix = '백업_'): string {
-  const stem = `${prefix}${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`
+/** 이 기기의 표시: device_local 'deviceId'의 앞 16진 4자(없으면 만든다). */
+export async function deviceTag(db: AppDB): Promise<string> {
+  const cur = (await db.device_local.get('deviceId'))?.value
+  if (typeof cur === 'string' && /^[0-9a-f]{4}/.test(cur)) return cur.slice(0, 4)
+  const id = crypto.randomUUID()
+  await db.device_local.put({ id: 'deviceId', value: id })
+  return id.slice(0, 4)
+}
+
+export function backupFileName(now: Date, existing: Set<string>, prefix = '백업_', tag?: string): string {
+  const stem = `${prefix}${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${tag ? `_${tag}` : ''}`
   let name = `${stem}.enc`
   for (let i = 2; existing.has(name); i++) name = `${stem}_${i}.enc`
   return name
@@ -106,19 +116,20 @@ export async function getLastBackupAt(db: AppDB): Promise<string | undefined> {
 }
 
 /** 날짜·시각·번호(없으면 1) 순 정렬 키. */
-function sortKey(name: string): [string, number] | null {
+function sortKey(name: string, tag?: string): [string, number] | null {
   const m = BACKUP_FILE_RE.exec(name)
   if (!m) return null
-  return [`${m[1]}${m[2]}`, m[3] ? Number(m[3]) : 1]
+  if (m[3] && m[3] !== tag) return null // 다른 기기 표시: 세지도 지우지도 않는다
+  return [`${m[1]}${m[2]}`, m[4] ? Number(m[4]) : 1]
 }
 
 /**
  * 보관 정리: 가장 최근 날짜(오늘)의 백업은 모두 남기고, 지난 날은 날마다 마지막 하나만 남긴다.
  * 그렇게 남은 것 중 최근 keep일치만 둔다(하루에 여러 번 눌러도 지난 날 백업이 밀려나지 않게).
  */
-export async function rotateBackups(folder: BackupFolder, keep: number): Promise<string[]> {
+export async function rotateBackups(folder: BackupFolder, keep: number, tag?: string): Promise<string[]> {
   const backups = (await folder.listFiles())
-    .map((n) => ({ n, k: sortKey(n) }))
+    .map((n) => ({ n, k: sortKey(n, tag) }))
     .filter((x): x is { n: string; k: [string, number] } => x.k !== null)
     .sort((a, b) => (a.k[0] === b.k[0] ? a.k[1] - b.k[1] : a.k[0] < b.k[0] ? -1 : 1))
   const safeKeep = Number.isFinite(keep) ? Math.max(1, Math.floor(keep)) : BACKUP_KEEP_DEFAULT
@@ -144,11 +155,12 @@ export async function runBackup(db: AppDB, folder: BackupFolder, opts: { now?: D
   const cached = await getCachedKey(db)
   if (!cached) throw new Error('백업 암호구가 설정되지 않았습니다.')
   const now = opts.now ?? new Date()
+  const tag = await deviceTag(db)
   const file = await buildBackupFile(db, cached, now)
-  const name = backupFileName(now, new Set(await folder.listFiles()))
+  const name = backupFileName(now, new Set(await folder.listFiles()), '백업_', tag)
   await folder.writeFile(name, file)
   const keep = opts.keep ?? (await db.app_settings.get(APP_SETTINGS_ID))?.backup_keep_count ?? BACKUP_KEEP_DEFAULT
-  await rotateBackups(folder, keep)
+  await rotateBackups(folder, keep, tag)
   await db.device_local.put({ id: 'lastBackupAt', value: now.toISOString() })
   return name
 }

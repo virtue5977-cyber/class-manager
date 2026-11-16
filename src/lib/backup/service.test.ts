@@ -4,7 +4,7 @@ import { newRecord } from '../db/records'
 import { createMemoryFolder } from '../fs/memory'
 import {
   backupFileName, setupPassphrase, changePassphrase, getCachedKey, runBackup, rotateBackups, restoreFromBytes,
-  needsAutoBackup, getLastBackupAt, BACKUP_KEEP_DEFAULT,
+  needsAutoBackup, getLastBackupAt, deviceTag, BACKUP_KEEP_DEFAULT, BACKUP_FILE_RE,
 } from './service'
 import { BackupDecryptError, BackupFormatError, BackupVersionError } from './errors'
 import { exportSnapshot, serializeSnapshot } from './snapshot'
@@ -78,7 +78,7 @@ test('복원 전에 안전 백업 파일이 하나 생긴다', async () => {
   const name = await runBackup(db, folder, { now: new Date(2026, 10, 4, 9, 0) })
   const bytes = await folder.readFile(name)
   await restoreFromBytes(db, bytes, PASS, { safety: { folder }, now: new Date(2026, 10, 4, 10, 0) })
-  expect((await folder.listFiles()).sort()).toEqual(['백업_20261104_0900.enc', '복원전_20261104_1000.enc'])
+  expect((await folder.listFiles()).sort()).toEqual([`백업_20261104_0900_${await deviceTag(db)}.enc`, '복원전_20261104_1000.enc'])
 })
 
 test('복원 후 device_local의 aiApiKey와 backupKey가 유지된다', async () => {
@@ -97,7 +97,7 @@ test('15번째 백업 때 가장 오래된 파일 하나가 지워지고, 이름
   const files = await folder.listFiles()
   expect(files.filter((f) => f.startsWith('백업_'))).toHaveLength(BACKUP_KEEP_DEFAULT)
   expect(files).not.toContain('백업_20261101_0900.enc')
-  expect(files).toContain('백업_20261115_0900.enc')
+  expect(files).toContain(`백업_20261115_0900_${await deviceTag(db)}.enc`)
   expect(files).toContain('메모.txt')
 })
 
@@ -160,7 +160,7 @@ test('더 새로운 버전 백업은 안전 백업·정리 전에 거부되어 �
 test('안전 백업은 복원전_ 이름이고 보관 정리로 지워지지 않는다', async () => {
   const { db, folder } = await ready()
   for (let i = 0; i < 14; i++) await runBackup(db, folder, { now: new Date(2026, 10, 1 + i, 9, 0) })
-  const name = '백업_20261114_0900.enc'
+  const name = `백업_20261114_0900_${await deviceTag(db)}.enc`
   await restoreFromBytes(db, await folder.readFile(name), PASS, { safety: { folder }, now: new Date(2026, 10, 20, 8, 0) })
   const files = await folder.listFiles()
   expect(files.filter((f) => f.startsWith('백업_'))).toHaveLength(14)
@@ -283,4 +283,42 @@ test.skipIf(VAULT_MODE)('옛 backupKey(CryptoKey) 행만 있어도 getCachedKey�
   const key = await deriveKey(PASS, salt, 1000)
   await db.device_local.put({ id: 'backupKey', value: { key, salt, iterations: 1000, check: 'x' } })
   expect((await getCachedKey(db))?.check).toBe('x')
+})
+
+// ---- 기기 표시 ----
+
+test('deviceTag: device_local deviceId의 앞 16진 4자, 없으면 만들어 둔다', async () => {
+  const db = testDb()
+  const t = await deviceTag(db)
+  expect(t).toMatch(/^[0-9a-f]{4}$/)
+  expect(await deviceTag(db)).toBe(t)
+  const id = (await db.device_local.get('deviceId'))?.value as string
+  expect(id.slice(0, 4)).toBe(t)
+})
+
+test('백업 파일 이름에 기기 표시가 들어가고 충돌은 _N', () => {
+  const t = new Date(2026, 10, 4, 9, 5)
+  expect(backupFileName(t, new Set(), '백업_', 'ab12')).toBe('백업_20261104_0905_ab12.enc')
+  expect(backupFileName(t, new Set(['백업_20261104_0905_ab12.enc']), '백업_', 'ab12')).toBe('백업_20261104_0905_ab12_2.enc')
+  expect(BACKUP_FILE_RE.test('백업_20261104_0905_ab12_2.enc')).toBe(true)
+  expect(BACKUP_FILE_RE.test('백업_20261104_0905_2.enc')).toBe(true)
+  expect(BACKUP_FILE_RE.test('백업_20261104_0905.enc')).toBe(true)
+})
+
+test('runBackup 파일 이름은 이 기기 표시를 가진다', async () => {
+  const { db, folder } = await ready()
+  const name = await runBackup(db, folder, { now: new Date(2026, 10, 4, 9, 5) })
+  expect(name).toBe(`백업_20261104_0905_${await deviceTag(db)}.enc`)
+})
+
+test('정리: 다른 기기 표시 파일은 지우지 않고, 이 기기·표시 없는 옛 파일만 센다', async () => {
+  const folder = createMemoryFolder()
+  const files = [
+    '백업_20261101_0900_aaaa.enc', '백업_20261102_0900_aaaa.enc', '백업_20261103_0900_aaaa.enc',
+    '백업_20261101_0900_bbbb.enc', '백업_20261102_0900.enc', '백업_20261103_0900.enc',
+  ]
+  for (const n of files) await folder.writeFile(n, new Uint8Array(1))
+  const removed = await rotateBackups(folder, 1, 'aaaa')
+  expect(removed.sort()).toEqual(['백업_20261101_0900_aaaa.enc', '백업_20261102_0900.enc', '백업_20261102_0900_aaaa.enc'].sort())
+  expect(await folder.listFiles()).toContain('백업_20261101_0900_bbbb.enc')
 })

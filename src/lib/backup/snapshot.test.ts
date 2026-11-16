@@ -119,3 +119,14 @@ test('옛 형식(1) 백업에 없는 표는 지우지 않고, 있는 표만 바�
   expect((await target.classes.toArray()).map((c) => c.grade)).toEqual([1])
   expect((await target.notes.toArray()).map((n) => n.title)).toEqual(['남아야 할 노트'])
 })
+
+test('vault DB 백업 → 새 vault DB에 복원 → 같음', async () => {
+  const { openTestVaultDb } = await import('../vault/testing')
+  const a = openTestVaultDb()
+  await a.classes.add(newRecord({ school_year: 2026, grade: 4, class_no: 2 }))
+  const snap = await exportSnapshot(a)
+  const b = openTestVaultDb()
+  await importSnapshot(b, snap)
+  expect((await b.classes.toArray()).map((c) => c.grade)).toEqual([4])
+  expect((await b.classes.toArray())[0].updated_at).toBe((await a.classes.toArray())[0].updated_at)
+})
