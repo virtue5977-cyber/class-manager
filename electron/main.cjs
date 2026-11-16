@@ -1,6 +1,6 @@
 // Watson(담임 업무) 데스크톱(Windows exe) 진입점.
 // 화면은 dist(웹 빌드)를 app://local 주소로 보여 주고, 백업 폴더 읽기·쓰기만 Node로 처리한다.
-const { app, BrowserWindow, Menu, protocol, net, ipcMain, dialog, powerMonitor, shell, safeStorage } = require('electron')
+const { app, BrowserWindow, Menu, protocol, net, ipcMain, dialog, powerMonitor, shell, safeStorage, session } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
@@ -126,8 +126,9 @@ const GOT_LOCK = app.requestSingleInstanceLock()
 if (!GOT_LOCK) app.quit()
 
 let win
-// 화면이 부를 수 있는 바깥 주소는 AI와 NEIS뿐이다.
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://open.neis.go.kr https://raw.githubusercontent.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+// 화면 CSP·권한·경로 통로: 본체는 security.cjs(시험됨). 화면이 부를 수 있는 바깥 주소는 AI와 NEIS뿐이다.
+const secLib = require('./security.cjs')
+const { CSP } = secLib
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -189,6 +190,9 @@ app.whenReady().then(async () => {
   RUNNING_VERSION = picked.version
   // 메뉴를 아예 없애 새로고침(Ctrl+R)·개발자 도구 단축키를 막는다(PIN 우회 방지).
   Menu.setApplicationMenu(null)
+  // 권한: 클립보드 쓰기(노트·누가기록 복사)만. 마이크·위치·알림 등은 묻지도 않고 거부한다.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(secLib.permissionAllowed(permission)))
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => secLib.permissionAllowed(permission))
   protocol.handle('app', async (req) => {
     const { pathname } = new URL(req.url)
     const file = path.normalize(path.join(DIST, decodeURIComponent(pathname)))
@@ -344,8 +348,42 @@ handle('backup:delete', async (name) => {
 })
 
 // ---- AI: 노트북에 설치·로그인된 Claude Code에 맡기기(Pro 구독의 프로그램용 크레딧 사용) ----
-// 지시문·메모는 표준 입력으로만 넘기고, 빈 작업 폴더에서 도구 없이 한 번만 답하게 한다.
-const AI_DIR = () => path.join(os.tmpdir(), 'damim-ai')
+// 지시문·메모는 표준 입력으로만 넘기고(명령줄 인자에 넣지 않음), 앱 자료 폴더의 빈 작업 폴더(ai-work)에서 도구 없이 한 번만 답하게 한다.
+// 프로그램은 where/which로 찾은 절대 경로로만 부른다(작업 폴더·상대 경로의 같은 이름 파일은 쓰지 않음).
+const AI_DIR = () => path.join(app.getPath('userData'), 'ai-work')
+const aiDir = () => (fsSync.mkdirSync(AI_DIR(), { recursive: true }), AI_DIR())
+// 지난 실행이 남긴 임시 프롬프트 파일과 예전 임시 작업 폴더(os 임시 폴더)를 지운다.
+app.whenReady().then(() => {
+  try {
+    for (const f of fsSync.readdirSync(AI_DIR())) if (/^prompt-[0-9a-f]+\.txt$/.test(f)) fsSync.rmSync(path.join(AI_DIR(), f), { force: true })
+  } catch {
+    /* 아직 없음 */
+  }
+  fsSync.rmSync(path.join(os.tmpdir(), 'damim-ai'), { recursive: true, force: true })
+})
+const agyLib = require('./agy.cjs')
+/** 이름 → { file, viaCmd } | null. where/which는 작업 폴더에서 돌리고 그 폴더의 결과는 버린다. */
+function findProgram(name) {
+  const cwd = aiDir()
+  return agyLib.resolveAbs(name, {
+    platform: process.platform,
+    cwd,
+    run: (cmd, args) => require('node:child_process').execFileSync(cmd, args, { encoding: 'utf8', windowsHide: true, cwd, timeout: 10000 }),
+    exists: (f) => {
+      try {
+        return fsSync.statSync(f).isFile()
+      } catch {
+        return false
+      }
+    },
+  })
+}
+/** 셸 없이 부르기. .cmd/.bat는 cmd.exe /d /s /c 에 cmd 규칙대로 인용한 한 줄로(인자에는 학생 글이 없다). */
+function spawnProgram(found, args) {
+  const opts = { cwd: aiDir(), windowsHide: true, env: process.env }
+  if (!found.viaCmd) return spawn(found.file, args, opts)
+  return spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', agyLib.cmdLine(found.file, args)], { ...opts, windowsVerbatimArguments: true })
+}
 /** 시간 초과 때: Windows에서는 셸(cmd.exe)만 끝내면 그 아래 node·claude·agy가 학생 글을 든 채 남으므로 프로세스 나무째 끝낸다. */
 function killTree(child) {
   const k = require('./agy.cjs').killCommand(process.platform, child.pid)
@@ -358,8 +396,9 @@ function killTree(child) {
 }
 function runClaude(args, input, timeoutMs) {
   return new Promise((resolve, reject) => {
-    fsSync.mkdirSync(AI_DIR(), { recursive: true })
-    const child = spawn('claude', args, { cwd: AI_DIR(), shell: process.platform === 'win32', windowsHide: true, env: process.env })
+    const found = findProgram('claude')
+    if (!found) return reject(new Error('Claude Code를 찾지 못했습니다. 노트북에 Claude Code를 설치하고 로그인했는지 확인하세요.'))
+    const child = spawnProgram(found, args)
     let out = ''
     let err = ''
     const timer = setTimeout(() => {
@@ -393,7 +432,7 @@ handle('ai:ask', async (req) => {
   const system = String(req && req.system || '')
   const user = String(req && req.user || '')
   const prompt = `${system}\n\n# 입력\n${user}\n\n위 지시와 출력 형식만 따르고, 도구를 쓰거나 다른 설명을 붙이지 마세요.`
-  const raw = await runClaude(require('./agy.cjs').claudeAskArgs(process.platform), prompt, 180000)
+  const raw = await runClaude(agyLib.claudeAskArgs(process.platform), prompt, 180000)
   let body
   try {
     body = JSON.parse(raw)
@@ -405,27 +444,13 @@ handle('ai:ask', async (req) => {
 })
 
 // ---- AI: Antigravity CLI(agy, 구글 계정 로그인) ----
-// 프롬프트는 인자로만 받으므로 셸을 거치지 않고 부른다(.cmd면 cmd.exe 규칙대로 인용).
-const agyLib = require('./agy.cjs')
-function findAgy() {
-  if (process.platform !== 'win32') return { file: 'agy', viaCmd: false }
-  try {
-    return agyLib.pickAgyPath(require('node:child_process').execFileSync('where', ['agy'], { encoding: 'utf8', windowsHide: true, cwd: (fsSync.mkdirSync(AI_DIR(), { recursive: true }), AI_DIR()) }))
-  } catch {
-    return null
-  }
-}
-function runAgy(args, timeoutMs) {
+// 글은 표준 입력으로 넘긴다. 표준 입력을 읽지 않는 판이면 작업 폴더의 임시 파일(0600)로 넘기고 끝나면 곧 지운다.
+// 셸을 거치지 않고 부른다(.cmd면 cmd.exe 규칙대로 인용; 인자에는 고정된 글뿐).
+function runAgy(args, timeoutMs, input = null) {
   return new Promise((resolve, reject) => {
-    const found = findAgy()
+    const found = findProgram('agy')
     if (!found) return reject(new Error('Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'))
-    fsSync.mkdirSync(AI_DIR(), { recursive: true })
-    const line = agyLib.cmdLine(found.file, args)
-    // cmd.exe 한 줄은 8,191자까지라 그보다 길면 나눠 달라고 한다.
-    if (found.viaCmd && line.length > 8000) return reject(new Error('AI에 보낼 글이 너무 깁니다. 내용을 나눠서 정리하세요.'))
-    const child = found.viaCmd
-      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', line], { cwd: AI_DIR(), windowsHide: true, windowsVerbatimArguments: true, env: process.env })
-      : spawn(found.file, args, { cwd: AI_DIR(), windowsHide: true, env: process.env })
+    const child = spawnProgram(found, args)
     let out = ''
     let err = ''
     const timer = setTimeout(() => {
@@ -442,8 +467,31 @@ function runAgy(args, timeoutMs) {
       clearTimeout(timer)
       resolve({ out, err })
     })
-    child.stdin.end()
+    child.stdin.on('error', () => {}) // 표준 입력을 읽지 않고 끝나는 판(EPIPE)
+    if (input !== null) child.stdin.end(input, 'utf8')
+    else child.stdin.end()
   })
+}
+/** 표준 입력을 못 읽는 판이라고 알게 되면 이번 실행 동안은 곧바로 파일로. */
+let agyFileMode = false
+async function agyAsk(prompt, timeoutMs) {
+  agyLib.agyArgs(prompt) // 길이 확인
+  if (!agyFileMode) {
+    const r = await runAgy(agyLib.agyArgs(prompt), timeoutMs, prompt)
+    const parsed = agyLib.parseAgyOutput(r.out || r.err)
+    if (!agyLib.needFileFallback(parsed)) return parsed
+  }
+  const name = `prompt-${require('node:crypto').randomBytes(12).toString('hex')}.txt`
+  const file = path.join(aiDir(), name)
+  try {
+    await fs.writeFile(file, prompt, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
+    const r = await runAgy(agyLib.agyFileArgs(name), timeoutMs)
+    const parsed = agyLib.parseAgyOutput(r.out || r.err)
+    if (!agyLib.needFileFallback(parsed)) agyFileMode = true
+    return parsed
+  } finally {
+    await fs.rm(file, { force: true }).catch(() => {})
+  }
 }
 handle('ai:agy:status', async () => {
   try {
@@ -452,8 +500,7 @@ handle('ai:agy:status', async () => {
     // 버전만으로는 로그인 여부를 모르므로 아주 짧은 시험 질문을 한 번 보낸다(학생 자료 없음).
     let probe
     try {
-      const r = await runAgy(agyLib.agyArgs(agyLib.PROBE_PROMPT), 45000)
-      probe = agyLib.parseAgyOutput(r.out || r.err)
+      probe = await agyAsk(agyLib.PROBE_PROMPT, 45000)
     } catch (e) {
       probe = { error: e instanceof Error ? e.message : String(e) }
     }
@@ -463,8 +510,7 @@ handle('ai:agy:status', async () => {
   }
 })
 handle('ai:agy:ask', async (prompt) => {
-  const { out, err } = await runAgy(agyLib.agyArgs(String(prompt || '')), 60000)
-  const r = agyLib.parseAgyOutput(out || err)
+  const r = await agyAsk(String(prompt || ''), 60000)
   if (r.error) throw new Error(r.error)
   return r.text
 })
@@ -480,17 +526,69 @@ handle('pdf:save', async (name, opts) => {
   return true
 })
 
-// ---- 노트 폴더 연결: 고른 폴더 경로만 기억(복사 안 함), 열기는 디렉터리만 ----
+// ---- 경로 통로: 대화상자로 고른 폴더(루트, 다시 켜도 기억)·고르거나 끌어 놓은 파일(이번 실행만)만 연다 ----
+const ROOTS_FILE = () => path.join(app.getPath('userData'), 'path-roots.json')
+let pathRootsInst = null
+const pathRoots = () => {
+  if (pathRootsInst) return pathRootsInst
+  let saved = []
+  try {
+    saved = JSON.parse(fsSync.readFileSync(ROOTS_FILE(), 'utf8')).roots || []
+  } catch {
+    /* 처음 */
+  }
+  return (pathRootsInst = secLib.createPathRoots({ roots: saved }))
+}
+function saveRoots() {
+  const roots = pathRoots().roots().slice(-200)
+  const tmp = ROOTS_FILE() + '.tmp'
+  fsSync.writeFileSync(tmp, JSON.stringify({ roots }))
+  fsSync.renameSync(tmp, ROOTS_FILE())
+}
+/** 대화상자로 폴더를 골라 루트로 등록. defaultPath는 대화상자가 처음 보여 줄 곳일 뿐(허용 아님). */
+async function pickFolder(defaultPath) {
+  const opts = { title: '노트에 연결할 폴더', properties: ['openDirectory'] }
+  if (foldersLib.isLocalPath(defaultPath)) opts.defaultPath = defaultPath
+  const r = await dialog.showOpenDialog(win, opts)
+  if (r.canceled || !r.filePaths[0]) return null
+  const dir = r.filePaths[0]
+  if (!pathRoots().addRoot(dir)) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
+  try {
+    saveRoots()
+  } catch {
+    /* 이번 실행 동안은 허용 */
+  }
+  return dir
+}
+handle('paths:pick-folder', (defaultPath) => pickFolder(defaultPath))
 handle('folder:pick', async () => {
-  const r = await dialog.showOpenDialog(win, { title: '노트에 연결할 폴더', properties: ['openDirectory'] })
-  return r.canceled || !r.filePaths[0] ? null : { path: r.filePaths[0] }
+  const dir = await pickFolder()
+  return dir ? { path: dir } : null
 })
+// preload가 놓은(고른) File에서 얻은 경로만 온다. 이 컴퓨터에 실제로 있는 보통 파일이어야 한다(동기로 등록해 다음 stt:run보다 먼저 끝남).
+handle('paths:register-drop', (p) => {
+  let st = null
+  try {
+    st = foldersLib.isLocalPath(p) ? fsSync.statSync(p) : null
+  } catch {
+    st = null
+  }
+  if (!st || !st.isFile() || !pathRoots().addFile(p)) throw new Error('파일을 읽을 수 없습니다.')
+  return p
+})
+// 화면 src/lib/notes/folders.ts NOT_ALLOWED와 같은 글
+const FOLDER_NOT_ALLOWED = '이 폴더를 열려면 먼저 허용해야 합니다.'
+function allowedDir(p) {
+  if (typeof p === 'string' && /^[\\/]{2}|^\\\?\?\\/.test(p)) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
+  if (!pathRoots().allowDir(p)) throw new Error(FOLDER_NOT_ALLOWED)
+  return p
+}
 handle('folder:open', async (p) => {
-  const dir = await foldersLib.assertDir(p)
+  const dir = await foldersLib.assertDir(allowedDir(p))
   const err = await shell.openPath(dir)
   if (err) throw new Error('폴더를 열지 못했습니다.')
 })
-handle('folder:list', async (p) => foldersLib.listDir(p))
+handle('folder:list', async (p) => foldersLib.listDir(allowedDir(p)))
 
 // ---- 음성 받아쓰기: 고른 사람만 받아 두고, 녹음은 이 컴퓨터 안에서만 글로 바꾼다 ----
 const sttLib = require('./stt.cjs')
@@ -574,7 +672,7 @@ handle('stt:run', async ({ path: input, wav, model } = {}) => {
       await fs.writeFile(file, Buffer.from(wav))
     } else {
       const ext = typeof input === 'string' ? path.extname(input).toLowerCase() : ''
-      if (!foldersLib.isLocalPath(input) || !['.mp3', '.wav', '.ogg', '.flac'].includes(ext)) throw new Error('녹음 파일을 읽을 수 없습니다.')
+      if (!pathRoots().allowFile(input) || !foldersLib.isLocalPath(input) || !['.mp3', '.wav', '.ogg', '.flac'].includes(ext)) throw new Error('녹음 파일을 읽을 수 없습니다.')
       const stIn = await fs.stat(input).catch(() => null)
       if (!stIn || !stIn.isFile()) throw new Error('녹음 파일을 읽을 수 없습니다.')
       file = path.join(work, 'in' + ext)

@@ -114,3 +114,18 @@ test('설정: 받는 중 취소 단추, 프로그램이 빠져 있으면 다시 
   expect(b.cancel).toHaveBeenCalled()
   expect(await screen.findByRole('button', { name: '받기' })).toBeEnabled()
 })
+
+test('경로 등록(preload → 메인)이 끝난 뒤에 받아쓰기를 부른다', async () => {
+  const { b, done } = fake(['fast'])
+  const order: string[] = []
+  let registered: (v: string) => void = () => {}
+  ;(b as { pathOf: unknown }).pathOf = (f: File) => (order.push('pathOf'), new Promise<string>((res) => (registered = (v) => (order.push('registered'), res(v + f.name)))))
+  b.run.mockImplementation(((o: unknown) => (order.push('run:' + JSON.stringify(o)), new Promise(() => {}))) as never)
+  render(<Host />)
+  const zone = await screen.findByRole('region', { name: '녹음 파일' })
+  fireEvent.drop(zone, { dataTransfer: { files: [new File(['x'], 'd.mp3')] } })
+  await waitFor(() => expect(order).toEqual(['pathOf']))
+  registered('C:\\녹음\\')
+  await waitFor(() => expect(order).toEqual(['pathOf', 'registered', 'run:{"path":"C:\\\\녹음\\\\d.mp3","model":"fast"}']))
+  void done
+})

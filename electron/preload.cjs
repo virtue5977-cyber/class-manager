@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
+// 경로 통로: 화면은 경로 글자를 등록할 수 없다. 놓은(고른) File 객체에서 preload가 얻은 경로만 메인에 등록한다.
+const registerDrop = (file) => ipcRenderer.invoke('paths:register-drop', webUtils.getPathForFile(file))
+const pickFolder = (defaultPath) => ipcRenderer.invoke('paths:pick-folder', typeof defaultPath === 'string' ? defaultPath : undefined)
+const asPicked = (p) => (p ? { path: p } : null)
+
 contextBridge.exposeInMainWorld('desktop', {
   /** exe 판(SHELL). 6부터 구글 Gemini 주소 접속 가능 */
   shell: 6,
@@ -47,12 +52,19 @@ contextBridge.exposeInMainWorld('desktop', {
       ipcRenderer.on('stt:progress', h)
       return () => ipcRenderer.removeListener('stt:progress', h)
     },
-    pathOf: (file) => webUtils.getPathForFile(file),
+    /** 놓은 파일 경로를 메인에 등록하고 그 경로를 돌려준다(Promise). */
+    pathOf: (file) => registerDrop(file),
   },
   folder: {
-    pick: () => ipcRenderer.invoke('folder:pick'),
+    pick: () => pickFolder().then(asPicked),
     open: (p) => ipcRenderer.invoke('folder:open', p),
     list: (p) => ipcRenderer.invoke('folder:list', p),
+    /** 저장된 폴더를 대화상자로 다시 골라 허용(기본 위치 = p). */
+    allow: (p) => pickFolder(p).then(asPicked),
+  },
+  paths: {
+    pickFolder: (defaultPath) => pickFolder(defaultPath),
+    registerDrop: (file) => registerDrop(file),
   },
   pdf: {
     sizes: ['A4', 'B4'],

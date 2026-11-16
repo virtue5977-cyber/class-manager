@@ -27,6 +27,7 @@ import NoteMentionList from '../../components/NoteMentionList'
 import { useNavigate } from 'react-router-dom'
 import { getCurrentClassId, listStudents } from '../../lib/roster/roster'
 import { getFolderBridge, NEED_EXE } from '../../lib/notes/folders'
+import FolderBlock from './FolderBlock'
 import { addNotice } from '../../lib/notices/notices'
 
 /** 파일 내용 읽기(arrayBuffer 없는 환경은 FileReader로) */
@@ -82,7 +83,6 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
   const [range, setRange] = useState({ start: today, end: today })
   const [dragId, setDragId] = useState<string>()
   const [fileInfo, setFileInfo] = useState<Record<string, { name: string; size: number }>>({})
-  const [folderList, setFolderList] = useState<Record<string, { name: string; dir: boolean }[]>>({})
   const refs = useRef(new Map<string, LineHandle>())
   /** 여러 줄 고르기(줄째): 한 줄에서 끌기 시작해 다른 줄로 가면(위·아래 모두) */
   const [bsel, setBsel] = useState<{ a: number; h: number }>()
@@ -864,19 +864,7 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
                   <Icon name="paperclip" size={14} /> {`${fileInfo[b.file_id!]?.name ?? '첨부 파일'} (${fmtSize(fileInfo[b.file_id!]?.size ?? 0)})`}
                 </button>
               ) : b.type === 'folder' ? (
-                <div className="nb-folder">
-                  <button type="button" className="link" onClick={async () => { const br = getFolderBridge(); if (!br) return setMsg(NEED_EXE); try { await br.open(b.path!) } catch (e) { setMsg(e instanceof Error ? e.message : String(e)) } }}>
-                    <Icon name="folder" size={14} /> {b.path}
-                  </button>
-                  <button type="button" className="link muted" onClick={async () => { const br = getFolderBridge(); if (!br) return setMsg(NEED_EXE); try { setFolderList((m) => ({ ...m, [b.id]: [] })); const l = await br.list(b.path!); setFolderList((m) => ({ ...m, [b.id]: l })) } catch (e) { setMsg(e instanceof Error ? e.message : String(e)) } }}>
-                    안의 파일 보기
-                  </button>
-                  {folderList[b.id] && (
-                    <ul className="plain nb-folder-list">
-                      {folderList[b.id].map((x) => <li key={x.name}>{x.dir ? <Icon name="folder" size={12} /> : '·'} {x.name}</li>)}
-                    </ul>
-                  )}
-                </div>
+                <FolderBlock path={b.path!} onMsg={setMsg} onPath={(p) => setBlocks((bs) => bs.map((x) => (x.id === b.id ? { ...x, path: p } : x)))} />
               ) : (
                 <>
                   {(b.type === 'check' || b.type === 'bullet' || b.type === 'number') && (

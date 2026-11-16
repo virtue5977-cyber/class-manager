@@ -35,7 +35,7 @@ export default function AudioDrop({ onText }: { onText: (text: string) => void }
     try {
       const wav = DIRECT_EXT.test(file.name) ? undefined : await toWav16k(file)
       if (cancelled.current) return
-      const r = wav ? await bridge.run({ wav, model }) : await bridge.run({ path: bridge.pathOf(file), model })
+      const r = wav ? await bridge.run({ wav, model }) : await bridge.run({ path: await bridge.pathOf(file), model })
       if (cancelled.current) return
       if (r.text.trim()) onText(r.text)
       else setMsg('받아쓴 글이 없습니다(말소리가 없거나 너무 작습니다).')

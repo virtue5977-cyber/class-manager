@@ -70,9 +70,9 @@ export interface DesktopApi {
     run(opts: unknown): Promise<unknown>
     cancel(): Promise<unknown>
     onProgress(cb: (p: unknown) => void): Off
-    pathOf(file: File): string
+    pathOf(file: File): string | Promise<string>
   }
-  folder?: { pick(): Promise<unknown>; open(p: string): Promise<unknown>; list(p: string): Promise<unknown> }
+  folder?: { pick(): Promise<unknown>; open(p: string): Promise<unknown>; list(p: string): Promise<unknown>; allow?(p: string): Promise<unknown> }
   pdf?: { sizes: string[]; save(name: string, opts: unknown): Promise<unknown> }
   agy?: { status(): Promise<unknown>; ask(prompt: string): Promise<unknown> }
   backup?: DesktopBackupApi
@@ -82,7 +82,8 @@ export interface DesktopApi {
   /** Task 15: 렌더러가 붙었음을 메인에 알린다(되돌리기 판정). */
   bundle?: { alive?(): Promise<unknown> | void; [k: string]: unknown }
   app?: { [k: string]: unknown }
-  paths?: { [k: string]: unknown }
+  /** Task 16: 대화상자로 폴더 허용(paths:pick-folder)·놓은 파일 등록(File만 받음). */
+  paths?: { pickFolder?(defaultPath?: string): Promise<unknown>; registerDrop?(file: File): Promise<unknown>; [k: string]: unknown }
   autostart?: { [k: string]: unknown }
   device?: { [k: string]: unknown }
 }

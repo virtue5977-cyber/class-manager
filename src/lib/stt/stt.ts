@@ -19,7 +19,8 @@ export interface SttBridge {
   run(opts: { path?: string; wav?: Uint8Array; model?: SttModel }): Promise<{ text: string }>
   cancel(): Promise<void>
   onProgress(cb: (p: SttProgress) => void): () => void
-  pathOf(file: File): string
+  /** 1.0+: preload가 놓은(고른) 파일 경로를 메인에 등록한 뒤 돌려준다(Promise). */
+  pathOf(file: File): string | Promise<string>
 }
 
 export function getSttBridge(): SttBridge | undefined {
