@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('desktop', {
     unlockDpapi: () => ipcRenderer.invoke('vault:unlock-dpapi'),
     readBackup: () => ipcRenderer.invoke('vault:read-backup'),
     store: (v) => ipcRenderer.invoke('vault:store', v),
+    reset: () => ipcRenderer.invoke('vault:reset'),
   },
   agy: {
     status: () => ipcRenderer.invoke('ai:agy:status'),

@@ -16,8 +16,8 @@ export interface VaultStatus {
   state: VaultState
   dekB64?: string
   vault?: PublicVault
-  /** 메인이 알려 주면(나중 판): 이 PC에서 DPAPI를 쓸 수 있는지. 없으면 모름. */
-  dpapi?: boolean
+  /** 이 PC에서 DPAPI(safeStorage 비동기)를 쓸 수 있는지. 옛 메인은 보내지 않는다(모름). */
+  dpapiAvailable?: boolean
 }
 
 export interface DesktopVaultApi {
@@ -26,6 +26,8 @@ export interface DesktopVaultApi {
   readBackup(): Promise<PublicVault | null>
   /** dpapi 뺀 열쇠 + dekB64. 메인이 DPAPI로 감싸 vault.json에 쓴다. 오류는 정해진 한국어 문구. */
   store(payload: VaultPayload): Promise<boolean>
+  /** vault.json·.bak 지우기. 끝나지 않은 옮기기·첫 설치를 처음부터 할 때만(렌더러가 조건을 확인한 뒤). */
+  reset?(): Promise<boolean>
 }
 
 type Off = () => void

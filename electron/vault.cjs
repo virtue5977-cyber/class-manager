@@ -119,6 +119,7 @@ function makeQueue() {
 
 const MSG_FORMAT = '열쇠 형식이 맞지 않습니다.'
 const MSG_SAVE = '열쇠 파일을 저장하지 못했습니다.'
+const MSG_RESET = '열쇠 파일을 지우지 못했습니다.'
 
 /** IPC 본체. safe = {isAsyncEncryptionAvailable, encryptStringAsync, decryptStringAsync} (electron safeStorage) */
 function createVaultHandlers(dir, safe) {
@@ -152,8 +153,12 @@ function createVaultHandlers(dir, safe) {
       return dek
     } catch { return null }
   }
+  async function dpapiAvailable() {
+    try { return !!(await safe.isAsyncEncryptionAvailable()) } catch { return false }
+  }
   return {
-    status: () => vaultStatus(dir, unwrap),
+    // dpapiAvailable: 거짓이면 이 PC에서는 암호구·복구 코드로만 연다(화면이 이유를 보인다).
+    status: async () => ({ ...(await vaultStatus(dir, unwrap)), dpapiAvailable: await dpapiAvailable() }),
     async unlockDpapi() {
       const r = readVault(dir)
       return r.vault && typeof r.vault.dpapi === 'string' && r.vault.dpapi ? unwrap(r.vault.dpapi) : null
@@ -168,6 +173,18 @@ function createVaultHandlers(dir, safe) {
           writeVaultAtomic(dir, dpapi ? { ...rest, dpapi } : rest)
         })
       } catch { throw new Error(MSG_SAVE) }
+      return true
+    },
+    /**
+     * 열쇠 파일(vault.json·.bak·.tmp)을 지운다. 끝나지 않은 옮기기·첫 설치를 처음부터 할 때만 렌더러가 부른다
+     * (렌더러가 옛 DB가 있거나 새 DB가 비었음을 확인한 뒤). 쓰기 큐를 따라 앞선 store가 끝난 뒤 지운다.
+     */
+    async reset() {
+      try {
+        await queue(async () => {
+          for (const f of [TMP, MAIN, BAK]) fs.rmSync(path.join(dir, f), { force: true })
+        })
+      } catch { throw new Error(MSG_RESET) }
       return true
     },
   }

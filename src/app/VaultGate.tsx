@@ -9,6 +9,7 @@ import { normalizeRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, verifyMet
 import { fromBase64, toBase64 } from '../lib/backup/crypto'
 import { restoreIntoNewVault } from '../lib/backup/restoreVault'
 import type { DerivedPassKey } from '../lib/backup/service'
+import { MIGRATION_MARKER } from '../lib/vault/migrate'
 
 export type SetupReason = 'migrate' | 'first-install' | 'incomplete'
 export type RenderSetup = (p: { reason: SetupReason; done: () => void }) => ReactNode
@@ -92,9 +93,12 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
     if (!exists) return { k: 'missing' }
     const db = openVaultDb(vault.dbName, dek)
     let row: Record<string, unknown> | undefined
+    let migrating = false
     try {
       await db.open()
       row = await db.meta.get('vault')
+      // 옮기기 표시가 남아 있으면(완료 행 뒤 새 백업·옛 DB 지우기 전에 꺼짐) 앱을 열지 않는다(평문·암호화 두 길을 함께 두지 않음).
+      migrating = !!(await db.meta.get(MIGRATION_MARKER))
     } catch {
       db.close()
       return current(id) ? { k: 'error', message: '자료를 열지 못했습니다.' } : null
@@ -105,7 +109,7 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
     if (!row) next = { k: 'setup', reason: 'incomplete' }
     else if (bound) {
       if (!verifyMetaCheck(dek, vault.keyId, row)) next = { k: 'wrong-key' }
-      else next = row.complete === true ? { k: 'open', db } : { k: 'setup', reason: 'incomplete' }
+      else next = row.complete === true && !migrating ? { k: 'open', db } : { k: 'setup', reason: 'incomplete' }
     } else next = row.complete === true ? { k: 'wrong-key' } : { k: 'setup', reason: 'incomplete' } // 묶음 확인값 없는 완료 행은 믿지 않는다
     if (next.k !== 'open') db.close()
     return next
@@ -139,7 +143,7 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
           return
         }
       }
-      set({ k: 'unlock', vault: st.vault, dpapi: st.dpapi })
+      set({ k: 'unlock', vault: st.vault, dpapi: st.dpapiAvailable })
     } catch (e) {
       set({ k: 'error', message: e instanceof Error && e.message ? e.message : '열쇠를 읽지 못했습니다.' })
     }
@@ -368,7 +372,7 @@ function fileBytes(f: File): Promise<Uint8Array> {
   })
 }
 
-function saveCodeFile(code: string) {
+export function saveCodeFile(code: string) {
   const text = `Watson 복구 코드\n\n${code}\n\n자료를 열 열쇠입니다. 남이 보지 못하는 곳에 두세요.\n`
   const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
   const a = document.createElement('a')
@@ -380,7 +384,8 @@ function saveCodeFile(code: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function RestoreScreen({ api, replacing, onBack, onDone }: {
+/** 백업 파일에서 새 열쇠·새 DB로 되살리기(마법사의 '끝나지 않은 옮기기' 화면도 쓴다). */
+export function RestoreScreen({ api, replacing, onBack, onDone }: {
   api: DesktopVaultApi
   replacing?: boolean
   onBack: () => void

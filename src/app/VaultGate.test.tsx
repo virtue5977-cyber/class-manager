@@ -428,3 +428,21 @@ test('StrictMode 이중 실행에서도 열린 연결은 하나, 언마운트하
   unmount()
   await waitFor(() => expect(openConns()).toBe(0))
 })
+
+// ---- Task 10 ----
+test('ok이고 완료 행도 있지만 옮기기 표시(meta migration)가 남아 있으면 → incomplete', async () => {
+  const v = await makeVault()
+  const db = openVaultDb(v.payload.dbName, v.dek)
+  await db.meta.put({ id: 'migration', from: 'class-manager', stage: 'copy' })
+  db.close()
+  fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+  render(<VaultGate renderSetup={(p) => <p>마법사 {p.reason}</p>}>{(db) => <Probe db={db} />}</VaultGate>)
+  expect(await screen.findByText('마법사 incomplete')).toBeInTheDocument()
+})
+
+test('needs-pass + dpapiAvailable 거짓 → 열기 화면에 정확한 이유', async () => {
+  const v = await makeVault()
+  fakeDesktop(async () => ({ state: 'needs-pass', vault: v.vault, dpapiAvailable: false }))
+  render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+  expect(await screen.findByText(/윈도우 보호 저장소\(DPAPI\)를 쓸 수 없어, 켤 때마다 암호구를 묻습니다/)).toBeInTheDocument()
+})

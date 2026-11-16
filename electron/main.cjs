@@ -179,6 +179,7 @@ handle('vault:status', () => vaultH().status())
 handle('vault:unlock-dpapi', () => vaultH().unlockDpapi())
 handle('vault:read-backup', () => vaultH().readBackup())
 handle('vault:store', (p) => vaultH().store(p))
+handle('vault:reset', () => vaultH().reset())
 handle('backup:pick', async () => {
   const r = await dialog.showOpenDialog(win, { title: '백업 폴더 고르기', properties: ['openDirectory', 'createDirectory'] })
   if (r.canceled || !r.filePaths[0]) return null
