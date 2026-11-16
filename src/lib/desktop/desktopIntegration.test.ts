@@ -30,7 +30,7 @@ test('syncAutostart: launchItems의 옛 경로를 지금 exe로 옮긴다', () =
   const old = 'C:\\old\\Watson.exe'
   const { get } = mk({ [exe.toLowerCase()]: { openAtLogin: false, executableWillLaunchAtLogin: false, launchItems: [item(old)] } })
   expect(D.syncAutostart({ get, set: (s: unknown) => calls.push(s), exe, save: (p: string) => saved.push(p) } as never)).toBe(true)
-  expect(calls).toEqual([{ openAtLogin: true, path: exe }, { openAtLogin: false, path: old }])
+  expect(calls).toEqual([{ openAtLogin: false, path: old }, { openAtLogin: true, path: exe }]) // 끄기 먼저, 켜기 나중(이름으로 기억하므로)
   expect(saved).toEqual([exe])
 })
 
@@ -40,7 +40,7 @@ test('syncAutostart: launchItems에 없어도 마지막 등록 경로로 지운�
   const old = 'C:\\old\\Watson.exe'
   const { get } = mk({ [old.toLowerCase()]: { openAtLogin: true, executableWillLaunchAtLogin: true } })
   expect(D.syncAutostart({ get, set: (s: unknown) => calls.push(s), exe, last: old } as never)).toBe(true)
-  expect(calls).toEqual([{ openAtLogin: true, path: exe }, { openAtLogin: false, path: old }])
+  expect(calls).toEqual([{ openAtLogin: false, path: old }, { openAtLogin: true, path: exe }]) // 끄기 먼저, 켜기 나중(이름으로 기억하므로)
 })
 
 test('syncAutostart: 이미 지금 경로면, 꺼져 있으면 아무것도 하지 않는다', () => {

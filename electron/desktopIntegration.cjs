@@ -29,8 +29,10 @@ function syncAutostart({ get, set, exe, last, save }) {
   }
   let changed = false
   if (stale.size) {
-    set({ openAtLogin: true, path: exe })
+    // Windows는 자동 실행을 앱 이름(레지스트리 값 이름)으로 기억한다. 옛 항목을 먼저 끄고 새 경로를 나중에 켜야
+    // 끄는 일이 방금 켠 항목까지 지우지 않는다.
     for (const p of stale.values()) set({ openAtLogin: false, path: p })
+    set({ openAtLogin: true, path: exe })
     changed = true
   }
   if ((onNow || changed) && save) save(exe)
