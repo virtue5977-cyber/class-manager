@@ -34,10 +34,10 @@ export async function readGoogleError(db: AppDB): Promise<GoogleSyncError | null
   const v = (await db.device_local.get(KEY))?.value as GoogleSyncError | undefined
   return v && typeof v.at === 'string' && typeof v.message === 'string' ? v : null
 }
-/** 띠에서 '닫기'를 누른 오류의 때 */
-export async function hideGoogleError(db: AppDB, at: string): Promise<void> {
-  await db.device_local.put({ id: HIDE_KEY, value: at })
+/** 띠에서 '닫기'를 누른 오류의 문구(같은 문구가 계속되면 다시 띄우지 않는다) */
+export async function hideGoogleError(db: AppDB, message: string): Promise<void> {
+  await db.device_local.put({ id: HIDE_KEY, value: message })
 }
-export async function hiddenGoogleErrorAt(db: AppDB): Promise<string | null> {
+export async function hiddenGoogleError(db: AppDB): Promise<string | null> {
   return ((await db.device_local.get(HIDE_KEY))?.value as string | undefined) ?? null
 }

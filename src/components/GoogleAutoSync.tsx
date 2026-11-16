@@ -20,7 +20,10 @@ export default function GoogleAutoSync() {
       g
         ? createSyncRunner(async () => {
             try {
-              if (!hasCalendar(await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT))) return
+              if (!hasCalendar(await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT))) {
+                await clearGoogleError(db) // 연결이 없거나 캘린더 권한이 없으면 묵은 오류는 의미 없다
+                return
+              }
               await withGoogleLock(async () => syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db)))
               await clearGoogleError(db)
             } catch (e) {

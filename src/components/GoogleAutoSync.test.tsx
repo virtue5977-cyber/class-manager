@@ -68,6 +68,29 @@ test('홈 띠: 저장된 실패가 보이고 닫으면 사라지며, 새 실패�
   expect(screen.getByRole('link', { name: '설정으로 이동' })).toHaveAttribute('href', '/settings?tab=google')
   await userEvent.click(screen.getByRole('button', { name: '닫기' }))
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
+  // 같은 문구가 다시 저장돼도(때만 다름) 다시 띄우지 않는다
   await recordGoogleError(db, new GoogleApiError(500, undefined, 'x'), new Date('2026-11-15T03:00:00Z'))
-  expect(await screen.findByRole('status')).toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 100))
+  expect(screen.queryByRole('status')).toBeNull()
+  // 다른 문구는 다시 보인다
+  await recordGoogleError(db, new GoogleApiError(429, undefined, 'x'), new Date('2026-11-16T03:00:00Z'))
+  expect(await screen.findByText(/구글 요청이 너무 많습니다/)).toBeInTheDocument()
+})
+
+test('연결이 없거나 캘린더 권한이 없어 건너뛰는 자동 동기화도 묵은 오류를 지운다', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'] })
+  ;(globalThis as { desktop?: unknown }).desktop = { google: { status: async () => ({ client: true, connected: true, email: null, scopes: BASE_SCOPES }), setClient: async () => true, login: async () => true, logout: async () => true, api: async () => ({ status: 200, json: {} }) } }
+  const db = createDb('test-' + crypto.randomUUID())
+  await recordGoogleError(db, new GoogleApiError(401, undefined, 'x'))
+  render(
+    <MemoryRouter>
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <GoogleAutoSync />
+      </AppProviders>
+    </MemoryRouter>,
+  )
+  await settle()
+  await act(async () => { await vi.advanceTimersByTimeAsync(5100) })
+  await settle()
+  expect(await readGoogleError(db)).toBeNull()
 })

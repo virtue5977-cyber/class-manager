@@ -45,14 +45,14 @@ export default function GoogleSettings() {
     await load()
   }
   const startLabel = '브라우저에서 구글 로그인을 마치세요'
-  const connect = (scopes: string[], incremental: boolean, done: string) => run(startLabel, async () => { await g!.login(scopes, { incremental }); return done })
+  const connect = (scopes: string[], incremental: boolean, done: string) => run(startLabel, async () => { await g!.login(scopes, { incremental }); await clearGoogleError(db); return done })
   const connected = !!st?.connected
   const calendar = hasCalendar(st)
 
   return (
     <div className="card stack wide" aria-label="구글 계정">
       <h3>구글 계정</h3>
-      <p className="muted">{`구글 계정을 연결합니다(드라이브 동기화에 쓰입니다). 캘린더도 연결하면 학사일정·내 일정(학생 이름은 ○○로 가림)과 결석신고서 정리 알림(번호만)을 구글의 "${APP_CALENDAR_NAME}" 캘린더로 보내고, 구글 기본 캘린더의 일정을 달력·홈으로 가져옵니다. 구글에서 넣은 일정은 구글에서 고치세요.`}</p>
+      <p className="muted">{`구글 계정을 연결합니다. 캘린더도 연결하면 학사일정·내 일정(학생 이름은 ○○로 가림)과 결석신고서 정리 알림(번호만)을 구글의 "${APP_CALENDAR_NAME}" 캘린더로 보내고, 구글 기본 캘린더의 일정을 달력·홈으로 가져옵니다. 구글에서 넣은 일정은 구글에서 고치세요.`}</p>
       {!g ? (
         <p className="muted">설치형(Windows 앱)에서만 됩니다(새로 받아야 할 수 있습니다). 구글 연결에는 데스크톱 앱이 필요합니다.</p>
       ) : (
@@ -94,7 +94,7 @@ export default function GoogleSettings() {
                     지금 동기화
                   </button>
                 )}
-                <button type="button" className="link" disabled={busy} onClick={() => run('연결을 끊는 중', async () => { await g.logout(); return '구글 연결을 끊었습니다.' })}>
+                <button type="button" className="link" disabled={busy} onClick={() => run('연결을 끊는 중', async () => { await g.logout(); await clearGoogleError(db); return '구글 연결을 끊었습니다.' })}>
                   연결 끊기
                 </button>
               </>

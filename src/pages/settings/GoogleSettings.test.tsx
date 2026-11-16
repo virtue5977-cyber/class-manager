@@ -5,7 +5,7 @@ import { createDb } from '../../lib/db/schema'
 import { createMemoryFsAdapter } from '../../lib/fs/memory'
 import { AppProviders } from '../../app/context'
 import { BASE_SCOPES, CALENDAR_SCOPES, GoogleApiError, type GoogleStatus } from '../../lib/google/google'
-import { recordGoogleError } from '../../lib/google/syncError'
+import { readGoogleError, recordGoogleError } from '../../lib/google/syncError'
 import GoogleSettings from './GoogleSettings'
 
 type G = { status: ReturnType<typeof vi.fn>; login: ReturnType<typeof vi.fn>; logout: ReturnType<typeof vi.fn>; setClient: ReturnType<typeof vi.fn>; api: ReturnType<typeof vi.fn> }
@@ -114,4 +114,43 @@ test('연결 정보가 없으면 연결 파일 올리기가 보인다', async ()
 test('데스크톱이 아니면 설치형 안내', async () => {
   setup()
   expect(await screen.findByText(/설치형\(Windows 앱\)에서만/)).toBeInTheDocument()
+})
+
+test('로그인 성공 · 연결 끊기 · 다시 연결은 묵은 마지막 오류를 지운다', async () => {
+  const g = fakeDesktop({})
+  const db = createDb('test-' + crypto.randomUUID())
+  await recordGoogleError(db, new GoogleApiError(429, undefined, 'x'))
+  setup(db)
+  expect(await screen.findByText(/마지막 오류/)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: '구글로 시작' }))
+  await waitFor(() => expect(screen.queryByText(/마지막 오류/)).toBeNull())
+  expect(await readGoogleError(db)).toBeNull()
+  void g
+})
+
+test('연결 끊기도 묵은 마지막 오류를 지운다', async () => {
+  fakeDesktop({ connected: true, email: 'a@example.com', scopes: BASE_SCOPES })
+  const db = createDb('test-' + crypto.randomUUID())
+  await recordGoogleError(db, new GoogleApiError(429, undefined, 'x'))
+  setup(db)
+  await screen.findByText(/마지막 오류/)
+  await userEvent.click(screen.getByRole('button', { name: '연결 끊기' }))
+  await waitFor(() => expect(screen.queryByText(/마지막 오류/)).toBeNull())
+})
+
+test('다시 연결 성공도 묵은 마지막 오류를 지운다', async () => {
+  fakeDesktop({ connected: true, email: 'a@example.com', scopes: BASE_SCOPES })
+  const db = createDb('test-' + crypto.randomUUID())
+  await recordGoogleError(db, new GoogleApiError(401, undefined, 'x'))
+  setup(db)
+  await userEvent.click(await screen.findByRole('button', { name: '다시 연결' }))
+  await waitFor(() => expect(screen.queryByText(/마지막 오류/)).toBeNull())
+})
+
+test('설명은 지금 되는 것(캘린더)만 말한다', async () => {
+  fakeDesktop({})
+  setup()
+  await screen.findByRole('button', { name: '구글로 시작' })
+  expect(screen.queryByText(/드라이브/)).toBeNull()
+  expect(screen.getByText(/구글 계정을 연결합니다\. 캘린더도 연결하면/)).toBeInTheDocument()
 })
