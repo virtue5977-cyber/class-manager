@@ -11,16 +11,21 @@ function isLocalPath(p, platform = process.platform) {
   return path.posix.isAbsolute(p)
 }
 
-async function assertDir(p) {
-  if (typeof p === 'string' && (/^[\\/]{2}/.test(p) || /^\\\?\?\\/.test(p))) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
-  if (!isLocalPath(p)) throw new Error('폴더를 찾지 못했습니다.')
+/** network: 메인이 허용 목록(사용자가 고른 폴더)으로 이미 확인한 경로면 네트워크 공유(학교 NAS)도 연다. */
+async function assertDir(p, { network = false } = {}) {
+  if (network) {
+    if (!require('./security.cjs').isUserAbsPath(p)) throw new Error('폴더를 찾지 못했습니다.')
+  } else {
+    if (typeof p === 'string' && (/^[\\/]{2}/.test(p) || /^\\\?\?\\/.test(p))) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
+    if (!isLocalPath(p)) throw new Error('폴더를 찾지 못했습니다.')
+  }
   const st = await fs.stat(p).catch(() => null)
   if (!st || !st.isDirectory()) throw new Error('폴더를 찾지 못했습니다.')
   return path.normalize(p)
 }
 
-async function listDir(p) {
-  const dir = await assertDir(p)
+async function listDir(p, opts) {
+  const dir = await assertDir(p, opts)
   const ents = await fs.readdir(dir, { withFileTypes: true })
   return ents
     .filter((e) => !e.name.startsWith('.'))

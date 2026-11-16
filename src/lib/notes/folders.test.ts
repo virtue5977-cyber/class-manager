@@ -41,3 +41,10 @@ test('localPathKind: Windows는 드라이브 문자 경로만, \\\\?\\·\\??\\·
   expect(isLocalPath('//h/s', 'linux')).toBe(false)
   expect(isLocalPath('a', 'linux')).toBe(false)
 })
+
+test('메인이 허용한(사용자가 고른) 네트워크 폴더는 { network: true }로 연다', async () => {
+  const { assertDir: a } = require('../../../electron/folders.cjs') as { assertDir: (p: unknown, o?: { network?: boolean }) => Promise<string> }
+  // UNC 글자 거절이 아니라 "찾지 못함"(이 시험 환경에 서버가 없음)으로 간다
+  await expect(a('\\\\server\\share\\자료', { network: true })).rejects.toThrow('폴더를 찾지 못했습니다.')
+  await expect(a('\\\\?\\C:\\a', { network: true })).rejects.toThrow()
+})

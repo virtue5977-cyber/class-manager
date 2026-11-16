@@ -14,15 +14,17 @@ const sec = require('../../../electron/security.cjs') as {
     allowDir(p: unknown): boolean
     allowFile(p: unknown): boolean
     roots(): string[]
+    knownDir(p: unknown): boolean
   }
 }
 const agy = require('../../../electron/agy.cjs') as {
   agyArgs: (p: string) => string[]
   agyStdinLine: (p: string) => string
   agyArgvArgs: (p: string) => string[]
-  parseAgyStream: (out: string) => { text?: string; error?: string }
+  parseAgyStream: (out: string, err?: string) => { text?: string; error?: string }
   streamRejected: (r: { code: number | null; out: string; err: string }) => boolean
   probePrompt: (nonce: string) => string
+  collectText: (stream: NodeJS.ReadableStream) => () => string
   statusFrom: (v: string, probe: { text?: string; error?: string }, nonce?: string) => { installed: boolean; loggedIn?: boolean; message?: string }
   cmdLine: (file: string, args: string[]) => string
   resolveAbs: (name: string, o: { platform: string; cwd: string; run: (cmd: string, args: string[]) => string; exists: (p: string) => boolean }) => { file: string; viaCmd: boolean } | null
@@ -68,7 +70,9 @@ describe('경로 통로', () => {
     expect(r.allowDir('\\\\server\\share\\학급\\자료')).toBe(false)
     expect(r.allowDir('학급\\자료')).toBe(false)
     expect(r.allowDir(3)).toBe(false)
-    expect(r.addRoot('\\\\server\\share')).toBe(false)
+    expect(r.addRoot('\\\\?\\C:\\a')).toBe(false)
+    expect(r.addRoot('\\\\.\\PhysicalDrive0')).toBe(false)
+    expect(r.addRoot('\\??\\C:\\a')).toBe(false)
     expect(r.addRoot('상대')).toBe(false)
   })
   test('파일: 등록 안 한 파일은 거짓, 등록한 drop 파일은 참(루트 안이라도 파일은 따로 등록)', () => {
@@ -80,7 +84,7 @@ describe('경로 통로', () => {
     expect(r.allowFile('c:\\users\\t\\desktop\\상담.MP3')).toBe(true)
     expect(r.allowFile('C:\\Users\\t\\Desktop\\..\\Desktop\\상담.mp3')).toBe(false)
     expect(r.allowFile('C:\\Users\\t\\Desktop\\다른.mp3')).toBe(false)
-    expect(r.addFile('\\\\server\\s\\a.mp3')).toBe(false)
+    expect(r.allowFile('\\\\server\\s\\a.mp3')).toBe(false)
   })
   test('posix: 루트 안만, 저장한 루트로 다시 만든다', () => {
     const r = sec.createPathRoots({ platform: 'linux', roots: ['/home/t/자료', 'relative', '//x'], realpath: (p) => p })
@@ -108,7 +112,7 @@ describe('경로 통로', () => {
     fs.symlinkSync(root, path.join(base, '바로가기'), 'dir')
     const r2 = sec.createPathRoots({ platform: 'linux' })
     expect(r2.addRoot(path.join(base, '바로가기'))).toBe(true)
-    expect(r2.roots()).toEqual([root])
+    expect(r2.roots()).toEqual([path.join(base, '바로가기')]) // 고른 표기로 저장(다시 켤 때 다시 풂)
     expect(r2.allowDir(path.join(root, '안'))).toBe(true)
     // 파일: 링크로 등록한 파일은 실제 파일 경로로 맞춘다
     fs.symlinkSync(path.join(outside, 'a.mp3'), path.join(base, 'b.mp3'))
@@ -121,9 +125,45 @@ describe('경로 통로', () => {
     r3.addRoot('C:\\자료')
     expect(r3.allowDir('C:\\자료\\링크')).toBe(false)
     expect(r3.allowDir('C:\\자료\\안')).toBe(true)
-    // 실제 경로가 네트워크(UNC)면 거짓(연결된 네트워크 드라이브)
-    const r4 = sec.createPathRoots({ platform: 'win32', realpath: () => '\\\\server\\share' })
-    expect(r4.addRoot('Z:\\')).toBe(false)
+  })
+  test('네트워크 폴더(학교 NAS): 사용자가 고른 UNC·연결된 드라이브(Z:)도 허용, 실제 경로끼리 비교', () => {
+    const r = sec.createPathRoots({ platform: 'win32', realpath: (p) => p })
+    expect(r.addRoot('\\\\nas\\학급')).toBe(true)
+    expect(r.allowDir('\\\\nas\\학급\\1학기')).toBe(true)
+    expect(r.allowDir('\\\\NAS\\학급\\1학기')).toBe(true)
+    expect(r.allowDir('\\\\nas\\다른')).toBe(false)
+    expect(r.allowDir('\\\\nas\\학급\\..\\다른')).toBe(false)
+    expect(r.allowDir('\\\\other\\학급\\1학기')).toBe(false)
+    expect(r.addFile('\\\\nas\\녹음\\a.mp3')).toBe(true)
+    expect(r.allowFile('\\\\nas\\녹음\\a.mp3')).toBe(true)
+    // Z: 는 \\nas\share 로 풀린다
+    const z = (p: string) => p.replace(/^Z:\\?/i, '\\\\nas\\share\\').replace(/\\$/, '')
+    const m = sec.createPathRoots({ platform: 'win32', realpath: z })
+    expect(m.addRoot('Z:\\')).toBe(true)
+    expect(m.allowDir('Z:\\자료')).toBe(true)
+    expect(m.allowDir('\\\\nas\\share\\자료')).toBe(true)
+    expect(m.allowDir('C:\\자료')).toBe(false)
+    // realpath 실패는 여전히 거부
+    const bad = sec.createPathRoots({ platform: 'win32', realpath: () => { throw new Error('ENOENT') } })
+    expect(bad.addRoot('\\\\nas\\학급')).toBe(false)
+    // 화면이 보낸 임의의 서버 경로는 realpath(=그 서버 접속, 윈도 로그인 정보 전송)를 부르기 전에 글자로 거른다
+    const seen: string[] = []
+    const spy = sec.createPathRoots({ platform: 'win32', realpath: (p) => (seen.push(p), p) })
+    spy.addRoot('\\\\nas\\학급')
+    spy.addFile('C:\\a.mp3')
+    seen.length = 0
+    expect(spy.allowDir('\\\\evil\\x')).toBe(false)
+    expect(spy.allowFile('\\\\evil\\a.mp3')).toBe(false)
+    expect(spy.allowDir('C:\\다른')).toBe(false)
+    expect(seen).toEqual([])
+    expect(spy.allowDir('\\\\nas\\학급\\가')).toBe(true)
+    expect(seen).toEqual(['\\\\nas\\학급\\가'])
+    // 글자로는 루트 안인데 실제 경로가 없으면: knownDir 참(→ '폴더를 찾지 못했습니다'), allowDir 거짓
+    const gone = sec.createPathRoots({ platform: 'win32', realpath: (p) => { if (p.includes('없음')) throw new Error('ENOENT'); return p } })
+    gone.addRoot('C:\\자료')
+    expect(gone.allowDir('C:\\자료\\없음')).toBe(false)
+    expect(gone.knownDir('C:\\자료\\없음')).toBe(true)
+    expect(gone.knownDir('C:\\밖')).toBe(false)
   })
 })
 
@@ -151,6 +191,9 @@ describe('외부 프로그램', () => {
     expect(agy.parseAgyStream(['warning: x', init, result({ status: 'ERROR', error: 'quota' })].join('\n')).error).toBe('Antigravity 오류: quota')
     expect(agy.parseAgyStream(result({ status: 'ERROR', error: 'authentication required' })).error).toBe(agy.LOGIN_MSG)
     expect(agy.parseAgyStream('ERROR: not authenticated')).toEqual({ error: agy.LOGIN_MSG })
+    // 로그인 오류가 stderr로만 올 때(종료 1)
+    expect(agy.parseAgyStream('', 'Error: not authenticated')).toEqual({ error: agy.LOGIN_MSG })
+    expect(agy.parseAgyStream(init, 'authentication required')).toEqual({ error: agy.LOGIN_MSG })
     expect(agy.parseAgyStream('')).toEqual({ error: 'Antigravity 응답이 없습니다.' })
     expect(agy.parseAgyStream('garbage')).toEqual({ error: 'Antigravity 응답을 읽지 못했습니다.' })
     expect(agy.parseAgyStream([init, result({ status: 'CANCELED' })].join('\n')).error).toMatch(/Antigravity 오류/)
@@ -159,6 +202,11 @@ describe('외부 프로그램', () => {
     expect(agy.streamRejected({ code: 1, out: '', err: "Error: unknown flag: --input-format\nUsage: agy [flags]" })).toBe(true)
     expect(agy.streamRejected({ code: 2, out: 'Usage:\n  agy [flags]', err: 'invalid value "stream-json" for --output-format' })).toBe(true)
     expect(agy.streamRejected({ code: 1, out: '', err: 'unrecognized option --input-format' })).toBe(true)
+    expect(agy.streamRejected({ code: 2, out: '', err: 'flag provided but not defined: -input-format\nUsage of agy:' })).toBe(true)
+    // 모델·API 오류는 인자 거절이 아니다(인자 방식으로 낮추지 않음)
+    expect(agy.streamRejected({ code: 1, out: '', err: 'Error: Request contains an invalid argument.' })).toBe(false)
+    expect(agy.streamRejected({ code: 1, out: '', err: 'INVALID_ARGUMENT: unrecognized field "x"' })).toBe(false)
+    expect(agy.streamRejected({ code: 1, out: 'Usage: agy [flags]', err: 'unknown flag: --model-x' })).toBe(false)
     // 이벤트가 나왔으면 받아들인 것(모델 오류·빈 응답도 대체 호출 없음)
     expect(agy.streamRejected({ code: 1, out: '{"event":"init","init":{}}\n', err: 'unknown flag' })).toBe(false)
     expect(agy.streamRejected({ code: 0, out: '', err: '' })).toBe(false)
@@ -222,6 +270,22 @@ describe('외부 프로그램', () => {
     agy.resolveAbs('claude', { platform: 'win32', cwd: 'C:\\w', run: (c, a) => (calls.push([c, a]), ''), exists: () => true })
     agy.resolveAbs('claude', { platform: 'darwin', cwd: '/w', run: (c, a) => (calls.push([c, a]), ''), exists: () => true })
     expect(calls).toEqual([['where', ['claude']], ['which', ['claude']]])
+  })
+})
+
+describe('자식 프로세스 출력 읽기', () => {
+  test('조각 경계에서 잘린 한글(UTF-8 여러 바이트)도 깨지지 않는다', async () => {
+    const { PassThrough } = await import('node:stream')
+    const s = new PassThrough()
+    const get = agy.collectText(s)
+    const bytes = Buffer.from('{"event":"result","result":{"status":"SUCCESS","response":"안녕하세요"}}\n', 'utf8')
+    const cut = bytes.indexOf(Buffer.from('안', 'utf8')) + 1 // '안'의 가운데
+    s.write(bytes.subarray(0, cut))
+    s.write(bytes.subarray(cut))
+    s.end()
+    await new Promise((r) => s.on('end', r))
+    expect(get()).not.toContain('\uFFFD')
+    expect(agy.parseAgyStream(get())).toEqual({ text: '안녕하세요' })
   })
 })
 

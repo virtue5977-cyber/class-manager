@@ -50,7 +50,7 @@ const jsonEvents = (out) => {
   return { events, others }
 }
 /** stream-json 출력: 마지막 result 이벤트. SUCCESS면 response(없으면 agent_response 의 text_delta 이어 붙이기). */
-function parseAgyStream(stdout) {
+function parseAgyStream(stdout, stderr = '') {
   const { events, others } = jsonEvents(stdout)
   const deltas = events
     .filter((e) => e.event === 'step_update' && e.step_update && e.step_update.step_type === 'agent_response' && typeof e.step_update.text_delta === 'string')
@@ -67,15 +67,26 @@ function parseAgyStream(stdout) {
     const err = String(r.error || status || '알 수 없음')
     return AUTH_RE.test(err) ? { error: LOGIN_MSG } : { error: `Antigravity 오류: ${err}` }
   }
-  if (AUTH_RE.test(others.join('\n'))) return { error: LOGIN_MSG }
+  if (AUTH_RE.test(others.join('\n') + '\n' + String(stderr || ''))) return { error: LOGIN_MSG }
   if (deltas.trim()) return { text: deltas }
   if (!events.length && others.length) return { error: BAD_RESPONSE }
   return { error: NO_RESPONSE }
 }
-/** stream-json 인자를 모르는 판: 이벤트가 하나도 없고, 0이 아닌 종료 + 모르는 옵션·사용법 글. 이때는 모델을 부르기 전이다. */
+/**
+ * stream-json 인자를 모르는 판: 이벤트가 하나도 없고, 0이 아닌 종료이며, 거절 글이 --input-format/--output-format(또는 stream-json 값)을 콕 집어 말할 때만.
+ * 모델·API 오류("invalid argument" 등)로는 인자 방식으로 낮추지 않는다(개인정보 후퇴 방지).
+ */
+const STREAM_REJECT_RE = /(unknown|unrecognized|not defined)[^\n]*(input|output)-format|invalid value[^\n]*stream-json|flag provided but not defined:\s*-+(input|output)-format/i
 function streamRejected({ code, out, err }) {
   if (code === 0 || jsonEvents(out).events.length) return false
-  return /unknown (flag|option|argument|shorthand)|unrecognized|invalid (value|argument)|usage:/i.test(`${err || ''}\n${out || ''}`)
+  return STREAM_REJECT_RE.test(`${err || ''}\n${out || ''}`)
+}
+/** 자식 프로세스 출력 모으기: utf8 해독기를 써서 조각 경계에서 잘린 한글이 깨지지 않게. 돌려주는 함수가 지금까지의 글. */
+function collectText(stream) {
+  let text = ''
+  stream.setEncoding('utf8')
+  stream.on('data', (d) => (text += d))
+  return () => text
 }
 /** 연결 확인 글: 확인 문자를 그대로 답하게(이 글은 표준 입력으로만 보낸다). */
 function probePrompt(nonce) {
@@ -185,4 +196,4 @@ function claudeErrorText(text) {
   return 'Claude Code 실행 중 오류가 났습니다. Pro 사용 한도를 확인하세요.'
 }
 
-module.exports = { claudeErrorText, claudeAskArgs, agyArgs, agyStdinLine, agyArgvArgs, parseAgyStream, streamRejected, probePrompt, resolveAbs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, MAX_PROMPT, LOGIN_MSG }
+module.exports = { claudeErrorText, claudeAskArgs, agyArgs, agyStdinLine, agyArgvArgs, parseAgyStream, streamRejected, collectText, probePrompt, resolveAbs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, MAX_PROMPT, LOGIN_MSG }

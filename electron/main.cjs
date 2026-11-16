@@ -394,22 +394,21 @@ function runClaude(args, input, timeoutMs) {
     const found = findProgram('claude')
     if (!found) return reject(new Error('Claude Code를 찾지 못했습니다. 노트북에 Claude Code를 설치하고 로그인했는지 확인하세요.'))
     const child = spawnProgram(found, args)
-    let out = ''
-    let err = ''
+    // utf8 해독기로 모은다(조각 경계에서 한글이 깨지지 않게)
+    const outText = agyLib.collectText(child.stdout)
+    const errText = agyLib.collectText(child.stderr)
     const timer = setTimeout(() => {
       killTree(child)
       reject(new Error('Claude Code 응답이 너무 늦습니다. 잠시 뒤 다시 시도하세요.'))
     }, timeoutMs)
-    child.stdout.on('data', (d) => (out += d))
-    child.stderr.on('data', (d) => (err += d))
     child.on('error', () => {
       clearTimeout(timer)
       reject(new Error('Claude Code를 찾지 못했습니다. 노트북에 Claude Code를 설치하고 로그인했는지 확인하세요.'))
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      if (code === 0) resolve(out)
-      else reject(new Error(require('./agy.cjs').claudeErrorText(err + out)))
+      if (code === 0) resolve(outText())
+      else reject(new Error(agyLib.claudeErrorText(errText() + outText())))
     })
     if (input !== null) child.stdin.end(input, 'utf8')
     else child.stdin.end()
@@ -448,21 +447,19 @@ function runAgy(args, timeoutMs, input = null) {
     // cmd.exe 한 줄은 8,191자까지(예전 판 대체에서 글이 인자일 때만 해당)
     if (found.viaCmd && agyLib.cmdLine(found.file, args).length > 8000) return reject(new Error('AI에 보낼 글이 너무 깁니다. 내용을 나눠서 정리하세요.'))
     const child = spawnProgram(found, args)
-    let out = ''
-    let err = ''
+    const outText = agyLib.collectText(child.stdout)
+    const errText = agyLib.collectText(child.stderr)
     const timer = setTimeout(() => {
       killTree(child)
       reject(new Error('Antigravity 응답이 너무 늦습니다. 잠시 뒤 다시 시도하세요.'))
     }, timeoutMs)
-    child.stdout.on('data', (d) => (out += d))
-    child.stderr.on('data', (d) => (err += d))
     child.on('error', () => {
       clearTimeout(timer)
       reject(new Error('Antigravity CLI(agy)를 실행하지 못했습니다.'))
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      resolve({ out, err, code })
+      resolve({ out: outText(), err: errText(), code })
     })
     child.stdin.on('error', () => {}) // 표준 입력을 읽지 않고 끝나는 판(EPIPE)
     if (input !== null) child.stdin.end(input, 'utf8')
@@ -475,7 +472,8 @@ let agyInputMode = 'stdin'
 async function agyAsk(prompt, timeoutMs) {
   if (agyInputMode === 'stdin') {
     const r = await runAgy(agyLib.agyArgs(prompt), timeoutMs, agyLib.agyStdinLine(prompt))
-    if (!agyLib.streamRejected(r)) return { ...agyLib.parseAgyStream(r.out), via: 'stdin' }
+    // 로그인 오류는 stderr로만 올 수 있다(종료 1): 둘 다 본다.
+    if (!agyLib.streamRejected(r)) return { ...agyLib.parseAgyStream(r.out, r.err), via: 'stdin' }
     agyInputMode = 'argv'
     console.warn('[agy] stream-json rejected; argv mode') // 글·출력은 남기지 않는다
   }
@@ -544,7 +542,7 @@ async function pickFolder(defaultPath) {
   const r = await dialog.showOpenDialog(win, opts)
   if (r.canceled || !r.filePaths[0]) return null
   const dir = r.filePaths[0]
-  if (!pathRoots().addRoot(dir)) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
+  if (!pathRoots().addRoot(dir)) throw new Error('이 폴더는 연결할 수 없습니다.')
   try {
     saveRoots()
   } catch {
@@ -557,11 +555,11 @@ handle('folder:pick', async () => {
   const dir = await pickFolder()
   return dir ? { path: dir } : null
 })
-// preload가 놓은(고른) File에서 얻은 경로만 온다. 이 컴퓨터에 실제로 있는 보통 파일이어야 한다(동기로 등록해 다음 stt:run보다 먼저 끝남).
+// preload가 놓은(고른) File에서 얻은 경로만 온다(네트워크 공유도 사용자가 놓은 것이면 받음). 실제로 있는 보통 파일이어야 한다(동기로 등록해 다음 stt:run보다 먼저 끝남).
 handle('paths:register-drop', (p) => {
   let st = null
   try {
-    st = foldersLib.isLocalPath(p) ? fsSync.statSync(p) : null
+    st = secLib.isUserAbsPath(p) ? fsSync.statSync(p) : null
   } catch {
     st = null
   }
@@ -570,18 +568,19 @@ handle('paths:register-drop', (p) => {
 })
 // 화면 src/lib/notes/folders.ts NOT_ALLOWED와 같은 글
 const FOLDER_NOT_ALLOWED = '이 폴더를 열려면 먼저 허용해야 합니다.'
+/** 고른 루트 안(실제 경로 비교)만. 글자로 루트 밖이면 디스크·네트워크에 닿기 전에 거절한다. */
 function allowedDir(p) {
-  if (foldersLib.isLocalPath(p) && !fsSync.existsSync(p)) throw new Error('폴더를 찾지 못했습니다.')
-  if (typeof p === 'string' && /^[\\/]{2}|^\\\?\?\\/.test(p)) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
-  if (!pathRoots().allowDir(p)) throw new Error(FOLDER_NOT_ALLOWED)
-  return p
+  if (pathRoots().allowDir(p)) return p
+  // 글자로는 고른 폴더 안인데 실제 경로를 못 구함 = 지워졌거나 옮겨짐
+  if (pathRoots().knownDir(p)) throw new Error('폴더를 찾지 못했습니다.')
+  throw new Error(FOLDER_NOT_ALLOWED)
 }
 handle('folder:open', async (p) => {
-  const dir = await foldersLib.assertDir(allowedDir(p))
+  const dir = await foldersLib.assertDir(allowedDir(p), { network: true })
   const err = await shell.openPath(dir)
   if (err) throw new Error('폴더를 열지 못했습니다.')
 })
-handle('folder:list', async (p) => foldersLib.listDir(allowedDir(p)))
+handle('folder:list', async (p) => foldersLib.listDir(allowedDir(p), { network: true }))
 
 // ---- 음성 받아쓰기: 고른 사람만 받아 두고, 녹음은 이 컴퓨터 안에서만 글로 바꾼다 ----
 const sttLib = require('./stt.cjs')
@@ -665,7 +664,7 @@ handle('stt:run', async ({ path: input, wav, model } = {}) => {
       await fs.writeFile(file, Buffer.from(wav))
     } else {
       const ext = typeof input === 'string' ? path.extname(input).toLowerCase() : ''
-      if (!pathRoots().allowFile(input) || !foldersLib.isLocalPath(input) || !['.mp3', '.wav', '.ogg', '.flac'].includes(ext)) throw new Error('녹음 파일을 읽을 수 없습니다.')
+      if (!pathRoots().allowFile(input) || !['.mp3', '.wav', '.ogg', '.flac'].includes(ext)) throw new Error('녹음 파일을 읽을 수 없습니다.')
       const stIn = await fs.stat(input).catch(() => null)
       if (!stIn || !stIn.isFile()) throw new Error('녹음 파일을 읽을 수 없습니다.')
       file = path.join(work, 'in' + ext)
