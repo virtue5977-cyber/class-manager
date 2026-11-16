@@ -45,15 +45,26 @@ function normalizeApiUrl(input) {
   if (u.protocol !== 'https:' || u.hostname !== 'www.googleapis.com' || u.port !== '' || u.username || u.password || u.origin !== API_ORIGIN) return no
   const p = u.pathname
   if (p.includes('..') || /%2e/i.test(p)) return no
-  if (p.startsWith('/calendar/v3/')) {
+  // 구글은 경로를 풀어(%61 → a) 읽으므로, 모든 판정은 마디마다 푼 값으로 한다.
+  // 풀 수 없거나, 푼 값에 / \\ 제어 문자가 있거나, 점 마디이면 거부.
+  const raw = p.split('/')
+  const segs = []
+  for (const r of raw) {
+    let d
+    try { d = decodeURIComponent(r) } catch { return no }
+    if (/[/\\\u0000-\u001f\u007f]/.test(d) || d === '.' || d === '..' || d.includes('..')) return no
+    segs.push(d)
+  }
+  const dp = segs.join('/')
+  if (dp.startsWith('/calendar/v3/')) {
     // 공유(acl)·알림 채널(watch·channels)은 막는다. 초대 메일을 보내는 sendUpdates/sendNotifications는 'none'만.
-    if (p.split('/').some((seg) => CAL_FORBIDDEN_SEGMENTS.has(seg.toLowerCase()))) return no
+    if (segs.some((seg) => CAL_FORBIDDEN_SEGMENTS.has(seg.toLowerCase()))) return no
     for (const k of ['sendUpdates', 'sendNotifications']) if (u.searchParams.getAll(k).some((v) => v !== 'none')) return no
     return { ok: true, url: u.toString() }
   }
   // 드라이브는 정해진 모양만: files(목록·만들기), files/<id>(읽기·고치기·지우기·alt=media), upload/…/files[/<id>].
   // permissions·copy·comments·revisions·watch 등은 거부(학생 자료를 메일로 공유하는 길을 막는다).
-  const m = /^\/(?:upload\/)?drive\/v3\/files(?:\/([^/]+))?$/.exec(p)
+  const m = /^\/(?:upload\/)?drive\/v3\/files(?:\/([^/]+))?$/.exec(dp)
   if (!m || (m[1] !== undefined && !FILE_ID.test(m[1]))) return no
   return { ok: true, url: u.toString() }
 }
