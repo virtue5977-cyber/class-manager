@@ -5,7 +5,7 @@ import { importSnapshot, parseSnapshot, validateSnapshot } from './snapshot'
 import { setupPassphrase } from './service'
 import { openVaultDb } from '../vault/vaultDb'
 import {
-  buildVaultPayload, dbNameFor, newDek, newRecoveryCode, recoveryKeyRaw, PASS_ITER, RECOVERY_ITER,
+  buildVaultPayload, completeMetaRow, dbNameFor, newDek, newRecoveryCode, recoveryKeyRaw, PASS_ITER, RECOVERY_ITER,
   type VaultPayload,
 } from '../vault/keys'
 
@@ -44,7 +44,7 @@ export async function restoreIntoNewVault(
       recoveryRaw, recoverySalt: recSalt, recoveryIter: RECOVERY_ITER,
     })
     // 완료 표시 → 닫기 → vault.store는 맨 마지막. store가 성공한 뒤에는 DB를 지우지 않는다.
-    await db.meta.put({ id: 'vault', complete: true })
+    await db.meta.put(completeMetaRow(dek, keyId))
     db.close()
     await deps.store(payload)
     return { dbName, recoveryCode }

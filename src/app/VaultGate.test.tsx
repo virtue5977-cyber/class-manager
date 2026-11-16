@@ -1,13 +1,14 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useContext, useEffect, useState } from 'react'
+import { StrictMode, useContext, useEffect, useState } from 'react'
 import VaultGate from './VaultGate'
 import { AppDB, createDb } from '../lib/db/schema'
 import { newRecord } from '../lib/db/records'
 import { openVaultDb } from '../lib/vault/vaultDb'
+import Dexie from 'dexie'
 import { VaultRewrapContext } from '../lib/vault/rewrapContext'
 import {
-  buildVaultPayload, newDek, newRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, type VaultPayload,
+  buildVaultPayload, makeMetaCheck, newDek, newRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, type VaultPayload,
 } from '../lib/vault/keys'
 import { fromBase64 } from '../lib/backup/crypto'
 import { runBackup, setupPassphrase } from '../lib/backup/service'
@@ -18,7 +19,8 @@ const PASS = '시험용암호구2026'
 const ITER = 1000
 
 /** 가상 열쇠: 낮은 반복 수(시험 속도), 가상 DB는 완료 표시까지. */
-async function makeVault(opts: { complete?: boolean } = {}) {
+type MetaKind = 'ok' | 'none' | 'wrong-keyid' | 'bad-check' | 'no-db'
+async function makeVault(opts: { complete?: boolean; meta?: MetaKind } = {}) {
   const { dek, keyId } = newDek()
   const passSalt = crypto.getRandomValues(new Uint8Array(16))
   const recSalt = crypto.getRandomValues(new Uint8Array(16))
@@ -28,20 +30,26 @@ async function makeVault(opts: { complete?: boolean } = {}) {
     passRaw: await passKeyRaw(PASS, passSalt, ITER), passSalt, passIter: ITER,
     recoveryRaw: await recoveryKeyRaw(code, recSalt, ITER), recoverySalt: recSalt, recoveryIter: ITER,
   })
-  const db = openVaultDb(payload.dbName, dek)
-  await db.open()
-  if (opts.complete !== false) await db.meta.put({ id: 'vault', complete: true })
-  db.close()
+  const meta: MetaKind = opts.meta ?? (opts.complete === false ? 'none' : 'ok')
+  if (meta !== 'no-db') {
+    const db = openVaultDb(payload.dbName, dek)
+    await db.open()
+    const check = makeMetaCheck(dek, keyId)
+    if (meta === 'ok') await db.meta.put({ id: 'vault', complete: true, keyId, check })
+    if (meta === 'wrong-keyid') await db.meta.put({ id: 'vault', complete: true, keyId: newDek().keyId, check })
+    if (meta === 'bad-check') await db.meta.put({ id: 'vault', complete: true, keyId, check: makeMetaCheck(newDek().dek, keyId) })
+    db.close()
+  }
   const { dekB64: _d, ...pub } = payload
   return { dek, code, payload, vault: pub as PublicVault }
 }
 
 function fakeDesktop(status: () => Promise<VaultStatus>, extra: Partial<DesktopVaultApi> = {}) {
   const vault = {
-    status: vi.fn(status),
     unlockDpapi: vi.fn(async () => null),
     readBackup: vi.fn(async () => null),
     ...extra,
+    status: vi.fn(status),
     store: vi.fn(extra.store ?? (async (_p: VaultPayload) => true)),
   }
   const alive = vi.fn()
@@ -275,4 +283,148 @@ test('VaultRewrapContext: 새 passKey로 pass만 다시 감싸고 recovery는 �
 test('웹에서는 VaultRewrapContext가 없다', async () => {
   render(<VaultGate>{() => <Rewrapper />}</VaultGate>)
   expect(await screen.findByRole('button', { name: '없음' })).toBeInTheDocument()
+})
+
+const dbNames = async () => (await indexedDB.databases()).map((d) => d.name)
+
+test('ok인데 이 열쇠의 DB가 없으면 → missing(아무것도 만들지·저장하지 않음, 복원 단추)', async () => {
+  const v = await makeVault({ meta: 'no-db' })
+  const { vault } = fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+  render(<VaultGate renderSetup={(p) => <p>마법사 {p.reason}</p>}>{(db) => <Probe db={db} />}</VaultGate>)
+  expect(await screen.findByText(/이 열쇠의 자료가 이 PC에 없습니다/)).toBeInTheDocument()
+  expect(screen.getByText(/아무것도 바꾸지 않았습니다/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '백업 파일에서 복원' })).toBeInTheDocument()
+  expect(screen.queryByText(/마법사/)).not.toBeInTheDocument()
+  expect(vault.store).not.toHaveBeenCalled()
+  expect(await dbNames()).not.toContain(v.payload.dbName)
+})
+
+test('needs-pass: 암호구가 맞아도 DB가 없으면 → missing, store 없음, DB 안 만듦', async () => {
+  const user = userEvent.setup()
+  const v = await makeVault({ meta: 'no-db' })
+  const { vault } = fakeDesktop(async () => ({ state: 'needs-pass', vault: v.vault }))
+  render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+  await user.type(await screen.findByLabelText('백업 암호구'), PASS)
+  await user.click(screen.getByRole('button', { name: '열기' }))
+  expect(await screen.findByText(/이 열쇠의 자료가 이 PC에 없습니다/)).toBeInTheDocument()
+  expect(vault.store).not.toHaveBeenCalled()
+  expect(await dbNames()).not.toContain(v.payload.dbName)
+})
+
+for (const meta of ['wrong-keyid', 'bad-check'] as const) {
+  test(`meta 확인 실패(${meta}) → wrong-key, 쓰지 않음(ok·needs-pass 모두)`, async () => {
+    const user = userEvent.setup()
+    const v = await makeVault({ meta })
+    const raw = new AppDB(v.payload.dbName, { vault: true })
+    const before = await raw.meta.get('vault')
+    raw.close()
+    const { vault } = fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+    const { unmount } = render(<VaultGate renderSetup={(p) => <p>마법사 {p.reason}</p>}>{(db) => <Probe db={db} />}</VaultGate>)
+    expect(await screen.findByText(/열쇠와 자료가 서로 맞지 않습니다/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '백업 파일에서 복원' })).toBeInTheDocument()
+    unmount()
+    vault.status.mockImplementation(async () => ({ state: 'needs-pass', vault: v.vault }))
+    render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+    await user.type(await screen.findByLabelText('백업 암호구'), PASS)
+    await user.click(screen.getByRole('button', { name: '열기' }))
+    expect(await screen.findByText(/열쇠와 자료가 서로 맞지 않습니다/)).toBeInTheDocument()
+    expect(vault.store).not.toHaveBeenCalled()
+    const raw2 = new AppDB(v.payload.dbName, { vault: true })
+    expect(await raw2.meta.get('vault')).toEqual(before)
+    expect(await raw2.table('students').count()).toBe(0)
+    raw2.close()
+  })
+}
+
+test('열기 화면에서 복원: "현재 열쇠 파일을 새 것으로 바꿉니다" 확인 없이는 시작할 수 없다', async () => {
+  const user = userEvent.setup()
+  const v = await makeVault()
+  fakeDesktop(async () => ({ state: 'needs-pass', vault: v.vault }))
+  render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+  const input = await screen.findByLabelText('백업 암호구')
+  for (let i = 1; i <= 5; i++) {
+    await user.clear(input)
+    await user.type(input, '틀린암호구' + i)
+    await user.click(screen.getByRole('button', { name: '열기' }))
+    await screen.findByText('암호구가 맞지 않습니다')
+  }
+  await user.click(await screen.findByRole('button', { name: '백업 파일에서 복원' }))
+  expect(screen.getByText(/원래 윈도우 계정/)).toBeInTheDocument()
+  expect(screen.getByText(/이 계정에서는 더 이상 열 수 없습니다/)).toBeInTheDocument()
+  await user.upload(screen.getByLabelText('백업 파일'), new File([new Uint8Array([1, 2, 3])], 'b.enc'))
+  await user.type(screen.getByLabelText('백업 파일 암호구'), PASS)
+  expect(screen.getByRole('button', { name: '복원' })).toBeDisabled()
+  await user.click(screen.getByRole('checkbox', { name: '현재 열쇠 파일을 새 것으로 바꿉니다' }))
+  expect(screen.getByRole('button', { name: '복원' })).toBeEnabled()
+})
+
+test('열기 뒤 DPAPI 다시 저장이 실패하면 막지 않고 작은 안내를 보인다', async () => {
+  const user = userEvent.setup()
+  const v = await makeVault()
+  fakeDesktop(async () => ({ state: 'needs-pass', vault: v.vault }), { store: async () => { throw new Error('열쇠 파일을 저장하지 못했습니다.') } })
+  render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+  await user.type(await screen.findByLabelText('백업 암호구'), PASS)
+  await user.click(screen.getByRole('button', { name: '열기' }))
+  expect(await screen.findByText(new RegExp(`열린 DB ${v.payload.dbName}`))).toBeInTheDocument()
+  expect(screen.getByText('이 PC에 열쇠를 저장하지 못해 다음에도 암호구를 묻습니다')).toBeInTheDocument()
+})
+
+test('틀리면 입력칸으로 초점이 돌아온다', async () => {
+  const user = userEvent.setup()
+  const v = await makeVault()
+  fakeDesktop(async () => ({ state: 'needs-pass', vault: v.vault }))
+  render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+  const input = await screen.findByLabelText('백업 암호구')
+  await user.type(input, '틀린암호구')
+  await user.click(screen.getByRole('button', { name: '열기' }))
+  await screen.findByText('암호구가 맞지 않습니다')
+  await waitFor(() => expect(input).toHaveFocus())
+})
+
+test('탭: tablist/tab/tabpanel, 화살표로 바꾼다', async () => {
+  const user = userEvent.setup()
+  const v = await makeVault()
+  fakeDesktop(async () => ({ state: 'needs-pass', vault: v.vault }))
+  render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+  const passTab = await screen.findByRole('tab', { name: '백업 암호구' })
+  expect(screen.getByRole('tablist')).toBeInTheDocument()
+  const panel = screen.getByRole('tabpanel')
+  expect(passTab).toHaveAttribute('aria-controls', panel.id)
+  expect(passTab).toHaveAttribute('aria-selected', 'true')
+  passTab.focus()
+  await user.keyboard('{ArrowRight}')
+  const recTab = screen.getByRole('tab', { name: '복구 코드' })
+  expect(recTab).toHaveAttribute('aria-selected', 'true')
+  expect(recTab).toHaveFocus()
+  expect(screen.getByLabelText('복구 코드')).toBeInTheDocument()
+  await user.keyboard('{ArrowLeft}')
+  expect(screen.getByRole('tab', { name: '백업 암호구' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('indexedDB.databases()가 실패하면 Dexie.exists로 옛 DB를 확인한다', async () => {
+  const old = new AppDB('class-manager')
+  await old.open()
+  old.close()
+  const spy = vi.spyOn(indexedDB, 'databases').mockRejectedValue(new Error('no'))
+  try {
+    fakeDesktop(async () => ({ state: 'none' }))
+    render(<VaultGate renderSetup={(p) => <p>마법사 {p.reason}</p>}>{(db) => <Probe db={db} />}</VaultGate>)
+    expect(await screen.findByText('마법사 migrate')).toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+    await new Promise((r) => { const q = indexedDB.deleteDatabase('class-manager'); q.onsuccess = q.onerror = r })
+  }
+})
+
+test('StrictMode 이중 실행에서도 열린 연결은 하나, 언마운트하면 닫힌다', async () => {
+  const v = await makeVault()
+  fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+  const openConns = () => (Dexie as unknown as { connections: Dexie[] }).connections
+    .filter((d) => d.name === v.payload.dbName && d.isOpen()).length
+  const { unmount } = render(<StrictMode><VaultGate>{(db) => <Probe db={db} />}</VaultGate></StrictMode>)
+  expect(await screen.findByText(new RegExp(`열린 DB ${v.payload.dbName}`))).toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 50))
+  expect(openConns()).toBe(1)
+  unmount()
+  await waitFor(() => expect(openConns()).toBe(0))
 })

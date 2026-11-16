@@ -101,3 +101,17 @@ test('wrapDek: salt는 16바이트여야 하고 저장된 salt로 다시 유도�
   const again = await passKeyRaw('암호구-테스트', fromBase64(w.salt), w.iter)
   expect(unwrapDek(w, again, keyId, 'pass')).toEqual(dek)
 })
+
+test('makeMetaCheck/verifyMetaCheck: 같은 DEK·keyId만 통과', async () => {
+  const { makeMetaCheck, verifyMetaCheck } = await import('./keys')
+  const a = newDek()
+  const b = newDek()
+  const row = { id: 'vault', complete: true, keyId: a.keyId, check: makeMetaCheck(a.dek, a.keyId) }
+  expect(verifyMetaCheck(a.dek, a.keyId, row)).toBe(true)
+  expect(verifyMetaCheck(b.dek, a.keyId, row)).toBe(false) // 다른 DEK
+  expect(verifyMetaCheck(a.dek, b.keyId, row)).toBe(false) // 다른 keyId
+  expect(verifyMetaCheck(a.dek, a.keyId, { ...row, keyId: b.keyId })).toBe(false)
+  expect(verifyMetaCheck(a.dek, a.keyId, { ...row, check: 'AAAA' })).toBe(false)
+  expect(verifyMetaCheck(a.dek, a.keyId, { id: 'vault', complete: true })).toBe(false)
+  expect(verifyMetaCheck(a.dek, a.keyId, undefined)).toBe(false)
+})

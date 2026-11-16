@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import Dexie from 'dexie'
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { createDb, type AppDB } from '../lib/db/schema'
 import { isDesktopApp } from '../lib/settings'
 import { getDesktop, type DesktopVaultApi, type PublicVault } from '../lib/desktop/bridge'
 import { openVaultDb } from '../lib/vault/vaultDb'
 import { VaultRewrapContext } from '../lib/vault/rewrapContext'
-import { normalizeRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, wrapDek, type VaultPayload } from '../lib/vault/keys'
+import { normalizeRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, verifyMetaCheck, wrapDek, type VaultPayload } from '../lib/vault/keys'
 import { fromBase64, toBase64 } from '../lib/backup/crypto'
 import { restoreIntoNewVault } from '../lib/backup/restoreVault'
 import type { DerivedPassKey } from '../lib/backup/service'
@@ -19,9 +20,13 @@ const OLD_DB = 'class-manager'
 type Phase =
   | { k: 'loading' }
   | { k: 'setup'; reason: SetupReason }
-  | { k: 'open'; db: AppDB }
+  | { k: 'open'; db: AppDB; notice?: string }
   | { k: 'unlock'; vault: PublicVault; dpapi?: boolean }
   | { k: 'broken' }
+  /** 열쇠는 있는데 그 DB가 이 PC(이 계정)에 없다. 아무것도 만들거나 쓰지 않는다. */
+  | { k: 'missing' }
+  /** DB의 meta 확인값이 이 열쇠와 맞지 않는다. 아무것도 쓰지 않는다. */
+  | { k: 'wrong-key' }
   | { k: 'error'; message: string }
 
 /** Task 10 마법사가 들어오기 전 자리. */
@@ -40,9 +45,11 @@ async function hasOldDb(): Promise<boolean> {
   try {
     return (await indexedDB.databases()).some((d) => d.name === OLD_DB)
   } catch {
-    return false
+    try { return await Dexie.exists(OLD_DB) } catch { return false }
   }
 }
+
+export const STORE_FAILED_NOTICE = '이 PC에 열쇠를 저장하지 못해 다음에도 암호구를 묻습니다'
 
 const payloadOf = (v: PublicVault, dek: Uint8Array): VaultPayload => ({
   v: 1, keyId: v.keyId, dbName: v.dbName, pass: v.pass, ...(v.recovery ? { recovery: v.recovery } : {}), dekB64: toBase64(dek),
@@ -60,6 +67,12 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
   const dekRef = useRef<Uint8Array | null>(null)
   const vaultRef = useRef<PublicVault | null>(null)
   const runId = useRef(0)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+  const current = (id: number) => mounted.current && id === runId.current
 
   useEffect(() => {
     try {
@@ -68,27 +81,50 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
     } catch { /* 옛 exe */ }
   }, [])
 
-  const openWith = useCallback(async (dek: Uint8Array, vault: PublicVault): Promise<Phase> => {
+  /**
+   * 이 열쇠의 DB를 확인하고 연다. 없으면 만들지 않고 'missing', 확인값이 다르면 'wrong-key'(쓰지 않음),
+   * 완료 행이 없으면 'incomplete'. 그 사이 다른 실행이 시작됐거나 언마운트됐으면 열었던 DB를 닫고 null.
+   */
+  const checkOpen = useCallback(async (dek: Uint8Array, vault: PublicVault, id: number): Promise<Phase | null> => {
+    let exists: boolean
+    try { exists = await Dexie.exists(vault.dbName) } catch { return current(id) ? { k: 'error', message: '자료를 열지 못했습니다.' } : null }
+    if (!current(id)) return null
+    if (!exists) return { k: 'missing' }
     const db = openVaultDb(vault.dbName, dek)
+    let row: Record<string, unknown> | undefined
     try {
       await db.open()
-      if ((await db.meta.get('vault'))?.complete !== true) {
-        db.close()
-        return { k: 'setup', reason: 'incomplete' }
-      }
+      row = await db.meta.get('vault')
     } catch {
       db.close()
-      return { k: 'error', message: '자료를 열지 못했습니다.' }
+      return current(id) ? { k: 'error', message: '자료를 열지 못했습니다.' } : null
     }
-    dekRef.current = dek
-    vaultRef.current = vault
-    return { k: 'open', db }
+    if (!current(id)) { db.close(); return null }
+    const bound = row && (row.keyId !== undefined || row.check !== undefined)
+    let next: Phase
+    if (!row) next = { k: 'setup', reason: 'incomplete' }
+    else if (bound) {
+      if (!verifyMetaCheck(dek, vault.keyId, row)) next = { k: 'wrong-key' }
+      else next = row.complete === true ? { k: 'open', db } : { k: 'setup', reason: 'incomplete' }
+    } else next = row.complete === true ? { k: 'wrong-key' } : { k: 'setup', reason: 'incomplete' } // 묶음 확인값 없는 완료 행은 믿지 않는다
+    if (next.k !== 'open') db.close()
+    return next
   }, [])
+
+  const commitOpen = (p: Phase, dek: Uint8Array, vault: PublicVault) => {
+    if (p.k === 'open') {
+      dekRef.current = dek
+      vaultRef.current = vault
+    }
+    setPhase(p)
+  }
 
   const run = useCallback(async () => {
     if (!api) return
     const id = ++runId.current
-    const set = (p: Phase) => { if (id === runId.current) setPhase(p) }
+    dekRef.current = null
+    vaultRef.current = null
+    const set = (p: Phase) => { if (current(id)) setPhase(p) }
     set({ k: 'loading' })
     try {
       const st = await api.status()
@@ -96,13 +132,31 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
       if (st.state === 'broken' || !st.vault) return set({ k: 'broken' })
       if (st.state === 'ok') {
         const b64 = st.dekB64 ?? (await api.unlockDpapi().catch(() => null))
-        if (b64) return set(await openWith(fromBase64(b64), st.vault))
+        if (b64) {
+          const dek = fromBase64(b64)
+          const p = await checkOpen(dek, st.vault, id)
+          if (p) commitOpen(p, dek, st.vault)
+          return
+        }
       }
       set({ k: 'unlock', vault: st.vault, dpapi: st.dpapi })
     } catch (e) {
       set({ k: 'error', message: e instanceof Error && e.message ? e.message : '열쇠를 읽지 못했습니다.' })
     }
-  }, [api, openWith])
+  }, [api, checkOpen])
+
+  /** 암호구·복구 코드로 푼 DEK: DB를 먼저 확인하고, 열 수 있을 때만 DPAPI로 다시 감싸 저장한다. */
+  const unlocked = useCallback(async (dek: Uint8Array, vault: PublicVault) => {
+    if (!api) return
+    const id = ++runId.current
+    const p = await checkOpen(dek, vault, id)
+    if (!p) return
+    if (p.k !== 'open') return commitOpen(p, dek, vault)
+    let notice: string | undefined
+    try { await api.store(payloadOf(vault, dek)) } catch { notice = STORE_FAILED_NOTICE }
+    if (!current(id)) { p.db.close(); return }
+    commitOpen({ ...p, notice }, dek, vault)
+  }, [api, checkOpen])
 
   useEffect(() => { void run() }, [run])
 
@@ -126,7 +180,12 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
     case 'loading':
       return null
     case 'open':
-      return <VaultRewrapContext.Provider value={rewrap}>{children(phase.db)}</VaultRewrapContext.Provider>
+      return (
+        <VaultRewrapContext.Provider value={rewrap}>
+          {phase.notice && <p className="banner vault-notice" role="status">{phase.notice}</p>}
+          {children(phase.db)}
+        </VaultRewrapContext.Provider>
+      )
     case 'setup': {
       const done = () => { void run() }
       return <>{renderSetup ? renderSetup({ reason: phase.reason, done }) : <SetupPending reason={phase.reason} />}</>
@@ -137,12 +196,30 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
           vault={phase.vault}
           dpapi={phase.dpapi}
           api={api}
-          onOpen={async (dek) => setPhase(await openWith(dek, phase.vault))}
+          onUnlocked={(dek) => unlocked(dek, phase.vault)}
           onRestored={run}
         />
       )
     case 'broken':
-      return <BrokenScreen api={api} onRestored={run} />
+      return (
+        <ProblemScreen api={api} onRestored={run}>
+          <p>열쇠 파일이 손상되어 자료를 열 수 없습니다. 직전 열쇠 파일(.bak)도 쓸 수 없었습니다.</p>
+        </ProblemScreen>
+      )
+    case 'missing':
+      return (
+        <ProblemScreen api={api} replacing onRestored={run}>
+          <p>이 열쇠의 자료가 이 PC에 없습니다. 다른 PC나 다른 윈도우 계정에서 만든 열쇠일 수 있습니다.</p>
+          <p className="muted">아무것도 바꾸지 않았습니다. 자료가 있는 PC·계정에서 열거나, 백업 파일에서 복원하세요.</p>
+        </ProblemScreen>
+      )
+    case 'wrong-key':
+      return (
+        <ProblemScreen api={api} replacing onRestored={run}>
+          <p>열쇠와 자료가 서로 맞지 않습니다. 이 열쇠로는 이 자료를 열 수 없습니다.</p>
+          <p className="muted">아무것도 쓰지 않았습니다. 백업 파일에서 복원할 수 있습니다.</p>
+        </ProblemScreen>
+      )
     case 'error':
       return (
         <div className="lock">
@@ -158,11 +235,11 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
 
 type Tab = 'pass' | 'recovery'
 
-function UnlockScreen({ vault, dpapi, api, onOpen, onRestored }: {
+function UnlockScreen({ vault, dpapi, api, onUnlocked, onRestored }: {
   vault: PublicVault
   dpapi?: boolean
   api: DesktopVaultApi
-  onOpen: (dek: Uint8Array) => Promise<void>
+  onUnlocked: (dek: Uint8Array) => Promise<void>
   onRestored: () => void
 }) {
   const [tab, setTab] = useState<Tab>('pass')
@@ -171,6 +248,13 @@ function UnlockScreen({ vault, dpapi, api, onOpen, onRestored }: {
   const [error, setError] = useState<string>()
   const [fails, setFails] = useState(0)
   const [restoring, setRestoring] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const tabRefs = { pass: useRef<HTMLButtonElement>(null), recovery: useRef<HTMLButtonElement>(null) }
+  const uid = useId()
+  const tabId = (t: Tab) => `${uid}-tab-${t}`
+  const panelId = `${uid}-panel`
+
+  useEffect(() => { if (error && !busy) inputRef.current?.focus() }, [error, busy])
 
   if (restoring) return <RestoreScreen api={api} replacing onBack={() => setRestoring(false)} onDone={onRestored} />
 
@@ -196,16 +280,25 @@ function UnlockScreen({ vault, dpapi, api, onOpen, onRestored }: {
         if (!dek) { setFails((f) => f + 1); setError('복구 코드가 맞지 않습니다') }
       }
       if (!dek) return
-      // DPAPI로 다시 감싼다(다음부터 묻지 않게). 실패해도 여는 것은 막지 않는다.
-      try { await api.store(payloadOf(vault, dek)) } catch { /* 저장 실패: 다음에 다시 묻는다 */ }
       setValue('')
-      await onOpen(dek)
+      await onUnlocked(dek) // DB 확인 → (열 수 있으면) DPAPI로 다시 감싸 저장 → 열기
     } finally {
       setBusy(false)
     }
   }
 
   const pick = (t: Tab) => { setTab(t); setValue(''); setError(undefined) }
+  const onTabKey = (e: KeyboardEvent) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
+    e.preventDefault()
+    const next: Tab = e.key === 'Home' ? 'pass' : e.key === 'End' ? 'recovery' : tab === 'pass' ? 'recovery' : 'pass'
+    pick(next)
+    tabRefs[next].current?.focus()
+  }
+  const tabProps = (t: Tab) => ({
+    ref: tabRefs[t], id: tabId(t), type: 'button' as const, role: 'tab', 'aria-selected': tab === t, 'aria-controls': panelId,
+    tabIndex: tab === t ? 0 : -1, className: tab === t ? 'active' : '', onClick: () => pick(t),
+  })
 
   return (
     <div className="lock">
@@ -216,23 +309,25 @@ function UnlockScreen({ vault, dpapi, api, onOpen, onRestored }: {
             ? '이 PC에서는 윈도우 보호 저장소(DPAPI)를 쓸 수 없어, 켤 때마다 암호구를 묻습니다.'
             : '이 PC의 윈도우 계정으로 열쇠를 자동으로 열지 못했습니다(다른 PC·다른 계정이거나 윈도우 보호 저장소를 쓸 수 없음). 한 번 열면 다음부터는 묻지 않으며, 보호 저장소를 쓸 수 없는 PC라면 켤 때마다 암호구를 묻습니다.'}
         </p>
-        <div className="tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'pass'} className={tab === 'pass' ? 'active' : ''} onClick={() => pick('pass')}>백업 암호구</button>
-          <button type="button" role="tab" aria-selected={tab === 'recovery'} className={tab === 'recovery' ? 'active' : ''} onClick={() => pick('recovery')}>복구 코드</button>
+        <div className="tabs" role="tablist" aria-label="여는 방법" onKeyDown={onTabKey}>
+          <button {...tabProps('pass')}>백업 암호구</button>
+          <button {...tabProps('recovery')}>복구 코드</button>
         </div>
-        {tab === 'pass' ? (
-          <label>
-            백업 암호구
-            <input type="password" autoFocus autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
-          </label>
-        ) : vault.recovery ? (
-          <label>
-            복구 코드
-            <input type="text" autoFocus autoComplete="off" spellCheck={false} placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
-          </label>
-        ) : (
-          <p className="muted">이 열쇠에는 복구 코드가 없습니다. 백업 암호구로 여세요.</p>
-        )}
+        <div role="tabpanel" id={panelId} aria-label={tab === 'pass' ? '백업 암호구로 열기' : '복구 코드로 열기'} className="stack">
+          {tab === 'pass' ? (
+            <label>
+              백업 암호구
+              <input ref={inputRef} type="password" autoFocus autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
+            </label>
+          ) : vault.recovery ? (
+            <label>
+              복구 코드
+              <input ref={inputRef} type="text" autoFocus autoComplete="off" spellCheck={false} placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
+            </label>
+          ) : (
+            <p className="muted">이 열쇠에는 복구 코드가 없습니다. 백업 암호구로 여세요.</p>
+          )}
+        </div>
         <button type="submit" className="primary" disabled={busy || !value}>{busy ? '여는 중…' : '열기'}</button>
         {error && <p className="error" role="alert">{error}</p>}
         {fails >= RESTORE_HINT_AFTER && (
@@ -246,14 +341,15 @@ function UnlockScreen({ vault, dpapi, api, onOpen, onRestored }: {
   )
 }
 
-function BrokenScreen({ api, onRestored }: { api: DesktopVaultApi; onRestored: () => void }) {
+/** 열 수 없는 상태(손상·DB 없음·열쇠 불일치): 설명 + 백업 파일에서 복원. */
+function ProblemScreen({ api, replacing, onRestored, children }: { api: DesktopVaultApi; replacing?: boolean; onRestored: () => void; children: ReactNode }) {
   const [restoring, setRestoring] = useState(false)
-  if (restoring) return <RestoreScreen api={api} onBack={() => setRestoring(false)} onDone={onRestored} />
+  if (restoring) return <RestoreScreen api={api} replacing={replacing} onBack={() => setRestoring(false)} onDone={onRestored} />
   return (
     <div className="lock">
       <div className="card stack vault-card">
         <h2>자료 열기</h2>
-        <p>열쇠 파일이 손상되어 자료를 열 수 없습니다. 직전 열쇠 파일(.bak)도 쓸 수 없었습니다.</p>
+        {children}
         <p className="muted">백업 파일과 그 파일을 만든 때의 암호구가 있으면 자료를 되살릴 수 있습니다.</p>
         <button type="button" className="primary" onClick={() => setRestoring(true)}>백업 파일에서 복원</button>
       </div>
@@ -295,10 +391,12 @@ function RestoreScreen({ api, replacing, onBack, onDone }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [code, setCode] = useState<string>()
+  const [confirmed, setConfirmed] = useState(false)
+  const ready = !!file && !!pass && (!replacing || confirmed)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (busy || !file || !pass) return
+    if (busy || !ready) return
     setBusy(true)
     setError(undefined)
     try {
@@ -334,7 +432,17 @@ function RestoreScreen({ api, replacing, onBack, onDone }: {
       <form className="card stack vault-card" onSubmit={submit} aria-label="백업 파일에서 복원">
         <h2>백업 파일에서 복원</h2>
         <p className="muted">백업 파일과 그 파일을 만든 때의 암호구로 자료를 새로 엽니다. 새 열쇠와 새 복구 코드를 만듭니다.</p>
-        {replacing && <p className="muted">복원하면 지금 열지 못한 자료는 더는 열 수 없습니다. 암호구나 복구 코드를 찾을 수 있다면 먼저 그것으로 여세요.</p>}
+        {replacing && (
+          <div className="stack vault-warn">
+            <p className="notice">지금 열쇠 파일을 새 열쇠로 바꿉니다. 암호구나 복구 코드를 찾을 수 있다면 먼저 그것으로 여세요.</p>
+            <p className="muted">원래 윈도우 계정이나 원래 PC에서는 지금 자료가 여전히 자동으로 열릴 수 있습니다. 그쪽에서 열 수 있다면 거기서 백업을 새로 만드는 편이 낫습니다.</p>
+            <p className="muted">복원하면 지금 자료는 이 PC에 그대로 남지만, 이 계정에서는 더 이상 열 수 없습니다.</p>
+            <label className="row">
+              <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={busy} />
+              현재 열쇠 파일을 새 것으로 바꿉니다
+            </label>
+          </div>
+        )}
         <label>
           백업 파일
           <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} disabled={busy} />
@@ -345,7 +453,7 @@ function RestoreScreen({ api, replacing, onBack, onDone }: {
         </label>
         <p className="muted">이 PC에 있던 예전 자동 백업 파일은 자동으로 정리되지 않습니다. 필요 없으면 백업 폴더에서 직접 지우세요.</p>
         <div className="row">
-          <button type="submit" className="primary" disabled={busy || !file || !pass}>{busy ? '복원하는 중…' : '복원'}</button>
+          <button type="submit" className="primary" disabled={busy || !ready}>{busy ? '복원하는 중…' : '복원'}</button>
           <button type="button" onClick={onBack} disabled={busy}>돌아가기</button>
         </div>
         {error && <p className="error" role="alert">{error}</p>}

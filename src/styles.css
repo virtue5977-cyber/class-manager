@@ -176,6 +176,8 @@ ol.briefing-list button { padding: 2px 6px; font-size: 12px; }
 .vault-card { width: min(440px, 92vw); align-items: stretch; }
 .vault-card label { display: flex; flex-direction: column; gap: 4px; }
 .vault-card input { width: 100%; }
+.vault-card label.row { flex-direction: row; align-items: center; }
+.vault-card input[type=checkbox] { width: auto; }
 .recovery-code { font-family: ui-monospace, Consolas, monospace; font-size: 20px; letter-spacing: 1px; text-align: center; user-select: all; padding: 8px; border: 1px dashed var(--line); border-radius: 8px; }
 /* 11: 상담 분류 버튼 */
 .choice { gap: 4px; align-items: center; }

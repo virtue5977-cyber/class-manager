@@ -92,6 +92,32 @@ export function normalizeRecoveryCode(input: string): string {
   return s.match(/.{5}/g)!.join('-')
 }
 
+const META_PLAIN = 'watson-meta'
+const metaAad = (keyId: string) => 'watson-meta:v1:' + keyId
+
+/**
+ * DEK↔DB 묶음 확인값: meta 'vault' 행(평문 표)에 `{ id: 'vault', complete: true, keyId, check }`로 둔다.
+ * 다른 DEK로 DB를 열어 잘못된 열쇠로 행을 쓰는 일을 막는다.
+ */
+export function makeMetaCheck(dek: Uint8Array, keyId: string): string {
+  return toBase64(encryptBytes(dek, new TextEncoder().encode(META_PLAIN), metaAad(keyId)))
+}
+
+/** meta 'vault' 행이 이 DEK·keyId의 것인지. 형식이 틀리거나 풀리지 않으면 거짓. */
+export function verifyMetaCheck(dek: Uint8Array, keyId: string, row: Record<string, unknown> | undefined | null): boolean {
+  if (!row || row.keyId !== keyId || typeof row.check !== 'string' || !row.check) return false
+  try {
+    return new TextDecoder().decode(decryptBytes(dek, fromBase64(row.check), metaAad(keyId))) === META_PLAIN
+  } catch {
+    return false
+  }
+}
+
+/** restoreIntoNewVault·옮기기가 맨 끝에 쓰는 완료 행. */
+export function completeMetaRow(dek: Uint8Array, keyId: string): { id: 'vault'; complete: true; keyId: string; check: string } {
+  return { id: 'vault', complete: true, keyId, check: makeMetaCheck(dek, keyId) }
+}
+
 /** vault:store에 넘길 객체(dpapi 제외). */
 export function buildVaultPayload(a: {
   keyId: string
