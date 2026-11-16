@@ -1,5 +1,6 @@
 import { createDb } from '../db/schema'
-import { listPhrases, listReflections, saveReflection, starPhrase, unstarPhrase, DEFAULT_LINES } from './store'
+import { listGoodTexts, listPhrases, listReflections, saveReflection, starPhrase, unstarPhrase, DEFAULT_LINES } from './store'
+import { mergeWrite } from '../vault/middleware'
 import { newerWins } from '../vault/merge'
 
 test('모음은 처음에 기본 16문장, 별표 추가; 반성문 저장', async () => {
@@ -58,4 +59,20 @@ test('지운 기본 글 vs 다른 DB의 1970 기본 글 → 지운 쪽 이김', 
   const other = { ...mine, deleted: false, updated_at: '1970-01-01T00:00:00.000Z' }
   expect(newerWins(other, mine)).toBe(mine)
   expect(newerWins(mine, other).deleted).toBe(true)
+})
+
+test('기본 글: 시작 시각 고정(두 DB 같음), 기본 반성문도 1970 도장·고친 도장 유지', async () => {
+  const a = createDb('test-' + crypto.randomUUID())
+  const b = createDb('test-' + crypto.randomUUID())
+  const pa = (await listPhrases(a)).map((p) => [p.id, p.starred_at]).sort()
+  const pb = (await listPhrases(b)).map((p) => [p.id, p.starred_at]).sort()
+  expect(pa).toEqual(pb)
+  const [g] = await listGoodTexts(a)
+  expect(g.id).toBe('goodtext-default-0')
+  expect(g.created_at).toBe('1970-01-01T00:00:00.000Z')
+  expect(g.updated_at).toBe('1970-01-01T00:00:00.000Z')
+  await mergeWrite(a, [a.reflection_phrases], () => a.reflection_phrases.put({ ...g, title: '내 글', updated_at: '2026-11-01T00:00:00.000Z' }))
+  await listGoodTexts(a)
+  const after = (await a.reflection_phrases.get('goodtext-default-0'))!
+  expect([after.title, after.updated_at]).toEqual(['내 글', '2026-11-01T00:00:00.000Z'])
 })

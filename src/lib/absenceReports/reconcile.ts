@@ -133,11 +133,16 @@ export async function reconcileStudent(db: AppDB, studentId: string): Promise<{ 
     }
     for (const d of plan.creates) {
       const rec = newRecord({ ...computedFields(d), diagnosis_received: false, submitted: false, submitted_at: null, overrides: [], stale: false }, now) as AbsenceReportRec
-      const old = await db.absence_reports.get(reportId(d))
-      if (!old) { rec.id = reportId(d); await db.absence_reports.add(rec) }
+      // 결정적 id. 이어받은 신고서(기간이 줄어든 옛 것)가 그 id를 쓰고 있으면 가장 이른 출결 id를 덧붙인 결정적 id를 쓴다.
+      let id = reportId(d)
+      let old = await db.absence_reports.get(id)
+      if (old && !old.deleted) {
+        id = `${id}:${[...d.attendance_ids].sort()[0]}`
+        old = await db.absence_reports.get(id)
+      }
+      rec.id = id
       // 같은 id가 지움 표시로 있으면 새로 만들지 않고 되살린다(처음 만든 때는 유지).
-      else if (old.deleted) { rec.id = old.id; await db.absence_reports.put({ ...rec, created_at: old.created_at }) }
-      // 이어받은 신고서(기간이 줄어든 옛 신고서)가 그 id를 쓰고 있으면 겹치지 않게 무작위 id를 그대로 쓴다.
+      if (old) await db.absence_reports.put({ ...rec, created_at: old.created_at })
       else await db.absence_reports.add(rec)
       await setLinks(rec.id, d.attendance_ids)
       out.created++

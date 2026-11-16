@@ -83,7 +83,7 @@ test('좋은 글: 쓰기 탭에서 이름 붙여 저장하고, 좋은 글 모음
   const list = await within(panel).findByRole('list', { name: '좋은 글' }, { timeout: 3000 })
   expect(await within(list).findByDisplayValue('학교폭력 관련(1)', {}, { timeout: 3000 })).toBeInTheDocument()
   expect(within(list).getAllByText('친구를 존중하겠습니다.').length).toBeGreaterThan(0)
-  await user.click(within(list).getByRole('button', { name: '기본 반성문(1) 불러오기' }))
+  await user.click(await within(list).findByRole('button', { name: '기본 반성문(1) 불러오기' }, { timeout: 3000 }))
   expect((screen.getByRole('textbox', { name: '1번 줄' }) as HTMLInputElement).value).not.toBe('친구를 존중하겠습니다.')
   await user.click(within(list).getByRole('button', { name: '학교폭력 관련(1) 불러오기' }))
   expect(screen.getByRole('textbox', { name: '1번 줄' })).toHaveValue('친구를 존중하겠습니다.')

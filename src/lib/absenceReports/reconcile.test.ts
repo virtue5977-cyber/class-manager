@@ -208,3 +208,25 @@ test('지운 같은 id 신고서는 되살려 쓴다(새 행 없음)', async () 
   expect(await db.absence_reports.count()).toBe(1)
   expect(await getReportAttendanceIds(db, r.id)).toHaveLength(1)
 })
+
+test('가운데 날 삭제 시나리오를 같은 자료의 두 DB에서 → 신고서 id 같음', async () => {
+  const run = async () => {
+    const db = createDb('test-' + crypto.randomUUID())
+    const sid = 'stu-1'
+    await db.classes.add({ id: 'c1', school_year: 2026, grade: 1, class_no: 5, created_at: 'x', updated_at: 'x', deleted: false } as never)
+    await db.students.add({ ...emptyStudent(3, '홍길동'), id: sid, class_id: 'c1', created_at: 'x', updated_at: 'x', deleted: false } as never)
+    const ids: Record<string, string> = {}
+    for (const d of ['09', '10', '11', '12']) {
+      ids[d] = 'att-' + d
+      await db.attendance.add({ ...a(sid, `2026-11-${d}`), id: ids[d], created_at: 'x', updated_at: 'x', deleted: false } as never)
+      await reconcileStudent(db, sid)
+    }
+    await deleteAttendance(db, ids['10'])
+    await reconcileStudent(db, sid)
+    return (await listReportsByStudent(db, sid)).map((r) => r.id).sort()
+  }
+  const x = await run()
+  const y = await run()
+  expect(x).toHaveLength(2)
+  expect(x).toEqual(y)
+})

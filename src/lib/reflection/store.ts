@@ -56,11 +56,10 @@ const DEFAULT_STAMP = new Date(0)
 export async function listPhrases(db: AppDB): Promise<ReflectionPhraseRec[]> {
   // 병합 쓰기: 1970 도장 그대로 들어가 어떤 실제 고침·지움도 기본값을 이긴다(spec §7.3).
   await mergeWrite(db, [db.reflection_phrases], async () => {
-    const now = Date.now()
     for (const [i, text] of DEFAULT_LINES.entries()) {
       const id = `phrase-default-${i}`
       if (await db.reflection_phrases.get(id)) continue
-      await db.reflection_phrases.add({ ...newRecord({ text, starred_at: new Date(now - (16 - i) * 1000).toISOString() }, DEFAULT_STAMP), id } as ReflectionPhraseRec)
+      await db.reflection_phrases.add({ ...newRecord({ text, starred_at: new Date(i * 1000).toISOString() }, DEFAULT_STAMP), id } as ReflectionPhraseRec)
     }
   })
   return readPhrases(db)
@@ -91,7 +90,10 @@ const GOOD_DEFAULT_ID = 'goodtext-default-0'
 /** 처음이면 기본 글 하나(정한 id라 한 번만) 넣고 읽는다. */
 export async function listGoodTexts(db: AppDB): Promise<ReflectionPhraseRec[]> {
   if (!(await db.reflection_phrases.get(GOOD_DEFAULT_ID))) {
-    await db.reflection_phrases.add({ ...newRecord({ text: DEFAULT_LINES[0], title: '기본 반성문(1)', lines: [...DEFAULT_LINES], starred_at: new Date(0).toISOString() }), id: GOOD_DEFAULT_ID } as ReflectionPhraseRec)
+    await mergeWrite(db, [db.reflection_phrases], async () => {
+      if (await db.reflection_phrases.get(GOOD_DEFAULT_ID)) return
+      await db.reflection_phrases.add({ ...newRecord({ text: DEFAULT_LINES[0], title: '기본 반성문(1)', lines: [...DEFAULT_LINES], starred_at: new Date(0).toISOString() }, DEFAULT_STAMP), id: GOOD_DEFAULT_ID } as ReflectionPhraseRec)
+    })
   }
   return readGoodTexts(db)
 }
