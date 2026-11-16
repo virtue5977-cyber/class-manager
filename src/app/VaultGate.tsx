@@ -4,6 +4,7 @@ import { createDb, type AppDB } from '../lib/db/schema'
 import { isDesktopApp } from '../lib/settings'
 import { getDesktop, type DesktopVaultApi, type PublicVault } from '../lib/desktop/bridge'
 import { openVaultDb } from '../lib/vault/vaultDb'
+import { vaultTestDb } from '../lib/vault/benchHook'
 import { VaultRewrapContext } from '../lib/vault/rewrapContext'
 import { normalizeRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, verifyMetaCheck, wrapDek, type VaultPayload } from '../lib/vault/keys'
 import { fromBase64, toBase64 } from '../lib/backup/crypto'
@@ -65,7 +66,8 @@ const payloadOf = (v: PublicVault, dek: Uint8Array): VaultPayload => ({
  */
 export default function VaultGate({ children, renderSetup }: { children: (db: AppDB) => ReactNode; renderSetup?: RenderSetup }) {
   const [api] = useState<DesktopVaultApi | null>(() => (isDesktopApp() && getDesktop()?.vault) || null)
-  const [webDb] = useState<AppDB | null>(() => (api ? null : createDb()))
+  // vaultTestDb: 성능 시험 전용(DEV·bench 빌드에서 ?vaultTest=1). 배포 빌드에서는 늘 null.
+  const [webDb] = useState<AppDB | null>(() => (api ? null : vaultTestDb() ?? createDb()))
   const [phase, setPhase] = useState<Phase>({ k: 'loading' })
   const dekRef = useRef<Uint8Array | null>(null)
   const vaultRef = useRef<PublicVault | null>(null)
