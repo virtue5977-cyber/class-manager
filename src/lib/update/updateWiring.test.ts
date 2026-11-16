@@ -37,3 +37,9 @@ test('main(fix 1): 화면 죽음 판정은 onRendererGone, 종료 중 표시, qu
 test('판 고르기가 실패해도 exe에 든 화면으로 연다', () => {
   expect(read('main.cjs')).toMatch(/await pickDist\(\)\.catch\(\(\) => \(\{ dist: BUILT_DIST/)
 })
+
+test('main: 해시 주소로 화면을 옮겨도(같은 문서) 닫기 전 저장 준비 표시를 지우지 않는다', () => {
+  const m = read('main.cjs')
+  expect(m).toMatch(/did-start-navigation/)
+  expect(m).toMatch(/if \(main && !same\) closeFlow\.setReady\(false\)/)
+})

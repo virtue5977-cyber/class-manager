@@ -158,7 +158,12 @@ function createWindow() {
     timeoutMs: 3000,
   })
   w.on('close', (e) => closeFlow.onClose(e))
-  w.webContents.on('did-start-navigation', (e, _url, _inPlace, isMainFrame) => { if ((e && e.isMainFrame) || isMainFrame) closeFlow.setReady(false) })
+  // 같은 문서 안 이동(해시 주소로 화면 옮기기)은 화면이 그대로라 준비 표시를 지우지 않는다. 새 문서로 바뀔 때만 지운다.
+  w.webContents.on('did-start-navigation', (e, _url, inPlace, isMainFrame) => {
+    const main = e && typeof e.isMainFrame === 'boolean' ? e.isMainFrame : isMainFrame
+    const same = e && typeof e.isSameDocument === 'boolean' ? e.isSameDocument : inPlace
+    if (main && !same) closeFlow.setReady(false)
+  })
   // 윈도우 로그오프·끄기: 막지 않고 종료 중으로 표시하고, 저장만 곧바로 시작시킨다.
   win.on('query-session-end', () => { quitting = true; closeFlow.onSessionEnd() })
   win.on('session-end', () => { quitting = true; closeFlow.onSessionEnd() })
