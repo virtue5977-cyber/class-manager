@@ -8,8 +8,8 @@ const pickFolder = (defaultPath) => ipcRenderer.invoke('paths:pick-folder', type
 const asPicked = (p) => (p ? { path: p } : null)
 
 contextBridge.exposeInMainWorld('desktop', {
-  /** exe 판(SHELL). 6부터 구글 Gemini 주소 접속 가능 */
-  shell: 6,
+  /** exe 판(SHELL). 6부터 구글 Gemini 주소 접속 가능, 7부터 1.0(암호화 DB·vault) */
+  shell: 7,
   isDesktop: true,
   onLock(cb) {
     const h = () => cb()

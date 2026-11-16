@@ -18,7 +18,16 @@ test('main: 설치는 verifyInstall·manifest 전체 확인·원자 쓰기·skip
   expect(m).toMatch(/'did-fail-load'/)
   expect(m).toMatch(/handle\('bundle:alive'/)
   expect(m).not.toMatch(/Buffer\.from\(info\.sig, 'base64'\)/) // 옛 sig 확인은 updateCore로
-  expect(m).toMatch(/const SHELL = 6\b/) // SHELL 올리기는 Task 20
+  expect(m).toMatch(/const SHELL = 7\b/) // 1.0 exe
+  // 받은 판은 shell ≤ SHELL만 쓰고, 더 높으면 새 exe를 받게 한다
+  expect(m).toMatch(/c\.shell <= SHELL/)
+  expect(m).toMatch(/info\.shell > SHELL\) return sendUpdate\(\{ status: 'need-exe'/)
+})
+
+test('preload: shell은 main.cjs SHELL(7)과 같다', () => {
+  const shell = Number(/const SHELL = (\d+)/.exec(read('main.cjs'))![1])
+  expect(shell).toBe(7)
+  expect(read('preload.cjs')).toMatch(new RegExp(`\\bshell: ${shell},`))
 })
 
 test('preload: desktop.bundle.alive()는 bundle:alive를 부른다', () => {

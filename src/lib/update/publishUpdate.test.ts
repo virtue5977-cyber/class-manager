@@ -27,6 +27,8 @@ afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }) })
 test('기본 MIN_SHELL: 1.0부터 7(환경 변수가 우선), 그 전은 main.cjs SHELL', async () => {
   const P = await load()
   expect(P.defaultShell('1.0.0', 6, {})).toBe(7)
+  expect(P.defaultShell('1.0.0', 7, {})).toBe(7)
+  expect(P.defaultShell('1.0.1', 7, {})).toBe(7)
   expect(P.defaultShell('1.2.0', 8, {})).toBe(8)
   expect(P.defaultShell('0.18.2', 6, {})).toBe(6)
   expect(P.defaultShell('1.0.0', 6, { MIN_SHELL: '9' })).toBe(9)

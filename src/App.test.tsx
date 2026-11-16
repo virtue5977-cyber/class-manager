@@ -61,6 +61,20 @@ describe('옛 exe 지킴이', () => {
     expect(screen.queryByRole('heading', { name: '홈' })).not.toBeInTheDocument()
     indexedDB.deleteDatabase('watson-x')
   })
+
+  test('SHELL 7(1.0) exe는 watson- DB가 있어도 옛 exe 안내를 띄우지 않는다', async () => {
+    const status = vi.fn(() => new Promise(() => {}))
+    ;(window as { desktop?: unknown }).desktop = { shell: 7, isDesktop: true, vault: { status } }
+    await new Promise<void>((res, rej) => {
+      const r = indexedDB.open('watson-y')
+      r.onsuccess = () => { r.result.close(); res() }
+      r.onerror = () => rej(r.error)
+    })
+    render(<App fs={createMemoryFsAdapter()} />)
+    await waitFor(() => expect(status).toHaveBeenCalled())
+    expect(screen.queryByText(/이 exe는 오래됐습니다/)).not.toBeInTheDocument()
+    indexedDB.deleteDatabase('watson-y')
+  })
 })
 
 describe('VaultGate(1.0 시작 관문)', () => {
