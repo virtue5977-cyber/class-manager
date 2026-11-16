@@ -1,7 +1,58 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getDesktop } from '../../lib/desktop/bridge'
 import { setHideNames, useHideNames } from '../../components/HideNames'
 import { SHORTCUT_TABLE } from '../../lib/ui/shortcuts'
 import { THEMES, ACCENTS, DEFAULT_APPEARANCE, readAppearance, saveAppearance, SIZES, type Appearance } from '../../lib/ui/appearance'
+
+/** 컴퓨터를 켜면 Watson 열기·바탕화면 바로가기(exe에서만). */
+function DesktopStart() {
+  const d = getDesktop()
+  const auto = d?.autostart
+  const sc = d?.shortcut
+  const [on, setOn] = useState(false)
+  const [msg, setMsg] = useState<string>()
+  useEffect(() => {
+    let live = true
+    auto?.get().then((s) => live && setOn(!!s?.on)).catch(() => {})
+    return () => { live = false }
+  }, [auto])
+  if (!auto && !sc) return null
+  return (
+    <>
+      {auto && (
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={on}
+            onChange={async (e) => {
+              const v = e.target.checked
+              setOn(v)
+              try { await auto.set(v) } catch { setOn(!v); setMsg('자동 실행을 바꾸지 못했습니다.') }
+            }}
+          />
+          컴퓨터를 켜면 Watson 열기
+        </label>
+      )}
+      {sc && (
+        <div className="row">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const r = await sc.create()
+                setMsg(r?.ok ? '바탕화면에 바로가기를 만들었습니다' : '바로가기를 만들지 못했습니다. 바탕화면 폴더에 쓸 수 있는지 확인하세요.')
+              } catch { setMsg('바로가기를 만들지 못했습니다. 바탕화면 폴더에 쓸 수 있는지 확인하세요.') }
+            }}
+          >
+            바탕화면 바로가기 만들기
+          </button>
+          {msg && <span role="status">{msg}</span>}
+        </div>
+      )}
+      {!sc && msg && <span role="status">{msg}</span>}
+    </>
+  )
+}
 
 export default function AppearanceSettings() {
   const [a, setA] = useState<Appearance>(readAppearance)
@@ -44,6 +95,7 @@ export default function AppearanceSettings() {
         <input type="checkbox" checked={hidden} onChange={(e) => setHideNames(e.target.checked)} />
         학생 이름 가리기(교실 TV·프로젝터에 띄울 때, Ctrl+Shift+H)
       </label>
+      <DesktopStart />
       <table className="grid" aria-label="단축키">
         <thead>
           <tr>

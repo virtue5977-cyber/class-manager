@@ -84,8 +84,10 @@ export interface DesktopApi {
   app?: { [k: string]: unknown }
   /** Task 16: 대화상자로 폴더 허용(paths:pick-folder)·놓은 파일 등록(File만 받음). */
   paths?: { pickFolder?(defaultPath?: string): Promise<unknown>; registerDrop?(file: File): Promise<unknown>; [k: string]: unknown }
-  autostart?: { [k: string]: unknown }
-  device?: { [k: string]: unknown }
+  /** Task 18: 컴퓨터를 켤 때 자동 실행 */
+  autostart?: { get(): Promise<{ on: boolean; path?: string }>; set(on: boolean): Promise<unknown> }
+  shortcut?: { create(): Promise<{ ok: boolean; name?: string }> }
+  device?: { info?(): Promise<{ computerName: string; exePath: string }>; [k: string]: unknown }
 }
 
 /** exe 안이면 preload API, 아니면 null. */

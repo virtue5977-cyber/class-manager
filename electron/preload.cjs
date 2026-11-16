@@ -83,6 +83,16 @@ contextBridge.exposeInMainWorld('desktop', {
     store: (v) => ipcRenderer.invoke('vault:store', v),
     reset: () => ipcRenderer.invoke('vault:reset'),
   },
+  autostart: {
+    get: () => ipcRenderer.invoke('autostart:get'),
+    set: (on) => ipcRenderer.invoke('autostart:set', on),
+  },
+  shortcut: {
+    create: () => ipcRenderer.invoke('shortcut:create'),
+  },
+  device: {
+    info: () => ipcRenderer.invoke('device:info'),
+  },
   file: {
     saveAs: (name, bytes) => ipcRenderer.invoke('file:save-as', name, bytes),
   },

@@ -336,6 +336,34 @@ handle('vault:unlock-dpapi', () => vaultH().unlockDpapi())
 handle('vault:read-backup', () => vaultH().readBackup())
 handle('vault:store', (p) => vaultH().store(p))
 handle('vault:reset', () => vaultH().reset())
+// 자동 실행·바탕화면 바로가기·기기 정보: 순수 부분은 desktopIntegration.cjs(시험됨).
+const DI = require('./desktopIntegration.cjs')
+const exeNow = () => DI.exePath(process.env, app)
+handle('autostart:get', () => {
+  const s = app.getLoginItemSettings()
+  return { on: !!s.openAtLogin, path: exeNow() }
+})
+handle('autostart:set', (on) => {
+  app.setLoginItemSettings({ openAtLogin: DI.asBool(on), path: exeNow() })
+  return { on: !!app.getLoginItemSettings({ path: exeNow() }).openAtLogin, path: exeNow() }
+})
+handle('shortcut:create', () => {
+  try {
+    const exe = exeNow()
+    const target = DI.shortcutTarget(app.getPath('desktop'))
+    const ok = shell.writeShortcutLink(target, 'replace', { target: exe, cwd: path.dirname(exe), description: 'Watson' })
+    return ok ? { ok: true, name: path.basename(target) } : { ok: false }
+  } catch {
+    return { ok: false }
+  }
+})
+handle('device:info', () => ({ computerName: os.hostname(), exePath: exeNow() }))
+app.whenReady().then(() => {
+  try {
+    // 폴더를 옮겨 경로가 달라졌으면 자동 실행 등록을 새 경로로 고친다.
+    DI.syncAutostart({ get: () => app.getLoginItemSettings(), set: (s) => app.setLoginItemSettings(s), exe: exeNow() })
+  } catch {}
+})
 // 다른 이름으로 저장(옮기기 마법사의 새 백업 파일): 본체는 saveFile.cjs(시험됨). 실제로 쓰고 크기를 확인했을 때만 ok.
 const saveAs = require('./saveFile.cjs').createSaveAs({
   showSaveDialog: ({ defaultName }) => dialog.showSaveDialog(win, {
