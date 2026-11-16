@@ -56,8 +56,10 @@ export interface DesktopApi {
     logout(): Promise<unknown>
     /** 응답 { status, headers?, json? | bytes? }. 2xx가 아니어도 던지지 않는다. */
     api(method: string, url: string, body?: unknown, opts?: { binary?: boolean; wantHeaders?: boolean; contentType?: string }): Promise<unknown>
-    uploadResumable?(meta: Record<string, unknown>, bytes: Uint8Array, fileId?: string): Promise<{ id: string }>
-    download?(fileId: string): Promise<Uint8Array>
+    /** { ok: true, id } | { ok: false, status, reason? } — HTTP 실패는 던지지 않는다. */
+    uploadResumable?(meta: Record<string, unknown>, bytes: Uint8Array, fileId?: string): Promise<unknown>
+    /** { ok: true, bytes } | { ok: false, status, reason? } */
+    download?(fileId: string): Promise<unknown>
     [k: string]: unknown
   }
   ai?: { status(): Promise<unknown>; ask(req: unknown): Promise<unknown> }

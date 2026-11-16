@@ -34,9 +34,13 @@ export interface GoogleBridge {
   logout(): Promise<boolean>
   /** 2xx가 아니어도 던지지 않고 status(+오류 json)를 돌려준다. */
   api(method: GoogleMethod, url: string, body?: unknown, opts?: { binary?: boolean; wantHeaders?: boolean; contentType?: string }): Promise<GoogleApiResult>
-  uploadResumable?(meta: Record<string, unknown>, bytes: Uint8Array, fileId?: string): Promise<{ id: string }>
-  download?(fileId: string): Promise<Uint8Array>
+  /** 던지지 않고 결과로(Electron invoke는 오류의 message만 넘긴다). 크기·형식 틀림만 한국어 오류. */
+  uploadResumable?(meta: Record<string, unknown>, bytes: Uint8Array, fileId?: string): Promise<GoogleUploadResult>
+  download?(fileId: string): Promise<GoogleDownloadResult>
 }
+export type GoogleFail = { ok: false; status: number; reason?: string }
+export type GoogleUploadResult = { ok: true; id: string } | GoogleFail
+export type GoogleDownloadResult = { ok: true; bytes: Uint8Array } | GoogleFail
 
 /** 받은 권한에 캘린더 세 권한이 다 있는지 */
 export const hasCalendar = (st: Pick<GoogleStatus, 'connected' | 'scopes'> | undefined) => !!st?.connected && CALENDAR_SCOPES.every((s) => st.scopes?.includes(s))
@@ -62,8 +66,26 @@ export function googleErrorText(status: number, reason?: string): string {
   if (status === 401) return '구글 연결이 끊겼습니다. 설정에서 다시 연결하세요.'
   if (reason === 'admin_policy_enforced' || reason === 'access_not_configured' || reason === 'accessNotConfigured') return '학교 구글 계정은 관리자가 막았을 수 있습니다. 개인 Gmail을 쓰거나 학교 관리자에게 앱 등록을 부탁하세요.'
   if (reason === 'storageQuotaExceeded') return '구글 드라이브 저장 공간이 가득 찼습니다. 공간을 비운 뒤 다시 하세요.'
-  if (status === 429 || reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded' || reason === 'quotaExceeded') return '구글 요청이 너무 많습니다. 잠시 뒤 다시 하세요.'
-  return `구글 캘린더 오류(${status})${status === 403 ? ': 권한을 확인하세요' : ''}`
+  if (status === 429 || (reason !== undefined && QUOTA_REASONS.has(reason))) return '구글 요청이 너무 많습니다. 잠시 뒤 다시 하세요.'
+  if (status === 0) return '구글에 연결하지 못했습니다. 인터넷 연결을 확인하세요.'
+  return `구글 오류(${status})${status === 403 ? ': 권한을 확인하세요' : ''}`
+}
+const QUOTA_REASONS = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded', 'dailyLimitExceeded', 'RESOURCE_EXHAUSTED'])
+
+const NEED_NEW_EXE = '이 기능은 새 Watson 설치 파일이 필요합니다. 새로 받아 설치하세요.'
+/** 드라이브 이어 올리기. 성공이면 파일 id, 아니면 GoogleApiError(401 → 다시 연결, 저장 공간, 할당량…). */
+export async function googleUpload(g: GoogleBridge, meta: Record<string, unknown>, bytes: Uint8Array, fileId?: string): Promise<string> {
+  if (!g.uploadResumable) throw new Error(NEED_NEW_EXE)
+  const r = await g.uploadResumable(meta, bytes, fileId)
+  if (r.ok) return r.id
+  throw new GoogleApiError(r.status, r.reason, googleErrorText(r.status, r.reason))
+}
+/** 드라이브 파일 받기(60MB까지). 실패는 GoogleApiError. */
+export async function googleDownload(g: GoogleBridge, fileId: string): Promise<Uint8Array> {
+  if (!g.download) throw new Error(NEED_NEW_EXE)
+  const r = await g.download(fileId)
+  if (r.ok) return r.bytes
+  throw new GoogleApiError(r.status, r.reason, googleErrorText(r.status, r.reason))
 }
 
 const RESULT_KEYS = new Set(['status', 'headers', 'json', 'bytes'])

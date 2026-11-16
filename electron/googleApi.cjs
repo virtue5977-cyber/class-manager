@@ -12,6 +12,7 @@ const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 const RESP_HEADERS = ['location', 'content-type', 'content-length', 'etag', 'content-range', 'range', 'retry-after']
 const FILE_ID = /^[A-Za-z0-9_-]{10,200}$/
 const MAX_TRIES = 5
+const CAL_FORBIDDEN_SEGMENTS = new Set(['acl', 'watch', 'channels'])
 
 const MSG_URL = '허용되지 않은 주소입니다.'
 const MSG_METHOD = '허용되지 않은 요청입니다.'
@@ -19,6 +20,13 @@ const MSG_BIG = '파일이 너무 큽니다(60MB까지).'
 const MSG_NET = '구글에 연결하지 못했습니다. 인터넷 연결을 확인하세요.'
 const MSG_UPLOAD = '드라이브에 올리지 못했습니다. 잠시 뒤 다시 하세요.'
 const MSG_RECONNECT = '구글 연결이 끊겼습니다. 설정에서 다시 연결하세요.'
+
+/** 캘린더 본문 안 어디에든 attendees가 있으면 거부(초대 메일로 학생 자료가 나가지 않게). */
+function hasKeyDeep(v, key, depth = 0) {
+  if (!v || typeof v !== 'object' || depth > 32) return false
+  if (Array.isArray(v)) return v.some((x) => hasKeyDeep(x, key, depth + 1))
+  return Object.keys(v).some((k) => k === key || hasKeyDeep(v[k], key, depth + 1))
+}
 
 /** 상대 경로는 www.googleapis.com 기준. new URL로 정규화한 뒤 허용 접두와 맞춘다. */
 function normalizeApiUrl(input) {
@@ -37,8 +45,16 @@ function normalizeApiUrl(input) {
   if (u.protocol !== 'https:' || u.hostname !== 'www.googleapis.com' || u.port !== '' || u.username || u.password || u.origin !== API_ORIGIN) return no
   const p = u.pathname
   if (p.includes('..') || /%2e/i.test(p)) return no
-  const under = (pre) => p === pre || p.startsWith(pre + '/')
-  if (!(p.startsWith('/calendar/v3/') || under('/drive/v3/files') || under('/upload/drive/v3/files'))) return no
+  if (p.startsWith('/calendar/v3/')) {
+    // 공유(acl)·알림 채널(watch·channels)은 막는다. 초대 메일을 보내는 sendUpdates/sendNotifications는 'none'만.
+    if (p.split('/').some((seg) => CAL_FORBIDDEN_SEGMENTS.has(seg.toLowerCase()))) return no
+    for (const k of ['sendUpdates', 'sendNotifications']) if (u.searchParams.getAll(k).some((v) => v !== 'none')) return no
+    return { ok: true, url: u.toString() }
+  }
+  // 드라이브는 정해진 모양만: files(목록·만들기), files/<id>(읽기·고치기·지우기·alt=media), upload/…/files[/<id>].
+  // permissions·copy·comments·revisions·watch 등은 거부(학생 자료를 메일로 공유하는 길을 막는다).
+  const m = /^\/(?:upload\/)?drive\/v3\/files(?:\/([^/]+))?$/.exec(p)
+  if (!m || (m[1] !== undefined && !FILE_ID.test(m[1]))) return no
   return { ok: true, url: u.toString() }
 }
 
@@ -128,8 +144,29 @@ const pickHeaders = (res) => {
 }
 const expiresMs = (t) => (typeof t.expires_in === 'number' && Number.isFinite(t.expires_in) && t.expires_in >= 0 ? t.expires_in : 3600) * 1000
 const httpError = (msg, status) => Object.assign(new Error(msg), { status })
+/** 오류 JSON의 이유: error.errors[0].reason → error.status → error(문자열, OAuth) */
+function reasonOf(j) {
+  const e = j && j.error
+  if (typeof e === 'string') return e
+  if (e && typeof e === 'object') {
+    const r = Array.isArray(e.errors) && e.errors[0] && e.errors[0].reason
+    if (typeof r === 'string') return r
+    if (typeof e.status === 'string') return e.status
+  }
+  return undefined
+}
+const failResult = (status, reason) => (reason ? { ok: false, status, reason } : { ok: false, status })
+async function errorResult(r) {
+  let j
+  try { j = parseJson(await readCapped(r, 1024 * 1024)) } catch { /* 본문 없음·너무 큼 */ }
+  return failResult(r.status, reasonOf(j))
+}
 
-/** 이어 올리기: 시작 POST(새 파일)/PATCH(fileId) → Location → PUT. 308·5xx·네트워크 실패는 Range로 이어서, 실패 5번이면 오류. */
+/**
+ * 이어 올리기: 시작 POST(새 파일)/PATCH(fileId) → Location → PUT. 308·429·5xx·네트워크 실패는 Range로 이어서, 실패 5번이면 그만.
+ * 결과는 던지지 않고 { ok: true, id } | { ok: false, status, reason? } (Electron invoke는 오류의 message만 넘기므로).
+ * 크기·형식이 틀린 입력과 이상한 Location은 한국어 오류로 던진다.
+ */
 async function uploadResumable(fetchFn, token, { meta, bytes, fileId }, { sleep = sleepDefault } = {}) {
   const data = toBytes(bytes)
   if (!data) throw new Error('올릴 내용이 없습니다.')
@@ -140,11 +177,14 @@ async function uploadResumable(fetchFn, token, { meta, bytes, fileId }, { sleep 
   const auth = { authorization: 'Bearer ' + token }
   const total = data.length
   let fails = 0
-  const fail = async (status) => {
+  let last = failResult(0, 'network')
+  // 실패를 하나 센다. 5번째면 true(그만).
+  const giveUp = async (result) => {
+    last = result
     fails++
-    if (status === 401) throw httpError(MSG_RECONNECT, 401)
-    if (fails >= MAX_TRIES) throw httpError(MSG_UPLOAD, status)
+    if (fails >= MAX_TRIES) return true
     await sleep(Math.min(8000, 500 * 2 ** (fails - 1)))
+    return false
   }
   const retriable = (s) => s === 308 || s === 429 || s >= 500
   let session = null
@@ -157,17 +197,15 @@ async function uploadResumable(fetchFn, token, { meta, bytes, fileId }, { sleep 
         body: JSON.stringify(m),
       })
     } catch {
-      await fail(0)
+      if (await giveUp(failResult(0, 'network'))) return last
       continue
     }
     if (r.ok) {
       const loc = normalizeApiUrl(r.headers.get('location') || '')
       if (!loc.ok || !loc.url.startsWith(API_ORIGIN + '/upload/drive/v3/files')) throw new Error(MSG_UPLOAD)
       session = loc.url
-    } else if (r.status === 401 || !retriable(r.status)) {
-      if (r.status === 401) throw httpError(MSG_RECONNECT, 401)
-      throw httpError(`${MSG_UPLOAD}(${r.status})`, r.status)
-    } else await fail(r.status)
+    } else if (!retriable(r.status)) return errorResult(r)
+    else if (await giveUp(await errorResult(r))) return last
   }
   let offset = 0
   let ask = false // 실패 뒤에는 어디까지 받았는지 먼저 묻는다
@@ -183,43 +221,41 @@ async function uploadResumable(fetchFn, token, { meta, bytes, fileId }, { sleep 
         : await fetchFn(session, { method: 'PUT', headers: { ...auth, 'content-range': `bytes ${offset}-${total - 1}/${total}` }, body: data.subarray(offset) })
     } catch {
       ask = true
-      await fail(0)
+      if (await giveUp(failResult(0, 'network'))) return last
       continue
     }
     if (r.status === 200 || r.status === 201) {
       const j = parseJson(await readCapped(r, 1024 * 1024))
       if (!j || typeof j.id !== 'string') throw new Error(MSG_UPLOAD)
-      return { id: j.id }
+      return { ok: true, id: j.id }
     }
     if (r.status === 308) {
       offset = Math.min(rangeEnd(r), total)
       const wasAsk = ask
       ask = false
-      if (!wasAsk) await fail(308)
+      if (!wasAsk && (await giveUp(failResult(308)))) return last
       continue
     }
     if (retriable(r.status)) {
       ask = true
-      await fail(r.status)
+      if (await giveUp(await errorResult(r))) return last
       continue
     }
-    if (r.status === 401) throw httpError(MSG_RECONNECT, 401)
-    throw httpError(`${MSG_UPLOAD}(${r.status})`, r.status)
+    return errorResult(r)
   }
 }
 
+/** 받기: { ok: true, bytes } | { ok: false, status, reason? }. 60MB 넘거나 fileId가 틀리면 한국어 오류로 던진다. */
 async function downloadFile(fetchFn, token, fileId) {
   if (typeof fileId !== 'string' || !FILE_ID.test(fileId)) throw new Error('파일 이름이 맞지 않습니다.')
   let r
   try {
     r = await fetchFn(`${API_ORIGIN}/drive/v3/files/${fileId}?alt=media`, { method: 'GET', headers: { authorization: 'Bearer ' + token } })
   } catch {
-    throw new Error(MSG_NET)
+    return failResult(0, 'network')
   }
-  if (r.status === 401) throw httpError(MSG_RECONNECT, 401)
-  if (r.status === 404) throw httpError('드라이브에서 파일을 찾지 못했습니다.', 404)
-  if (!r.ok) throw httpError(`드라이브에서 받지 못했습니다(${r.status}).`, r.status)
-  return readCapped(r)
+  if (!r.ok) return errorResult(r)
+  return { ok: true, bytes: await readCapped(r) }
 }
 
 // ---- 토큰 저장: safeStorage 비동기. 못 쓰면 파일에 쓰지 않고 이번 실행에만(평문 저장 없음) ----
@@ -260,7 +296,8 @@ function createTokenStore({ file, safe }) {
     await fs.rename(tmp, file)
   }
   // 저장: 암호화 가능하면 파일, 아니면 메모리만(남은 파일도 지운다).
-  async function persist(rec) {
+  // keepOnFail: 옛 암호 파일을 옮길 때는 새로 쓰기에 성공하기 전까지 옛 파일을 지우지 않는다.
+  async function persist(rec, { keepOnFail = false } = {}) {
     if (await avail()) {
       try {
         const enc = await safe.encryptStringAsync(JSON.stringify({ v: 2, refresh: rec.refresh, scopes: rec.scopes, email: rec.email }))
@@ -270,7 +307,7 @@ function createTokenStore({ file, safe }) {
       } catch { /* 아래: 저장 못 함 */ }
     }
     persisted = false
-    await fs.rm(file, { force: true }).catch(() => {})
+    if (!keepOnFail) await fs.rm(file, { force: true }).catch(() => {})
   }
   async function readOnce() {
     let buf
@@ -306,7 +343,7 @@ function createTokenStore({ file, safe }) {
       // 옛 평문 파일: 한 번 읽고 암호화해 덮어쓰거나(가능할 때), 지운다.
       await persist(parsed.rec)
     } else if (rewrite || parsed.legacy) {
-      if (canAsync) await persist(parsed.rec)
+      if (canAsync) await persist(parsed.rec, { keepOnFail: true })
       else persisted = false
     } else persisted = true
     return parsed.rec
@@ -381,19 +418,16 @@ function createGoogleClient({ fetchFn, store, readClient, now = () => Date.now()
       throw e
     }
   }
-  // 401이면 한 번 새로 고쳐 다시
+  // 결과가 401이면 한 번 새로 고쳐 다시(결과 모양 { ok, status, ... })
   async function withAuth(fn) {
     let token = await accessToken()
-    if (!token) throw httpError(MSG_RECONNECT, 401)
-    try {
-      return await fn(token)
-    } catch (e) {
-      if (!e || e.status !== 401) throw e
-      access = null
-      token = await accessToken(true)
-      if (!token) throw httpError(MSG_RECONNECT, 401)
-      return fn(token)
-    }
+    if (!token) return failResult(401)
+    const r = await fn(token)
+    if (r.ok || r.status !== 401) return r
+    access = null
+    token = await accessToken(true)
+    if (!token) return failResult(401)
+    return fn(token)
   }
 
   return {
@@ -424,7 +458,7 @@ function createGoogleClient({ fetchFn, store, readClient, now = () => Date.now()
       await store.clear()
       if (rec) {
         try {
-          await fetchFn(REVOKE_URL + '?token=' + encodeURIComponent(rec.refresh), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+          await fetchFn(REVOKE_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: rec.refresh }).toString() })
         } catch { /* 취소 실패는 무시(지역 토큰은 이미 지움) */ }
       }
       return true
@@ -440,8 +474,11 @@ function createGoogleClient({ fetchFn, store, readClient, now = () => Date.now()
       if (!n.ok) throw new Error(MSG_URL)
       const headers = {}
       let payload
+      const isCalendar = n.url.startsWith(API_ORIGIN + '/calendar/v3/')
       if (body != null) {
         const bytes = toBytes(body)
+        // 캘린더는 JSON 본문만, attendees(초대 메일) 없이
+        if (isCalendar && (bytes || hasKeyDeep(body, 'attendees'))) throw new Error(MSG_METHOD)
         if (bytes) {
           if (bytes.length > MAX_BYTES) throw new Error(MSG_BIG)
           const ct = typeof o.contentType === 'string' && o.contentType.length <= 200 && !/[\r\n]/.test(o.contentType) ? o.contentType : 'application/octet-stream'

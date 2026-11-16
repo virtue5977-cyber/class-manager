@@ -5,7 +5,7 @@ import type { SchoolCalendarRec } from '../db/types'
 import { createClass, emptyStudent, saveStudent } from '../roster/roster'
 import { saveAttendance } from '../attendance/attendance'
 import { reconcileStudent } from '../absenceReports/reconcile'
-import { syncGoogle, listGoogleEvents, APP_CALENDAR_NAME, CALENDAR_SCOPES, BASE_SCOPES, callJson, hasCalendar, GoogleApiError, type GoogleBridge } from './google'
+import { syncGoogle, listGoogleEvents, APP_CALENDAR_NAME, CALENDAR_SCOPES, BASE_SCOPES, callJson, hasCalendar, GoogleApiError, googleErrorText, googleUpload, googleDownload, type GoogleBridge } from './google'
 
 /** 구글 캘린더 API를 흉내 내는 가짜(요청 경로·본문만 확인) */
 function fakeGoogle(primary: unknown[]) {
@@ -161,4 +161,27 @@ test('callJson: 2xx 아니면 GoogleApiError(상태·이유·문구), 옛 exe �
   expect(await callJson(mk({ status: 200, json: { a: 1 } }), 'GET', '/x')).toEqual({ a: 1 })
   // 옛 exe: json을 바로(일정 자체에 status 글자 칸이 있어도)
   expect(await callJson(mk({ id: 'e', status: 'confirmed' }), 'GET', '/x')).toEqual({ id: 'e', status: 'confirmed' })
+})
+
+test('googleErrorText: 드라이브 오류도 구글 오류(캘린더 아님), 할당량·저장 공간·네트워크', () => {
+  expect(googleErrorText(500)).toBe('구글 오류(500)')
+  expect(googleErrorText(403)).toBe('구글 오류(403): 권한을 확인하세요')
+  expect(googleErrorText(403, 'dailyLimitExceeded')).toMatch(/잠시 뒤/)
+  expect(googleErrorText(403, 'userRateLimitExceeded')).toMatch(/잠시 뒤/)
+  expect(googleErrorText(403, 'storageQuotaExceeded')).toBe('구글 드라이브 저장 공간이 가득 찼습니다. 공간을 비운 뒤 다시 하세요.')
+  expect(googleErrorText(0, 'network')).toMatch(/인터넷/)
+})
+
+test('googleUpload·googleDownload: 결과 {ok:false}를 GoogleApiError로, ok면 id·bytes', async () => {
+  const base = fakeGoogle([]).g
+  const g1 = { ...base, uploadResumable: async () => ({ ok: false as const, status: 403, reason: 'storageQuotaExceeded' }), download: async () => ({ ok: false as const, status: 401 }) }
+  const e1 = (await googleUpload(g1, { name: 'a' }, new Uint8Array(1)).catch((x: unknown) => x)) as GoogleApiError
+  expect(e1).toBeInstanceOf(GoogleApiError)
+  expect(e1.status).toBe(403)
+  expect(e1.message).toMatch(/저장 공간/)
+  await expect(googleDownload(g1, 'abcdefghij')).rejects.toMatchObject({ status: 401, message: expect.stringContaining('다시 연결') })
+  const g2 = { ...base, uploadResumable: async () => ({ ok: true as const, id: 'F1' }), download: async () => ({ ok: true as const, bytes: new Uint8Array([7]) }) }
+  expect(await googleUpload(g2, {}, new Uint8Array(1))).toBe('F1')
+  expect(Array.from(await googleDownload(g2, 'abcdefghij'))).toEqual([7])
+  await expect(googleUpload(base, {}, new Uint8Array(1))).rejects.toThrow(/새로 받/)
 })

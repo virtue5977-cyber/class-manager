@@ -76,6 +76,23 @@ test('정규화 우회 목록은 모두 거부된다', () => {
     '/drive/v2/files',
     '/upload/drive/v3/../../oauth2',
     '/calendar/v3/x\n',
+    '/drive/v3/files/abcdefghij/permissions',
+    '/drive/v3/files/abcdefghij/permissions/xyz1234567',
+    '/drive/v3/files/abcdefghij/copy',
+    '/drive/v3/files/abcdefghij/comments',
+    '/drive/v3/files/abcdefghij/revisions',
+    '/drive/v3/files/abcdefghij/watch',
+    '/drive/v3/files/short',
+    '/drive/v3/files/abc$defghijk',
+    '/drive/v3/files/',
+    '/upload/drive/v3/files/abcdefghij/x',
+    '/calendar/v3/calendars/primary/acl',
+    '/calendar/v3/calendars/primary/acl/rule1',
+    '/calendar/v3/calendars/primary/events/watch',
+    '/calendar/v3/users/me/calendarList/watch',
+    '/calendar/v3/calendars/primary/events?sendUpdates=all',
+    '/calendar/v3/calendars/primary/events?sendUpdates=none&sendUpdates=all',
+    '/calendar/v3/calendars/primary/events/e1?sendNotifications=true',
     'calendar/v3/x',
     '',
     42,
@@ -87,8 +104,20 @@ test('정상 주소는 통과하고 절대 주소로 바뀐다', () => {
   expect(G.normalizeApiUrl('/calendar/v3/calendars/a%40group.calendar.google.com/events')).toMatchObject({ ok: true })
   expect(G.normalizeApiUrl('https://www.googleapis.com/drive/v3/files?q=name%3D%27a.wsync%27')).toMatchObject({ ok: true })
   expect(G.normalizeApiUrl('/drive/v3/files')).toEqual({ ok: true, url: 'https://www.googleapis.com/drive/v3/files' })
-  expect(G.normalizeApiUrl('/drive/v3/files/abc123?alt=media')).toMatchObject({ ok: true })
+  expect(G.normalizeApiUrl('/drive/v3/files/abc123defg?alt=media')).toMatchObject({ ok: true })
   expect(G.normalizeApiUrl('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=xyz')).toMatchObject({ ok: true })
+  // 앱이 쓰는 모양: 캘린더(google.ts)·드라이브 files/<id>
+  for (const okUrl of [
+    '/calendar/v3/users/me/calendarList?minAccessRole=owner&maxResults=250',
+    '/calendar/v3/calendars',
+    '/calendar/v3/calendars/app-cal/events?privateExtendedProperty=damim%3D1&timeMin=2026-01-01T00%3A00%3A00%2B09%3A00&maxResults=250&pageToken=abc',
+    '/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime',
+    '/calendar/v3/calendars/app-cal/events/e1',
+    '/calendar/v3/calendars/app-cal/events?sendUpdates=none',
+    '/drive/v3/files/abcdefghij',
+    '/drive/v3/files/abcdefghij?alt=media',
+    '/upload/drive/v3/files/abcdefghij?uploadType=multipart',
+  ]) expect(G.normalizeApiUrl(okUrl), okUrl).toMatchObject({ ok: true })
 })
 
 // ---------- 권한·로그인 주소 ----------
@@ -137,7 +166,7 @@ test('uploadResumable: 시작 POST → Location → PUT, 308이면 Range로 이�
     if (i === 1) return res(308, undefined, { range: 'bytes=0-4' })
     return res(200, { id: 'FILE1' })
   })
-  expect(await G.uploadResumable(f.fn, 'AT', { meta: { name: 'a.wsync', mimeType: 'application/octet-stream' }, bytes }, noSleep)).toEqual({ id: 'FILE1' })
+  expect(await G.uploadResumable(f.fn, 'AT', { meta: { name: 'a.wsync', mimeType: 'application/octet-stream' }, bytes }, noSleep)).toEqual({ ok: true, id: 'FILE1' })
   expect(f.calls[0].method).toBe('POST')
   expect(f.calls[0].url).toMatch(/^https:\/\/www\.googleapis\.com\/upload\/drive\/v3\/files\?uploadType=resumable/)
   expect(f.calls[0].headers.authorization).toBe('Bearer AT')
@@ -151,7 +180,7 @@ test('uploadResumable: 시작 POST → Location → PUT, 308이면 Range로 이�
 
 test('uploadResumable: fileId면 PATCH로 시작한다', async () => {
   const f = fakeFetch((_c, i) => (i === 0 ? res(200, '', { location: 'https://www.googleapis.com/upload/drive/v3/files/FID1234567?uploadType=resumable&upload_id=U2' }) : res(200, { id: 'FID1234567' })))
-  expect(await G.uploadResumable(f.fn, 'AT', { meta: { name: 'a' }, bytes: new Uint8Array(3), fileId: 'FID1234567' }, noSleep)).toEqual({ id: 'FID1234567' })
+  expect(await G.uploadResumable(f.fn, 'AT', { meta: { name: 'a' }, bytes: new Uint8Array(3), fileId: 'FID1234567' }, noSleep)).toEqual({ ok: true, id: 'FID1234567' })
   expect(f.calls[0].method).toBe('PATCH')
   expect(f.calls[0].url).toMatch(/\/upload\/drive\/v3\/files\/FID1234567\?uploadType=resumable/)
 })
@@ -165,14 +194,14 @@ test('uploadResumable: 5xx·네트워크 실패 뒤 상태를 물어 이어 올�
     if (i === 3) return res(308, undefined, { range: 'bytes=0-1' }) // 상태 묻기
     return res(201, { id: 'F3' })
   })
-  expect(await G.uploadResumable(f.fn, 'AT', { meta: {}, bytes: new Uint8Array(4) }, noSleep)).toEqual({ id: 'F3' })
+  expect(await G.uploadResumable(f.fn, 'AT', { meta: {}, bytes: new Uint8Array(4) }, noSleep)).toEqual({ ok: true, id: 'F3' })
   expect(f.calls[3].headers['content-range']).toBe('bytes */4')
   expect(f.calls[4].headers['content-range']).toBe('bytes 2-3/4')
 })
 
-test('uploadResumable: 5번 실패하면 한국어 오류', async () => {
-  const f = fakeFetch((_c, i) => (i === 0 ? res(200, '', { location: 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=U4' }) : res(503)))
-  await expect(G.uploadResumable(f.fn, 'AT', { meta: {}, bytes: new Uint8Array(4) }, noSleep)).rejects.toThrow(/올리지 못했습니다/)
+test('uploadResumable: 5번 실패하면 {ok:false, status, reason}(던지지 않음)', async () => {
+  const f = fakeFetch((_c, i) => (i === 0 ? res(200, '', { location: 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=U4' }) : res(503, { error: { errors: [{ reason: 'backendError' }] } })))
+  expect(await G.uploadResumable(f.fn, 'AT', { meta: {}, bytes: new Uint8Array(4) }, noSleep)).toEqual({ ok: false, status: 503, reason: 'backendError' })
   expect(f.calls.length).toBe(6) // 시작 1 + 실패 5
 })
 
@@ -370,7 +399,9 @@ test('download: fileId 형식, 60MB 상한(Content-Length·누적)', async () =>
   await client.completeLogin({ access_token: 'AT', refresh_token: '1//R', expires_in: 3600, scope: 'openid' }, G.BASE_SCOPES, false)
   await expect(client.download('../etc')).rejects.toThrow()
   await expect(client.download('short')).rejects.toThrow()
-  expect(Array.from(await client.download('abcdefghij'))).toEqual([1, 2, 3])
+  const d = await client.download('abcdefghij')
+  expect(d.ok).toBe(true)
+  expect(Array.from(d.bytes)).toEqual([1, 2, 3])
   await expect(client.download('BIGLENGTH00')).rejects.toThrow(/60MB/)
 })
 
@@ -400,5 +431,62 @@ test('uploadResumable(클라이언트): 401이면 새로 고쳐 처음부터 한
     return res(200, { id: 'OK' })
   })
   await client.completeLogin({ access_token: 'AT', refresh_token: '1//R', expires_in: 3600, scope: 'openid' }, G.BASE_SCOPES, false)
-  expect(await client.uploadResumable({ name: 'a' }, new Uint8Array(2))).toEqual({ id: 'OK' })
+  expect(await client.uploadResumable({ name: 'a' }, new Uint8Array(2))).toEqual({ ok: true, id: 'OK' })
+})
+
+test('api: 캘린더 본문에 attendees가 있으면(어디에든) 보내지 않는다, 바이트 본문도 거부', async () => {
+  const { client, f } = mkClient(() => res(200, {}))
+  await client.completeLogin({ access_token: 'AT', refresh_token: '1//R', expires_in: 3600, scope: 'openid' }, G.BASE_SCOPES, false)
+  await expect(client.api('POST', '/calendar/v3/calendars/primary/events', { summary: 'a', attendees: [{ email: 'x@y.z' }] })).rejects.toThrow(/허용/)
+  await expect(client.api('PATCH', '/calendar/v3/calendars/primary/events/e1', { nested: { attendees: [] } })).rejects.toThrow(/허용/)
+  await expect(client.api('POST', '/calendar/v3/calendars/primary/events', new Uint8Array([1]))).rejects.toThrow(/허용/)
+  expect(f.calls.length).toBe(0)
+  expect((await client.api('POST', '/calendar/v3/calendars/primary/events', { summary: 'a' })).status).toBe(200)
+})
+
+test('uploadResumable: 시작이 403이면 오류 JSON의 reason을 돌려준다', async () => {
+  const f = fakeFetch(() => res(403, { error: { errors: [{ reason: 'storageQuotaExceeded' }] } }))
+  expect(await G.uploadResumable(f.fn, 'AT', { meta: {}, bytes: new Uint8Array(4) }, noSleep)).toEqual({ ok: false, status: 403, reason: 'storageQuotaExceeded' })
+})
+
+test('uploadResumable: 네트워크가 5번 끊기면 status 0, reason network', async () => {
+  const f = fakeFetch(() => { throw new TypeError('net') })
+  expect(await G.uploadResumable(f.fn, 'AT', { meta: {}, bytes: new Uint8Array(4) }, noSleep)).toEqual({ ok: false, status: 0, reason: 'network' })
+})
+
+test('download: 2xx 아니면 {ok:false, status, reason}(error.status도 읽음)', async () => {
+  const { client } = mkClient(() => res(403, { error: { status: 'PERMISSION_DENIED' } }))
+  await client.completeLogin({ access_token: 'AT', refresh_token: '1//R', expires_in: 3600, scope: 'openid' }, G.BASE_SCOPES, false)
+  expect(await client.download('abcdefghij')).toEqual({ ok: false, status: 403, reason: 'PERMISSION_DENIED' })
+})
+
+test('uploadResumable·download(클라이언트): 로그인 안 됨 → {ok:false, status:401}, 새로 고쳐도 401이면 401', async () => {
+  const a = mkClient(() => res(200, {}))
+  expect(await a.client.download('abcdefghij')).toEqual({ ok: false, status: 401 })
+  expect(await a.client.uploadResumable({}, new Uint8Array(1))).toEqual({ ok: false, status: 401 })
+  const b = mkClient((c) => (c.url.startsWith('https://oauth2.googleapis.com/token') ? tokenOk() : res(401, { error: { status: 'UNAUTHENTICATED' } })))
+  await b.client.completeLogin({ access_token: 'AT', refresh_token: '1//R', expires_in: 3600, scope: 'openid' }, G.BASE_SCOPES, false)
+  expect(await b.client.download('abcdefghij')).toEqual({ ok: false, status: 401, reason: 'UNAUTHENTICATED' })
+  expect(b.f.calls.filter((c) => c.url.includes('/drive/')).length).toBe(2)
+})
+
+test('옛 동기 암호 파일: 비동기 다시 쓰기가 실패하면 옛 파일을 지우지 않는다', async () => {
+  const safe = fakeSafe({ sync: true })
+  safe.decryptStringAsync = async () => { throw new Error('nope') }
+  safe.encryptStringAsync = async () => { throw new Error('enc fail') }
+  const old = safe.enc('1//SYNC')
+  fs.writeFileSync(tokFile(), old)
+  expect(await G.createTokenStore({ file: tokFile(), safe }).load()).toMatchObject({ refresh: '1//SYNC' })
+  expect(fs.readFileSync(tokFile()).equals(old)).toBe(true)
+})
+
+test('logout: 취소는 토큰을 주소가 아니라 POST 본문(form)으로', async () => {
+  const { client, f } = mkClient(() => res(200, {}))
+  await client.completeLogin({ access_token: 'AT', refresh_token: '1//SECRET', expires_in: 3600, scope: 'openid' }, G.BASE_SCOPES, false)
+  await client.logout()
+  const r = f.calls.find((c) => c.url.startsWith('https://oauth2.googleapis.com/revoke'))!
+  expect(r.url).toBe('https://oauth2.googleapis.com/revoke')
+  expect(r.method).toBe('POST')
+  expect(r.headers['content-type']).toBe('application/x-www-form-urlencoded')
+  expect(String(r.body)).toBe('token=1%2F%2FSECRET')
 })
