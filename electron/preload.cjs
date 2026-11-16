@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
+const { makeOnBeforeClose } = require('./beforeClose.cjs')
+
 // 경로 통로: 화면은 경로 글자를 등록할 수 없다. 놓은(고른) File 객체에서 preload가 얻은 경로만 메인에 등록한다.
 const registerDrop = (file) => ipcRenderer.invoke('paths:register-drop', webUtils.getPathForFile(file))
 const pickFolder = (defaultPath) => ipcRenderer.invoke('paths:pick-folder', typeof defaultPath === 'string' ? defaultPath : undefined)
@@ -13,6 +15,10 @@ contextBridge.exposeInMainWorld('desktop', {
     const h = () => cb()
     ipcRenderer.on('app-lock', h)
     return () => ipcRenderer.removeListener('app-lock', h)
+  },
+  /** 닫기 전 저장: 메인이 창 close를 한 번 막고 보내는 before-close에 화면이 저장을 마치면 close-ok. */
+  app: {
+    onBeforeClose: makeOnBeforeClose(ipcRenderer),
   },
   update: {
     get: () => ipcRenderer.invoke('update:get'),

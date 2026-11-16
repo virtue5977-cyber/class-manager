@@ -126,6 +126,8 @@ const GOT_LOCK = app.requestSingleInstanceLock()
 if (!GOT_LOCK) app.quit()
 
 let win
+let closeFlow
+const CloseFlow = require('./closeFlow.cjs')
 // 화면 CSP·권한·경로 통로: 본체는 security.cjs(시험됨). 화면이 부를 수 있는 바깥 주소는 AI와 NEIS뿐이다.
 const secLib = require('./security.cjs')
 const { CSP } = secLib
@@ -146,9 +148,20 @@ function createWindow() {
   win.webContents.on('did-fail-load', (_e, code, _desc, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) rendererGone('did-fail-load')
   })
-  // 윈도우 로그오프·끄기: 막지 않고 종료 중으로만 표시한다.
-  win.on('query-session-end', () => { quitting = true })
-  win.on('session-end', () => { quitting = true })
+  // 닫기 전 저장: 화면이 준비를 알린 뒤의 첫 close를 막고 저장 끝(close-ok) 또는 3초에 닫는다.
+  const w = win
+  closeFlow = CloseFlow.createCloseFlow({
+    send: () => { try { w.webContents.send('app:before-close') } catch { /* 화면이 이미 없음 */ } },
+    destroy: () => { if (!w.isDestroyed()) w.destroy() },
+    setTimer: setTimeout,
+    clearTimer: clearTimeout,
+    timeoutMs: 3000,
+  })
+  w.on('close', (e) => closeFlow.onClose(e))
+  w.webContents.on('did-start-loading', () => closeFlow.setReady(false))
+  // 윈도우 로그오프·끄기: 막지 않고 종료 중으로 표시하고, 저장만 곧바로 시작시킨다.
+  win.on('query-session-end', () => { quitting = true; closeFlow.onSessionEnd() })
+  win.on('session-end', () => { quitting = true; closeFlow.onSessionEnd() })
   win.webContents.on('did-finish-load', () => {
     if (!RUN || aliveSeen || aliveTimer) return
     aliveTimer = setTimeout(() => {
@@ -175,6 +188,9 @@ function createWindow() {
     }
   })
 }
+
+ipcMain.on('app:before-close-ready', (e) => { if (win && e.sender === win.webContents && closeFlow) closeFlow.setReady(true) })
+ipcMain.on('app:close-ok', (e) => { if (win && e.sender === win.webContents && closeFlow) closeFlow.onCloseOk() })
 
 app.on('second-instance', () => {
   if (win) {

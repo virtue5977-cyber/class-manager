@@ -219,15 +219,15 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
       const j = JSON.stringify(bs)
       if (t === saved.current.title && j === saved.current.blocks) return
       saved.current = { title: t, blocks: j }
-      void saveNoteContent(db, note.id, { title: t, blocks: bs })
+      return saveNoteContent(db, note.id, { title: t, blocks: bs })
     },
     [db, note.id],
   )
   useEffect(() => {
-    const t = setTimeout(() => persist(title, blocks), 500)
+    const t = setTimeout(() => void persist(title, blocks), 500)
     return () => clearTimeout(t)
   }, [persist, title, blocks])
-  useEffect(() => () => persist(latest.current.title, latest.current.blocks), [persist])
+  useEffect(() => () => void persist(latest.current.title, latest.current.blocks), [persist])
   // 창을 닫거나 숨길 때는 0.5초를 기다리지 않고 바로 저장
   useEffect(() => registerFlush(() => persist(latest.current.title, latest.current.blocks)), [persist])
   /** 제목에서 Enter·↓: 본문 첫 글 줄로(글 줄이 없으면 맨 앞에 새 줄) */
@@ -677,7 +677,7 @@ export default function NoteEditor({ note, today, tools }: { note: NoteRec; toda
         const other = await noticeNoteOf(db, range.start)
         if (other && other.id !== note.id) return setClash(other.title || '제목 없음')
       }
-      persist(title, blocks)
+      await persist(title, blocks)
       await linkNoteToDate(db, note.id, range.start, mode ?? 'merge')
       setSendFor(undefined)
       setClash(undefined)

@@ -7,7 +7,7 @@ import { getDesktop } from './lib/desktop/bridge'
 import OldExeScreen from './components/OldExeScreen'
 import VaultGate, { type RenderSetup } from './app/VaultGate'
 import MigrationWizard from './app/MigrationWizard'
-import { flushAll } from './lib/ui/flush'
+import { flushAll, wireBeforeClose } from './lib/ui/flush'
 import HtmlEndBanner from './components/HtmlEndBanner'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppProviders } from './app/context'
@@ -39,13 +39,17 @@ import type { FsAdapter } from './lib/fs/adapter'
 /** 창을 닫거나 숨길 때 미뤄 둔 저장을 바로 한다(노트·누가기록 입력). */
 function FlushOnLeave() {
   useEffect(() => {
-    const hide = () => document.visibilityState === 'hidden' && flushAll()
-    window.addEventListener('pagehide', flushAll)
-    window.addEventListener('beforeunload', flushAll)
+    const now = () => void flushAll()
+    const hide = () => document.visibilityState === 'hidden' && now()
+    window.addEventListener('pagehide', now)
+    window.addEventListener('beforeunload', now)
+    // exe: 메인이 닫기 전에 보내는 신호에 저장이 끝난 뒤 답한다.
+    const unWire = wireBeforeClose(getDesktop())
     document.addEventListener('visibilitychange', hide)
     return () => {
-      window.removeEventListener('pagehide', flushAll)
-      window.removeEventListener('beforeunload', flushAll)
+      window.removeEventListener('pagehide', now)
+      window.removeEventListener('beforeunload', now)
+      unWire()
       document.removeEventListener('visibilitychange', hide)
     }
   }, [])

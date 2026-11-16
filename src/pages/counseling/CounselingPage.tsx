@@ -380,7 +380,7 @@ function LogCard(p: {
   onSaveContent: (f: LogFields) => void
   onDelete: () => void
   onOrganize: () => void
-  onSaveNuga: (text: string) => void
+  onSaveNuga: (text: string) => void | Promise<unknown>
   onStatus: (done: boolean) => void
   onCopy: (currentText: string) => void
 }) {
@@ -395,7 +395,7 @@ function LogCard(p: {
   onSaveNuga.current = p.onSaveNuga
   const saveNugaIfChanged = useCallback(() => {
     const d = draft.current
-    if (d.nuga.trim() !== (d.saved ?? '').trim()) onSaveNuga.current(d.nuga.trim())
+    if (d.nuga.trim() !== (d.saved ?? '').trim()) return onSaveNuga.current(d.nuga.trim())
   }, [])
   useEffect(() => registerFlush(saveNugaIfChanged), [saveNugaIfChanged])
   const hasNuga = !!l.nuga_text || writing

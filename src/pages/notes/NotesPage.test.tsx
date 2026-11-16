@@ -588,3 +588,14 @@ test('제목에서 Enter·↓를 누르면 본문 첫 줄로 간다(한글 조�
   await user.keyboard('{ArrowDown}')
   await waitFor(() => expect(blocks()[0]).toHaveFocus())
 })
+
+test('노트에 쓰고 await flushAll() 직후 DB에 있다', async () => {
+  const { flushAll } = await import('../../lib/ui/flush')
+  const { db, n } = await setup()
+  const user = userEvent.setup()
+  await screen.findByDisplayValue('회의록')
+  await user.click(blocks()[0])
+  await user.keyboard('닫기 전 저장')
+  await flushAll()
+  expect((await db.notes.get(n.id))!.blocks[0].text).toBe('닫기 전 저장')
+})
