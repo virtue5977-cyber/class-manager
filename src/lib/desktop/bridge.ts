@@ -85,8 +85,8 @@ export interface DesktopApi {
   /** Task 16: 대화상자로 폴더 허용(paths:pick-folder)·놓은 파일 등록(File만 받음). */
   paths?: { pickFolder?(defaultPath?: string): Promise<unknown>; registerDrop?(file: File): Promise<unknown>; [k: string]: unknown }
   /** Task 18: 컴퓨터를 켤 때 자동 실행 */
-  autostart?: { get(): Promise<{ on: boolean; path?: string }>; set(on: boolean): Promise<unknown> }
-  shortcut?: { create(): Promise<{ ok: boolean; name?: string }> }
+  autostart?: { get(): Promise<{ on: boolean; path?: string | null }>; set(on: boolean): Promise<{ on?: boolean } | unknown> }
+  shortcut?: { create(): Promise<{ ok: boolean; name?: string; message?: string }> }
   device?: { info?(): Promise<{ computerName: string; exePath: string }>; [k: string]: unknown }
 }
 

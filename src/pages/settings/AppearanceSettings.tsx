@@ -27,7 +27,7 @@ function DesktopStart() {
             onChange={async (e) => {
               const v = e.target.checked
               setOn(v)
-              try { await auto.set(v) } catch { setOn(!v); setMsg('자동 실행을 바꾸지 못했습니다.') }
+              try { const r = (await auto.set(v)) as { on?: boolean } | undefined; if (typeof r?.on === 'boolean') setOn(r.on) } catch (err) { setOn(!v); setMsg(err instanceof Error && /개발용/.test(err.message) ? '개발용 실행에서는 쓸 수 없습니다' : '자동 실행을 바꾸지 못했습니다.') }
             }}
           />
           컴퓨터를 켜면 Watson 열기
@@ -40,7 +40,7 @@ function DesktopStart() {
             onClick={async () => {
               try {
                 const r = await sc.create()
-                setMsg(r?.ok ? '바탕화면에 바로가기를 만들었습니다' : '바로가기를 만들지 못했습니다. 바탕화면 폴더에 쓸 수 있는지 확인하세요.')
+                setMsg(r?.ok ? '바탕화면에 바로가기를 만들었습니다' : r?.message ? r.message : '바로가기를 만들지 못했습니다. 바탕화면 폴더에 쓸 수 있는지 확인하세요.')
               } catch { setMsg('바로가기를 만들지 못했습니다. 바탕화면 폴더에 쓸 수 있는지 확인하세요.') }
             }}
           >

@@ -339,15 +339,22 @@ handle('vault:reset', () => vaultH().reset())
 // 자동 실행·바탕화면 바로가기·기기 정보: 순수 부분은 desktopIntegration.cjs(시험됨).
 const DI = require('./desktopIntegration.cjs')
 const exeNow = () => DI.exePath(process.env, app)
-handle('autostart:get', () => {
-  const s = app.getLoginItemSettings()
-  return { on: !!s.openAtLogin, path: exeNow() }
-})
+const usable = () => DI.usable(app, process.env)
+const lastFile = () => path.join(app.getPath('userData'), 'autostart.json')
+const readLast = () => { try { return JSON.parse(fsSync.readFileSync(lastFile(), 'utf8')).path || null } catch { return null } }
+const saveLast = (p) => { try { fsSync.writeFileSync(lastFile(), JSON.stringify({ path: p })) } catch {} }
+const isOn = () => { const s = app.getLoginItemSettings({ path: exeNow() }); return !!(s.openAtLogin || s.executableWillLaunchAtLogin) }
+handle('autostart:get', () => (usable() ? { on: isOn(), path: exeNow() } : { on: false, path: null }))
 handle('autostart:set', (on) => {
-  app.setLoginItemSettings({ openAtLogin: DI.asBool(on), path: exeNow() })
-  return { on: !!app.getLoginItemSettings({ path: exeNow() }).openAtLogin, path: exeNow() }
+  const v = DI.asBool(on)
+  if (!usable()) throw new Error(DI.DEV_MSG)
+  const exe = exeNow()
+  app.setLoginItemSettings({ openAtLogin: v, path: exe })
+  if (v) saveLast(exe)
+  return { on: isOn(), path: exe }
 })
 handle('shortcut:create', () => {
+  if (!usable()) return { ok: false, message: DI.DEV_MSG }
   try {
     const exe = exeNow()
     const target = DI.shortcutTarget(app.getPath('desktop'))
@@ -360,8 +367,8 @@ handle('shortcut:create', () => {
 handle('device:info', () => ({ computerName: os.hostname(), exePath: exeNow() }))
 app.whenReady().then(() => {
   try {
-    // 폴더를 옮겨 경로가 달라졌으면 자동 실행 등록을 새 경로로 고친다.
-    DI.syncAutostart({ get: () => app.getLoginItemSettings(), set: (s) => app.setLoginItemSettings(s), exe: exeNow() })
+    if (!usable()) return
+    DI.syncAutostart({ get: (p) => app.getLoginItemSettings({ path: p }), set: (st) => app.setLoginItemSettings(st), exe: exeNow(), last: readLast(), save: saveLast })
   } catch {}
 })
 // 다른 이름으로 저장(옮기기 마법사의 새 백업 파일): 본체는 saveFile.cjs(시험됨). 실제로 쓰고 크기를 확인했을 때만 ok.
