@@ -183,7 +183,8 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
-  const picked = await pickDist()
+  // 판 고르기가 어떤 이유로든 실패해도 exe에 든 화면으로는 반드시 연다(화면 없는 상태 방지).
+  const picked = await pickDist().catch(() => ({ dist: BUILT_DIST, version: app.getVersion() }))
   DIST = picked.dist
   RUNNING_VERSION = picked.version
   // 메뉴를 아예 없애 새로고침(Ctrl+R)·개발자 도구 단축키를 막는다(PIN 우회 방지).
