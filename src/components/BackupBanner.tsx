@@ -28,12 +28,15 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
   const started = useRef(false)
   const [status, setStatus] = useState<StartupStatus | null>(null)
   const [error, setError] = useState<string>()
+  // vault DB는 암호구가 필수라 '암호구 없음'이 뜰 수 없다: 열쇠 행이 있으면 그 띠는 거른다.
+  const settle = async (st: StartupStatus): Promise<StartupStatus> =>
+    st === 'needs-setup' && db.isVault && (await db.device_local.get('backupKeyRaw')) ? 'not-due' : st
 
   useEffect(() => {
     if (started.current) return
     started.current = true
-    runStartup(db, fs).then((r) => {
-      setStatus(r.backup)
+    runStartup(db, fs).then(async (r) => {
+      setStatus(await settle(r.backup))
       setError(r.error)
     })
   }, [db, fs])
@@ -42,9 +45,9 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
   useEffect(() => {
     const check = () => {
       if (document.visibilityState === 'hidden') return
-      runAutoBackup(db, fs).then((r) => {
+      runAutoBackup(db, fs).then(async (r) => {
         if (r.backup === 'not-due') return
-        setStatus(r.backup)
+        setStatus(await settle(r.backup))
         setError(r.error)
       })
     }
@@ -59,9 +62,9 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
   // 설정 화면에서 암호구·폴더가 바뀌면 백업을 다시 돌리지 않고 상태만 다시 확인한다.
   useEffect(() => {
     if (version === 0) return
-    checkBackupStatus(db, fs).then((h) => {
+    checkBackupStatus(db, fs).then(async (h) => {
       setError(undefined)
-      setStatus(h === 'ok' ? 'not-due' : h)
+      setStatus(h === 'ok' ? 'not-due' : await settle(h))
     })
   }, [version, db, fs])
 

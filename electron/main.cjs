@@ -12,6 +12,18 @@ const { pickUserDataDir } = require('./paths.cjs')
 // 이름을 Watson으로 바꿔도 옛 자료 폴더(담임업무)를 그대로 쓴다. ready 전에 정해야 한다.
 app.setPath('userData', pickUserDataDir(app.getPath('appData'), fsSync.existsSync))
 
+// 충돌 덤프는 로그와 따로 임시 폴더에: ready 전에 정하고, 켤 때 비운다(crashReporter.start는 부르지 않는다).
+const DUMP_DIR = path.join(app.getPath('userData'), 'tmp-dumps')
+app.setPath('crashDumps', DUMP_DIR)
+try {
+  fsSync.rmSync(DUMP_DIR, { recursive: true, force: true })
+  fsSync.mkdirSync(DUMP_DIR, { recursive: true })
+} catch {
+  /* 폴더를 못 비워도 앱은 계속 */
+}
+// 로그(하루 한 파일, 7일). 코드·숫자만: 행 내용·이름·토큰·프롬프트·경로는 남기지 않는다.
+const log = require('./log.cjs').createLog(path.join(app.getPath('userData'), 'logs'))
+
 const BUILT_DIST = path.join(__dirname, '..', 'dist')
 // ---- 자동 업데이트 ----
 // 화면(dist)만 GitHub에서 받아 바꾼다. exe(이 파일·preload)가 바뀌는 업데이트는 SHELL 번호를 올리고 새 exe를 받아야 한다.
@@ -52,7 +64,9 @@ async function pickDist() {
   const U = UPDATES_DIR()
   const cur = UC.readCurrent(U)
   if (!cur) return builtin
-  let next = UC.decideStart(cur).next
+  const decided = UC.decideStart(cur)
+  let next = decided.next
+  if (next && next.dir !== cur.dir) log.info('update.rollback', { from: cur.version, failed: cur.failedStarts || 0 })
   let picked = null
   for (let i = 0; i < 3 && next && next.dir; i++) {
     const dir = path.join(U, next.dir)
@@ -64,9 +78,10 @@ async function pickDist() {
       if (q.verdict === 'ok') cache = q.cache
       else if (q.verdict === 'bad') badBundle = true
       // 'io'(백신 잠금 등): 그대로 켜고 세지 않는다. 코드만 남긴다.
-      else console.warn('[update] manifest read error', (q.codes || []).join(','))
+      else log.error('update.manifest_io', { codes: (q.codes || []).join(',') })
     } else if (UC.versionGte(next.version, '1.0.0')) badBundle = true
     if (badBundle) {
+      log.error('update.manifest_bad', { ver: next.version })
       // 파일이 바뀐 판(해시 틀림·빠진 파일): 실패한 실행처럼 되돌린다.
       next = UC.rollback(next, UC.MANIFEST_NOTICE).next
       continue
@@ -334,7 +349,14 @@ const vaultH = () => (vaultHandlers ??= require('./vault.cjs').createVaultHandle
 handle('vault:status', () => vaultH().status())
 handle('vault:unlock-dpapi', () => vaultH().unlockDpapi())
 handle('vault:read-backup', () => vaultH().readBackup())
-handle('vault:store', (p) => vaultH().store(p))
+handle('vault:store', async (p) => {
+  try {
+    return await vaultH().store(p)
+  } catch (e) {
+    log.error('vault.store_failed') // 메시지에 내용이 섞일 수 있어 코드만
+    throw e
+  }
+})
 handle('vault:reset', () => vaultH().reset())
 // 자동 실행·바탕화면 바로가기·기기 정보: 순수 부분은 desktopIntegration.cjs(시험됨).
 const DI = require('./desktopIntegration.cjs')
@@ -531,7 +553,7 @@ async function agyAsk(prompt, timeoutMs) {
     // 로그인 오류는 stderr로만 올 수 있다(종료 1): 둘 다 본다.
     if (!agyLib.streamRejected(r)) return { ...agyLib.parseAgyStream(r.out, r.err), via: 'stdin' }
     agyInputMode = 'argv'
-    console.warn('[agy] stream-json rejected; argv mode') // 글·출력은 남기지 않는다
+    log.info('agy.argv_fallback') // 글·출력은 남기지 않는다
   }
   const r = await runAgy(agyLib.agyArgvArgs(prompt), timeoutMs)
   return { ...agyLib.parseAgyOutput(r.out || r.err), via: 'argv' }

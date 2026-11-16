@@ -29,7 +29,7 @@ export function onBrokenRow(cb: BrokenListener): () => void {
   brokenListeners.add(cb)
   return () => { brokenListeners.delete(cb) }
 }
-function notifyBroken(table: string, id: unknown): void {
+export function notifyBroken(table: string, id: unknown): void {
   for (const cb of [...brokenListeners]) {
     try { cb({ table, id }) } catch { /* 알림 받는 쪽 오류는 읽기를 막지 않는다 */ }
   }
