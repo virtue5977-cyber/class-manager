@@ -66,3 +66,26 @@ test('세션 종료는 보내기만 하고 막지 않는다(이후 close도 통�
   expect(e.preventDefault).not.toHaveBeenCalled()
   expect(t.setTimer).not.toHaveBeenCalled()
 })
+
+test('재시작 경로: 준비된 화면에는 보내고 close-ok까지 기다린다', async () => {
+  const t = make()
+  let resolved = false
+  const p = (t.f as unknown as { beforeRestart(): Promise<void> }).beforeRestart().then(() => { resolved = true })
+  expect(t.send).toHaveBeenCalledTimes(1)
+  await Promise.resolve()
+  expect(resolved).toBe(false)
+  t.f.onCloseOk()
+  await p
+  expect(resolved).toBe(true)
+  expect(t.destroy).not.toHaveBeenCalled()
+})
+
+test('재시작 경로: 시간 초과에도 풀리고, 준비 안 된 화면은 바로 풀린다', async () => {
+  const t = make()
+  const p = (t.f as unknown as { beforeRestart(): Promise<void> }).beforeRestart()
+  t.fire()
+  await p
+  const u = make(); u.f.setReady(false)
+  await (u.f as unknown as { beforeRestart(): Promise<void> }).beforeRestart()
+  expect(u.send).not.toHaveBeenCalled()
+})

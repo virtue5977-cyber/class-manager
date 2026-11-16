@@ -7,6 +7,7 @@ function createCloseFlow({ send, destroy, setTimer, clearTimer, timeoutMs = 3000
   let done = false
   let sessionEnding = false
   let timer = null
+  let restartWaiters = []
   const finish = () => {
     if (done) return
     done = true
@@ -25,7 +26,22 @@ function createCloseFlow({ send, destroy, setTimer, clearTimer, timeoutMs = 3000
       send()
       timer = setTimer(finish, timeoutMs)
     },
-    onCloseOk() { if (pending) finish() },
+    onCloseOk() {
+      const w = restartWaiters; restartWaiters = []
+      w.forEach((f) => f())
+      if (pending) finish()
+    },
+    /** 업데이트 재시작: 닫기를 거치지 않으니 저장 신호를 보내고 close-ok 또는 시간 초과까지 기다린다(창은 닫지 않음). */
+    beforeRestart() {
+      if (!ready || done) return Promise.resolve()
+      return new Promise((resolve) => {
+        let t = null
+        const go = () => { if (t !== null) clearTimer(t); resolve() }
+        restartWaiters.push(go)
+        if (!pending) send()
+        t = setTimer(go, timeoutMs)
+      })
+    },
     onSessionEnd() {
       if (sessionEnding) return
       sessionEnding = true

@@ -158,7 +158,7 @@ function createWindow() {
     timeoutMs: 3000,
   })
   w.on('close', (e) => closeFlow.onClose(e))
-  w.webContents.on('did-start-loading', () => closeFlow.setReady(false))
+  w.webContents.on('did-start-navigation', (e, _url, _inPlace, isMainFrame) => { if ((e && e.isMainFrame) || isMainFrame) closeFlow.setReady(false) })
   // 윈도우 로그오프·끄기: 막지 않고 종료 중으로 표시하고, 저장만 곧바로 시작시킨다.
   win.on('query-session-end', () => { quitting = true; closeFlow.onSessionEnd() })
   win.on('session-end', () => { quitting = true; closeFlow.onSessionEnd() })
@@ -741,6 +741,8 @@ handle('update:check', async () => {
   return updateState
 })
 handle('update:restart', async () => {
+  // app.exit는 close·before-quit를 건너뛰니, 먼저 화면에 저장 신호를 보내고 끝(또는 3초)까지 기다린다.
+  try { if (closeFlow) await closeFlow.beforeRestart() } catch { /* 저장 신호 실패는 재시작을 막지 않음 */ }
   app.relaunch()
   app.exit(0)
 })
