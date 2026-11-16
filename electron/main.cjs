@@ -352,13 +352,8 @@ handle('backup:delete', async (name) => {
 // 프로그램은 where/which로 찾은 절대 경로로만 부른다(작업 폴더·상대 경로의 같은 이름 파일은 쓰지 않음).
 const AI_DIR = () => path.join(app.getPath('userData'), 'ai-work')
 const aiDir = () => (fsSync.mkdirSync(AI_DIR(), { recursive: true }), AI_DIR())
-// 지난 실행이 남긴 임시 프롬프트 파일과 예전 임시 작업 폴더(os 임시 폴더)를 지운다.
+// 예전 임시 작업 폴더(os 임시 폴더)를 지운다.
 app.whenReady().then(() => {
-  try {
-    for (const f of fsSync.readdirSync(AI_DIR())) if (/^prompt-[0-9a-f]+\.txt$/.test(f)) fsSync.rmSync(path.join(AI_DIR(), f), { force: true })
-  } catch {
-    /* 아직 없음 */
-  }
   fsSync.rmSync(path.join(os.tmpdir(), 'damim-ai'), { recursive: true, force: true })
 })
 const agyLib = require('./agy.cjs')
@@ -444,12 +439,14 @@ handle('ai:ask', async (req) => {
 })
 
 // ---- AI: Antigravity CLI(agy, 구글 계정 로그인) ----
-// 글은 표준 입력으로 넘긴다. 표준 입력을 읽지 않는 판이면 작업 폴더의 임시 파일(0600)로 넘기고 끝나면 곧 지운다.
-// 셸을 거치지 않고 부른다(.cmd면 cmd.exe 규칙대로 인용; 인자에는 고정된 글뿐).
+// 글은 문서화된 headless 입력(stream-json)으로 표준 입력에 넘긴다. 그 인자를 모르는 예전 판만 검증된 -p 인자 방식(알려진 한계).
+// 셸을 거치지 않고 부른다(.cmd면 cmd.exe 규칙대로 quoteCmdArg로 인용).
 function runAgy(args, timeoutMs, input = null) {
   return new Promise((resolve, reject) => {
     const found = findProgram('agy')
     if (!found) return reject(new Error('Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'))
+    // cmd.exe 한 줄은 8,191자까지(예전 판 대체에서 글이 인자일 때만 해당)
+    if (found.viaCmd && agyLib.cmdLine(found.file, args).length > 8000) return reject(new Error('AI에 보낼 글이 너무 깁니다. 내용을 나눠서 정리하세요.'))
     const child = spawnProgram(found, args)
     let out = ''
     let err = ''
@@ -463,48 +460,42 @@ function runAgy(args, timeoutMs, input = null) {
       clearTimeout(timer)
       reject(new Error('Antigravity CLI(agy)를 실행하지 못했습니다.'))
     })
-    child.on('close', () => {
+    child.on('close', (code) => {
       clearTimeout(timer)
-      resolve({ out, err })
+      resolve({ out, err, code })
     })
     child.stdin.on('error', () => {}) // 표준 입력을 읽지 않고 끝나는 판(EPIPE)
     if (input !== null) child.stdin.end(input, 'utf8')
     else child.stdin.end()
   })
 }
-/** 표준 입력을 못 읽는 판이라고 알게 되면 이번 실행 동안은 곧바로 파일로. */
-let agyFileMode = false
+/** stream-json 인자를 모르는 예전 판이면(모델 호출 전 거절) 이번 실행 동안은 검증된 -p 인자 방식으로. */
+let agyInputMode = 'stdin'
+/** 한 번 묻기 = 모델 호출 한 번. 빈·못 읽은 응답은 다시 부르지 않고 오류로. 결과에 { via: 'stdin' | 'argv' }. */
 async function agyAsk(prompt, timeoutMs) {
-  agyLib.agyArgs(prompt) // 길이 확인
-  if (!agyFileMode) {
-    const r = await runAgy(agyLib.agyArgs(prompt), timeoutMs, prompt)
-    const parsed = agyLib.parseAgyOutput(r.out || r.err)
-    if (!agyLib.needFileFallback(parsed)) return parsed
+  if (agyInputMode === 'stdin') {
+    const r = await runAgy(agyLib.agyArgs(prompt), timeoutMs, agyLib.agyStdinLine(prompt))
+    if (!agyLib.streamRejected(r)) return { ...agyLib.parseAgyStream(r.out), via: 'stdin' }
+    agyInputMode = 'argv'
+    console.warn('[agy] stream-json rejected; argv mode') // 글·출력은 남기지 않는다
   }
-  const name = `prompt-${require('node:crypto').randomBytes(12).toString('hex')}.txt`
-  const file = path.join(aiDir(), name)
-  try {
-    await fs.writeFile(file, prompt, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
-    const r = await runAgy(agyLib.agyFileArgs(name), timeoutMs)
-    const parsed = agyLib.parseAgyOutput(r.out || r.err)
-    if (!agyLib.needFileFallback(parsed)) agyFileMode = true
-    return parsed
-  } finally {
-    await fs.rm(file, { force: true }).catch(() => {})
-  }
+  const r = await runAgy(agyLib.agyArgvArgs(prompt), timeoutMs)
+  return { ...agyLib.parseAgyOutput(r.out || r.err), via: 'argv' }
 }
 handle('ai:agy:status', async () => {
   try {
     const { out } = await runAgy(['--version'], 20000)
     if (!out.trim()) return { installed: false }
     // 버전만으로는 로그인 여부를 모르므로 아주 짧은 시험 질문을 한 번 보낸다(학생 자료 없음).
+    // 확인 문자는 (기본) 표준 입력으로만 보내고, 답에 그 문자가 있어야 입력을 읽은 것이다.
+    const nonce = 'W' + require('node:crypto').randomBytes(6).toString('hex')
     let probe
     try {
-      probe = await agyAsk(agyLib.PROBE_PROMPT, 45000)
+      probe = await agyAsk(agyLib.probePrompt(nonce), 45000)
     } catch (e) {
       probe = { error: e instanceof Error ? e.message : String(e) }
     }
-    return agyLib.statusFrom(out, probe)
+    return { ...agyLib.statusFrom(out, probe, nonce), inputMode: probe.via || agyInputMode }
   } catch {
     return { installed: false }
   }
@@ -512,6 +503,7 @@ handle('ai:agy:status', async () => {
 handle('ai:agy:ask', async (prompt) => {
   const r = await agyAsk(String(prompt || ''), 60000)
   if (r.error) throw new Error(r.error)
+  if (!String(r.text || '').trim()) throw new Error('Antigravity 응답이 없습니다.')
   return r.text
 })
 
@@ -579,6 +571,7 @@ handle('paths:register-drop', (p) => {
 // 화면 src/lib/notes/folders.ts NOT_ALLOWED와 같은 글
 const FOLDER_NOT_ALLOWED = '이 폴더를 열려면 먼저 허용해야 합니다.'
 function allowedDir(p) {
+  if (foldersLib.isLocalPath(p) && !fsSync.existsSync(p)) throw new Error('폴더를 찾지 못했습니다.')
   if (typeof p === 'string' && /^[\\/]{2}|^\\\?\?\\/.test(p)) throw new Error('네트워크 폴더는 연결할 수 없습니다.')
   if (!pathRoots().allowDir(p)) throw new Error(FOLDER_NOT_ALLOWED)
   return p

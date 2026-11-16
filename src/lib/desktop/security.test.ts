@@ -1,13 +1,14 @@
 // @vitest-environment node
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 const require = createRequire(import.meta.url)
 const sec = require('../../../electron/security.cjs') as {
   CSP: string
   permissionAllowed: (p: string) => boolean
-  createPathRoots: (o?: { platform?: string; roots?: string[] }) => {
+  createPathRoots: (o?: { platform?: string; roots?: string[]; realpath?: (p: string) => string }) => {
     addRoot(dir: string): boolean
     addFile(p: string): boolean
     allowDir(p: unknown): boolean
@@ -17,8 +18,13 @@ const sec = require('../../../electron/security.cjs') as {
 }
 const agy = require('../../../electron/agy.cjs') as {
   agyArgs: (p: string) => string[]
-  agyFileArgs: (name: string) => string[]
-  needFileFallback: (r: { text?: string; error?: string }) => boolean
+  agyStdinLine: (p: string) => string
+  agyArgvArgs: (p: string) => string[]
+  parseAgyStream: (out: string) => { text?: string; error?: string }
+  streamRejected: (r: { code: number | null; out: string; err: string }) => boolean
+  probePrompt: (nonce: string) => string
+  statusFrom: (v: string, probe: { text?: string; error?: string }, nonce?: string) => { installed: boolean; loggedIn?: boolean; message?: string }
+  cmdLine: (file: string, args: string[]) => string
   resolveAbs: (name: string, o: { platform: string; cwd: string; run: (cmd: string, args: string[]) => string; exists: (p: string) => boolean }) => { file: string; viaCmd: boolean } | null
   claudeAskArgs: (platform: string) => string[]
   LOGIN_MSG: string
@@ -49,7 +55,7 @@ describe('권한', () => {
 
 describe('경로 통로', () => {
   test('Windows: 루트 안은 참, ..·다른 드라이브·UNC·상대 경로는 거짓', () => {
-    const r = sec.createPathRoots({ platform: 'win32' })
+    const r = sec.createPathRoots({ platform: 'win32', realpath: (p) => p })
     expect(r.addRoot('C:\\학급\\자료')).toBe(true)
     expect(r.allowDir('C:\\학급\\자료')).toBe(true)
     expect(r.allowDir('C:\\학급\\자료\\1학기')).toBe(true)
@@ -66,7 +72,7 @@ describe('경로 통로', () => {
     expect(r.addRoot('상대')).toBe(false)
   })
   test('파일: 등록 안 한 파일은 거짓, 등록한 drop 파일은 참(루트 안이라도 파일은 따로 등록)', () => {
-    const r = sec.createPathRoots({ platform: 'win32' })
+    const r = sec.createPathRoots({ platform: 'win32', realpath: (p) => p })
     r.addRoot('C:\\녹음')
     expect(r.allowFile('C:\\녹음\\a.mp3')).toBe(false)
     expect(r.addFile('C:\\Users\\t\\Desktop\\상담.mp3')).toBe(true)
@@ -77,32 +83,113 @@ describe('경로 통로', () => {
     expect(r.addFile('\\\\server\\s\\a.mp3')).toBe(false)
   })
   test('posix: 루트 안만, 저장한 루트로 다시 만든다', () => {
-    const r = sec.createPathRoots({ platform: 'linux', roots: ['/home/t/자료', 'relative', '//x'] })
+    const r = sec.createPathRoots({ platform: 'linux', roots: ['/home/t/자료', 'relative', '//x'], realpath: (p) => p })
     expect(r.roots()).toEqual(['/home/t/자료'])
     expect(r.allowDir('/home/t/자료/a')).toBe(true)
     expect(r.allowDir('/home/t/자료/../b')).toBe(false)
     expect(r.allowDir('/home/t/자료b')).toBe(false)
     expect(r.allowDir('/home/t/Docs')).toBe(false)
   })
+  test('실제 경로(realpath)로 비교: 루트 안 링크가 밖을 가리키면 거짓, realpath 실패면 거짓', () => {
+    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'roots-')))
+    const root = path.join(base, '자료')
+    const outside = path.join(base, '비밀')
+    fs.mkdirSync(path.join(root, '안'), { recursive: true })
+    fs.mkdirSync(outside)
+    fs.writeFileSync(path.join(outside, 'a.mp3'), 'x')
+    fs.symlinkSync(outside, path.join(root, '링크'), 'dir')
+    const r = sec.createPathRoots({ platform: 'linux' })
+    expect(r.addRoot(root)).toBe(true)
+    expect(r.allowDir(path.join(root, '안'))).toBe(true)
+    expect(r.allowDir(path.join(root, '링크'))).toBe(false)
+    expect(r.allowDir(path.join(root, '없는 폴더'))).toBe(false)
+    expect(r.addRoot(path.join(base, '없음'))).toBe(false)
+    // 루트를 가리키는 링크로 등록해도 실제 경로로 기억한다
+    fs.symlinkSync(root, path.join(base, '바로가기'), 'dir')
+    const r2 = sec.createPathRoots({ platform: 'linux' })
+    expect(r2.addRoot(path.join(base, '바로가기'))).toBe(true)
+    expect(r2.roots()).toEqual([root])
+    expect(r2.allowDir(path.join(root, '안'))).toBe(true)
+    // 파일: 링크로 등록한 파일은 실제 파일 경로로 맞춘다
+    fs.symlinkSync(path.join(outside, 'a.mp3'), path.join(base, 'b.mp3'))
+    expect(r2.addFile(path.join(base, 'b.mp3'))).toBe(true)
+    expect(r2.allowFile(path.join(outside, 'a.mp3'))).toBe(true)
+    const bad = sec.createPathRoots({ platform: 'win32', realpath: () => { throw new Error('ENOENT') } })
+    expect(bad.addRoot('C:\\자료')).toBe(false)
+    expect(bad.addFile('C:\\a.mp3')).toBe(false)
+    const r3 = sec.createPathRoots({ platform: 'win32', realpath: (p) => (p.includes('링크') ? 'D:\\밖' : p) })
+    r3.addRoot('C:\\자료')
+    expect(r3.allowDir('C:\\자료\\링크')).toBe(false)
+    expect(r3.allowDir('C:\\자료\\안')).toBe(true)
+    // 실제 경로가 네트워크(UNC)면 거짓(연결된 네트워크 드라이브)
+    const r4 = sec.createPathRoots({ platform: 'win32', realpath: () => '\\\\server\\share' })
+    expect(r4.addRoot('Z:\\')).toBe(false)
+  })
 })
 
 describe('외부 프로그램', () => {
-  test('agyArgs 결과에 프롬프트 글이 없다(표준 입력으로 보냄)', () => {
-    const prompt = '김학생 상담 메모: 출석률 95%'
+  test('agy 기본: 문서화된 headless(stream-json) — 인자에 글이 없고 표준 입력 한 줄에 글', () => {
+    const prompt = '김학생 상담 메모: 출석률 95% "따옴표"\n둘째 줄'
     const a = agy.agyArgs(prompt)
     expect(a.join(' ')).not.toContain('김학생')
-    expect(a.some((x) => x.includes(prompt))).toBe(false)
-    expect(a).toEqual(expect.arrayContaining(['--output-format', 'json', '--mode', 'plan', '--sandbox', '--disable-slash-commands']))
+    expect(a).toEqual(['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'])
+    expect(a).not.toContain('-p')
+    const line = agy.agyStdinLine(prompt)
+    expect(line.endsWith('\n')).toBe(true)
+    expect(line.slice(0, -1)).not.toContain('\n')
+    expect(JSON.parse(line)).toEqual({ event: 'user', message: { content: prompt } })
     expect(() => agy.agyArgs('가'.repeat(20001))).toThrow('AI에 보낼 글이 너무 깁니다')
   })
-  test('표준 입력을 못 읽는 판의 대체: 파일 이름만 인자로, 로그인 오류에서는 대체하지 않는다', () => {
-    const a = agy.agyFileArgs('prompt-ab12.txt')
-    expect(a.join(' ')).toContain('prompt-ab12.txt')
-    expect(a).toEqual(expect.arrayContaining(['--mode', 'plan', '--sandbox']))
-    expect(agy.needFileFallback({ error: 'Antigravity 응답이 없습니다.' })).toBe(true)
-    expect(agy.needFileFallback({ error: 'Antigravity 응답을 읽지 못했습니다.' })).toBe(true)
-    expect(agy.needFileFallback({ error: agy.LOGIN_MSG })).toBe(false)
-    expect(agy.needFileFallback({ text: '답' })).toBe(false)
+  test('stream-json 응답 읽기: result.response, 없으면 agent_response text_delta 이어 붙이기, ERROR·로그인·빈 응답은 한국어 오류', () => {
+    const ev = (o: unknown) => JSON.stringify(o)
+    const init = ev({ event: 'init', conversation_id: 'c', init: { cwd: '/w', tools: [] } })
+    const delta = (t: string, type = 'agent_response') => ev({ event: 'step_update', step_update: { conversation_id: 'c', step_index: 1, state: 'ACTIVE', step_type: type, text_delta: t } })
+    const result = (r: Record<string, unknown>) => ev({ event: 'result', result: { conversation_id: 'c', ...r } })
+    expect(agy.parseAgyStream([init, delta('안'), delta('녕'), result({ status: 'SUCCESS', response: '안녕' })].join('\n'))).toEqual({ text: '안녕' })
+    expect(agy.parseAgyStream([init, delta('부분'), delta(' 답'), result({ status: 'SUCCESS' })].join('\r\n'))).toEqual({ text: '부분 답' })
+    expect(agy.parseAgyStream([init, delta('무시', 'tool'), result({ status: 'SUCCESS', response: '' })].join('\n'))).toEqual({ error: 'Antigravity 응답이 없습니다.' })
+    expect(agy.parseAgyStream(['warning: x', init, result({ status: 'ERROR', error: 'quota' })].join('\n')).error).toBe('Antigravity 오류: quota')
+    expect(agy.parseAgyStream(result({ status: 'ERROR', error: 'authentication required' })).error).toBe(agy.LOGIN_MSG)
+    expect(agy.parseAgyStream('ERROR: not authenticated')).toEqual({ error: agy.LOGIN_MSG })
+    expect(agy.parseAgyStream('')).toEqual({ error: 'Antigravity 응답이 없습니다.' })
+    expect(agy.parseAgyStream('garbage')).toEqual({ error: 'Antigravity 응답을 읽지 못했습니다.' })
+    expect(agy.parseAgyStream([init, result({ status: 'CANCELED' })].join('\n')).error).toMatch(/Antigravity 오류/)
+  })
+  test('stream-json 인자를 모르는 판인지: JSON 이벤트 없이 모르는 옵션·사용법 글이면 참(모델 호출 전), 그 밖은 거짓', () => {
+    expect(agy.streamRejected({ code: 1, out: '', err: "Error: unknown flag: --input-format\nUsage: agy [flags]" })).toBe(true)
+    expect(agy.streamRejected({ code: 2, out: 'Usage:\n  agy [flags]', err: 'invalid value "stream-json" for --output-format' })).toBe(true)
+    expect(agy.streamRejected({ code: 1, out: '', err: 'unrecognized option --input-format' })).toBe(true)
+    // 이벤트가 나왔으면 받아들인 것(모델 오류·빈 응답도 대체 호출 없음)
+    expect(agy.streamRejected({ code: 1, out: '{"event":"init","init":{}}\n', err: 'unknown flag' })).toBe(false)
+    expect(agy.streamRejected({ code: 0, out: '', err: '' })).toBe(false)
+    expect(agy.streamRejected({ code: 1, out: '', err: 'authentication required' })).toBe(false)
+  })
+  test('연결 확인: 확인 문자(nonce)를 표준 입력으로만 보내고, 답에 그 문자가 있어야 로그인됨', () => {
+    const nonce = 'W7f3a9c2e'
+    const p = agy.probePrompt(nonce)
+    expect(p).toContain(nonce)
+    expect(agy.agyArgs(p).join(' ')).not.toContain(nonce)
+    expect(agy.statusFrom('agy 1.2.0', { text: `확인: ${nonce}` }, nonce)).toMatchObject({ installed: true, loggedIn: true })
+    const no = agy.statusFrom('agy 1.2.0', { text: 'OK' }, nonce)
+    expect(no).toMatchObject({ installed: true, loggedIn: false })
+    expect(no.message).toMatch(/입력/)
+    expect(agy.statusFrom('agy 1.2.0', { error: agy.LOGIN_MSG }, nonce)).toMatchObject({ loggedIn: false, message: agy.LOGIN_MSG })
+  })
+  test('예전 판 대체(argv): 검증된 예전 인자 그대로, Windows .cmd 줄은 %·"·^·&·|·<·>·줄바꿈이 있어도 인자 하나', () => {
+    expect(agy.agyArgvArgs('안녕')).toEqual(['-p', '안녕', '--output-format', 'json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'])
+    expect(() => agy.agyArgvArgs('가'.repeat(20001))).toThrow('AI에 보낼 글이 너무 깁니다')
+    const nasty = '95% "인용" a^b & calc | del < in > out %PATH% \\" 끝\\\n둘째'
+    const line = agy.cmdLine('C:\\npm\\agy.cmd', agy.agyArgvArgs(nasty))
+    expect(line).not.toMatch(/[\r\n]/)
+    // cmd.exe 특수 글자는 모두 따옴표 안에 있어야 한다(따옴표 밖에 나오면 리디렉션·파이프·명령 연결)
+    let inQ = false
+    const inner = line.slice(1, -1)
+    for (const c of inner) {
+      if (c === '"') inQ = !inQ
+      else if (!inQ) expect(['&', '|', '<', '>', '^', '\n']).not.toContain(c)
+    }
+    expect(inQ).toBe(false)
+    // % 펼침이 일어나지 않음은 agy.test의 cmdExpand 왕복 시험이 확인한다
   })
   test('Claude Code 인자에도 프롬프트가 없고 --tools 빈 값은 그대로 빈 글', () => {
     for (const pf of ['win32', 'linux']) {

@@ -64,10 +64,10 @@ function cmdExpand(s: string): string {
   return out
 }
 
-test('agy는 한 번만 답하는 계획 모드·샌드박스로 부르고 글은 인자에 넣지 않는다(표준 입력)', () => {
+test('agy는 한 번만 답하는 계획 모드·샌드박스로 부르고 글은 인자에 넣지 않는다(stream-json 표준 입력)', () => {
   const a = agyArgs('안녕')
   expect(a).not.toContain('안녕')
-  expect(a.slice(2)).toEqual(['--output-format', 'json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'])
+  expect(a).toEqual(['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'])
 })
 
 test('프롬프트가 20,000자를 넘으면 보내지 않는다', () => {
@@ -149,4 +149,16 @@ test('Claude Code 오류 글: 모르는 옵션이면 업데이트 안내, 로그
 
 test('cmd 줄: 빈 인자(--tools "")도 사라지지 않는다', () => {
   expect(splitWinArgs(cmdLine('C:\\npm\\claude.cmd', ['--tools', '', '-p']).slice(1, -1))).toEqual(['C:\\npm\\claude.cmd', '--tools', '', '-p'])
+})
+
+test('예전 판 대체(argv): 학생 글에 %·"·^·&·|·<·>·줄바꿈이 있어도 cmd 줄에서 -p 인자 하나로 그대로(줄바꿈은 글자 \\n)', () => {
+  const { agyArgvArgs } = require('../../../electron/agy.cjs') as { agyArgvArgs: (p: string) => string[] }
+  for (const prompt of ['a < b > c', 'x ^ y & z | w', '95% %USERNAME% "q" \\" 끝\\', '첫 줄\n둘째 줄'])
+  {
+    const line = cmdLine('C:\\npm\\agy.cmd', agyArgvArgs(prompt))
+    const args = splitWinArgs(cmdExpand(line.slice(1, -1)))
+    expect(args[0]).toBe('C:\\npm\\agy.cmd')
+    expect(args.slice(1, 3)).toEqual(['-p', prompt.replace(/\n/g, '\\n')])
+    expect(args.slice(3)).toEqual(['--output-format', 'json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'])
+  }
 })

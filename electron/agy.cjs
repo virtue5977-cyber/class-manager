@@ -1,29 +1,91 @@
-// Antigravity CLI(agy)·Claude Code 부르기용 순수 함수. 한 번만 답하게(-p), 파일을 고치지 않는 계획 모드·샌드박스로.
-// 학생 글(프롬프트)은 명령줄 인자에 절대 넣지 않는다(다른 프로그램이 프로세스 목록에서 읽을 수 있음): 표준 입력, 안 되면 임시 파일.
+// Antigravity CLI(agy)·Claude Code 부르기용 순수 함수. 파일을 고치지 않는 계획 모드·샌드박스로 한 번만 답하게.
+// 학생 글(프롬프트)은 명령줄 인자에 넣지 않는다(다른 프로그램이 프로세스 목록에서 읽을 수 있음).
+// agy 기본: 문서화된 headless 입력 `--input-format stream-json --output-format stream-json`, 표준 입력에 user 이벤트 한 줄.
+// 그 인자를 모르는 예전 판만(모델 호출 전에 거절됨) 예전에 검증된 `-p <글>` 인자로 한 번 부른다(알려진 한계: 글이 인자에 보임;
+// 화면에서 보내는 AI 글은 이미 이름을 가린 것). 연결 확인은 표준 입력으로만 보낸 확인 문자가 답에 있어야 통과.
 const path = require('node:path')
 const MAX_PROMPT = 20000
 const LOGIN_MSG = 'Antigravity 로그인이 필요합니다. 명령 창에서 agy 를 한 번 실행해 구글 계정으로 로그인하세요.'
+const AUTH_RE = /authentication required|not authenticated|login required/i
+const NO_RESPONSE = 'Antigravity 응답이 없습니다.'
+const BAD_RESPONSE = 'Antigravity 응답을 읽지 못했습니다.'
+const STDIN_UNREAD = 'Antigravity가 앱이 보낸 입력을 읽지 못했습니다. 명령 창에서 agy update 로 새 판으로 올리세요.'
 
-const AGY_FLAGS = ['--output-format', 'json', '--mode', 'plan', '--sandbox', '--disable-slash-commands']
-/** -p 에는 고정된 안내만(학생 글 없음). 지시·입력은 메인이 표준 입력으로 쓴다(-p 글은 표준 입력 뒤에 붙는다). */
-const AGY_STDIN_PROMPT = '위 표준 입력의 지시와 출력 형식만 따르세요.'
-function agyArgs(prompt) {
+const SAFE_FLAGS = ['--mode', 'plan', '--sandbox', '--disable-slash-commands']
+const checkLen = (prompt) => {
   if (String(prompt).length > MAX_PROMPT) throw new Error('AI에 보낼 글이 너무 깁니다. 내용을 나눠서 정리하세요.')
-  return ['-p', AGY_STDIN_PROMPT, ...AGY_FLAGS]
 }
-/** 표준 입력을 읽지 않는 판: 작업 폴더(cwd) 안 임시 파일 이름만 넘긴다(@파일 포함). */
-function agyFileArgs(name) {
-  return ['-p', `@${name} 파일의 지시와 출력 형식만 따르세요.`, ...AGY_FLAGS]
+/** 기본(stream-json): 인자에 글이 없다. 글은 agyStdinLine으로 표준 입력에. */
+function agyArgs(prompt) {
+  checkLen(prompt)
+  return ['--input-format', 'stream-json', '--output-format', 'stream-json', ...SAFE_FLAGS]
 }
-/** 표준 입력으로 보냈는데 JSON 응답이 없으면(입력을 못 읽은 판) 임시 파일로 한 번 더. 로그인·모델 오류는 그대로. */
-function needFileFallback(r) {
-  return !!(r && r.error) && /응답이 없습니다|응답을 읽지 못했습니다/.test(r.error)
+/** 표준 입력 한 줄: {"event":"user","message":{"content":<글>}} + 줄바꿈(JSON이라 글 속 줄바꿈은 \n으로 들어감). */
+function agyStdinLine(prompt) {
+  return JSON.stringify({ event: 'user', message: { content: String(prompt) } }) + '\n'
+}
+/** 예전 판 대체: 이 작업 전에 검증된 인자 그대로(글이 -p 인자). Windows .cmd는 cmdLine(quoteCmdArg)로만 넘긴다. */
+function agyArgvArgs(prompt) {
+  checkLen(prompt)
+  return ['-p', String(prompt), '--output-format', 'json', ...SAFE_FLAGS]
+}
+
+const jsonEvents = (out) => {
+  const events = []
+  const others = []
+  for (const line of String(out || '').split(/\r?\n/)) {
+    const t = line.trim()
+    if (!t) continue
+    let o = null
+    if (t.startsWith('{')) {
+      try {
+        o = JSON.parse(t)
+      } catch {
+        o = null
+      }
+    }
+    if (o && typeof o === 'object' && typeof o.event === 'string') events.push(o)
+    else others.push(t)
+  }
+  return { events, others }
+}
+/** stream-json 출력: 마지막 result 이벤트. SUCCESS면 response(없으면 agent_response 의 text_delta 이어 붙이기). */
+function parseAgyStream(stdout) {
+  const { events, others } = jsonEvents(stdout)
+  const deltas = events
+    .filter((e) => e.event === 'step_update' && e.step_update && e.step_update.step_type === 'agent_response' && typeof e.step_update.text_delta === 'string')
+    .map((e) => e.step_update.text_delta)
+    .join('')
+  const results = events.filter((e) => e.event === 'result' && e.result && typeof e.result === 'object')
+  const r = results.length ? results[results.length - 1].result : null
+  if (r) {
+    const status = String(r.status || '').toUpperCase()
+    if (status === 'SUCCESS') {
+      const text = typeof r.response === 'string' && r.response ? r.response : deltas
+      return text.trim() ? { text } : { error: NO_RESPONSE }
+    }
+    const err = String(r.error || status || '알 수 없음')
+    return AUTH_RE.test(err) ? { error: LOGIN_MSG } : { error: `Antigravity 오류: ${err}` }
+  }
+  if (AUTH_RE.test(others.join('\n'))) return { error: LOGIN_MSG }
+  if (deltas.trim()) return { text: deltas }
+  if (!events.length && others.length) return { error: BAD_RESPONSE }
+  return { error: NO_RESPONSE }
+}
+/** stream-json 인자를 모르는 판: 이벤트가 하나도 없고, 0이 아닌 종료 + 모르는 옵션·사용법 글. 이때는 모델을 부르기 전이다. */
+function streamRejected({ code, out, err }) {
+  if (code === 0 || jsonEvents(out).events.length) return false
+  return /unknown (flag|option|argument|shorthand)|unrecognized|invalid (value|argument)|usage:/i.test(`${err || ''}\n${out || ''}`)
+}
+/** 연결 확인 글: 확인 문자를 그대로 답하게(이 글은 표준 입력으로만 보낸다). */
+function probePrompt(nonce) {
+  return `확인 문자 ${nonce} 만 그대로 답하세요.`
 }
 
 function parseAgyOutput(stdout) {
   const raw = String(stdout || '').trim()
   if (!raw) return { error: 'Antigravity 응답이 없습니다.' }
-  if (/authentication required|not authenticated|login required/i.test(raw)) return { error: LOGIN_MSG }
+  if (AUTH_RE.test(raw)) return { error: LOGIN_MSG }
   try {
     const body = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
     if (String(body.status).toUpperCase() === 'ERROR') return { error: `Antigravity 오류: ${body.error || '알 수 없음'}` }
@@ -99,15 +161,16 @@ function killCommand(platform, pid) {
 }
 
 /** 연결 확인 결과: --version 출력 + 짧은 시험 질문의 parseAgyOutput 결과. */
-function statusFrom(versionOut, probe) {
+function statusFrom(versionOut, probe, nonce) {
   const v = String(versionOut || '').trim()
   if (!v) return { installed: false }
   const version = v.split(/\s+/).pop()
   if (probe && probe.error) return { installed: true, version, loggedIn: false, message: probe.error }
+  // 확인 문자가 답에 없으면 입력을 읽지 못한 것(고정 글에만 답한 것)으로 본다.
+  if (nonce && !String((probe && probe.text) || '').includes(nonce)) return { installed: true, version, loggedIn: false, message: STDIN_UNREAD }
   return { installed: true, version, loggedIn: true }
 }
 
-const PROBE_PROMPT = 'OK 라고만 답하세요.'
 
 /** Claude Code 한 번 묻기 인자: 세션 파일을 남기지 않고(학생 글이 ~/.claude에 쌓이지 않게), 도구·MCP 없이.
  * 글은 표준 입력으로. 셸을 거치지 않으므로 빈 값은 빈 글 그대로(.cmd면 cmdLine이 "" 로 인용). */
@@ -122,4 +185,4 @@ function claudeErrorText(text) {
   return 'Claude Code 실행 중 오류가 났습니다. Pro 사용 한도를 확인하세요.'
 }
 
-module.exports = { claudeErrorText, claudeAskArgs, agyArgs, agyFileArgs, needFileFallback, resolveAbs, AGY_STDIN_PROMPT, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, PROBE_PROMPT, MAX_PROMPT, LOGIN_MSG }
+module.exports = { claudeErrorText, claudeAskArgs, agyArgs, agyStdinLine, agyArgvArgs, parseAgyStream, streamRejected, probePrompt, resolveAbs, parseAgyOutput, quoteCmdArg, cmdLine, pickAgyPath, killCommand, statusFrom, MAX_PROMPT, LOGIN_MSG }
