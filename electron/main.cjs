@@ -27,22 +27,90 @@ const newer = (a, b) => {
   for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0)
   return false
 }
-/** 받아 둔 화면 중 exe 버전보다 새 것이 있으면 그것을, 없으면 exe에 든 화면을 쓴다. */
+const UC = require('./updateCore.cjs')
+/** 받은 판으로 켰을 때만 { name, dir, version, shell }. 내장 판이면 null(되돌리기 판정 대상 아님). */
+let RUN = null
+let startNotice = null
+let aliveSeen = false
+let failedThisRun = false
+let relaunching = false
+let aliveTimer = null
+/** 받은 판이 쓸 만한가: exe가 받아들이는 shell, exe에 든 화면보다 새 판, index.html 있음(내장 판보다 옛것·같은 것은 고르지 않는다). */
+const usableBundle = (c, dir) => typeof c.shell === 'number' && c.shell <= SHELL && newer(c.version, app.getVersion()) && fsSync.existsSync(path.join(dir, 'index.html'))
+/**
+ * 켤 때 판 고르기: decideStart(두 번 연속 alive 없음 → prev/내장) + quick manifest 확인(실패면 되돌림).
+ * 받은 판이 쓸 만하지 않으면 내장 판. 고른 상태(cleanExit=false: alive를 기다림)를 원자적으로 쓴다.
+ */
 function pickDist() {
-  try {
-    const cur = JSON.parse(fsSync.readFileSync(path.join(UPDATES_DIR(), 'current.json'), 'utf8'))
-    const dir = path.join(UPDATES_DIR(), cur.dir)
-    if (cur.shell <= SHELL && newer(cur.version, app.getVersion()) && fsSync.existsSync(path.join(dir, 'index.html'))) return { dist: dir, version: cur.version }
-  } catch {
-    /* 받은 업데이트 없음 */
+  const builtin = { dist: BUILT_DIST, version: app.getVersion() }
+  // 두 번째 실행(곧 끝남)은 첫 실행의 판정 상태를 건드리지 않는다.
+  if (!GOT_LOCK) return builtin
+  const U = UPDATES_DIR()
+  const cur = UC.readCurrent(U)
+  if (!cur) return builtin
+  let next = UC.decideStart(cur).next
+  let picked = null
+  for (let i = 0; i < 3 && next && next.dir; i++) {
+    const dir = path.join(U, next.dir)
+    if (!usableBundle(next, dir)) break
+    let r = { ok: true, cache: next.cache }
+    const mf = path.join(dir, 'manifest.json')
+    if (fsSync.existsSync(mf)) {
+      try {
+        r = UC.checkManifest(dir, JSON.parse(fsSync.readFileSync(mf, 'utf8')), { quick: true, cache: next.cache })
+      } catch {
+        r = { ok: false }
+      }
+    } else if (UC.versionGte(next.version, '1.0.0')) r = { ok: false }
+    if (!r.ok) {
+      // 파일이 바뀐 판: 실패한 실행처럼 되돌린다.
+      next = UC.rollback(next, UC.MANIFEST_NOTICE).next
+      continue
+    }
+    next = { ...next, cache: r.cache }
+    picked = { name: next.dir, dir, version: next.version, shell: next.shell }
+    break
   }
-  return { dist: BUILT_DIST, version: app.getVersion() }
+  if (next) {
+    if (next.notice) startNotice = next.notice
+    delete next.notice
+    if (!picked) next.cleanExit = true
+    try {
+      UC.writeCurrentAtomic(U, next)
+    } catch {
+      /* 다음에 다시 */
+    }
+    // 1.0 이상 exe: 되돌린 판·1.0 미만 묶음 정리(지금 쓰는 것·prev는 남김)
+    if (UC.versionGte(app.getVersion(), '1.0.0')) UC.pruneBundles(U, [next.dir, next.prev && next.prev.dir], picked && picked.name)
+  }
+  RUN = picked
+  return picked ? { dist: picked.dir, version: picked.version } : builtin
+}
+/** 지금 실행 중인 받은 판의 current.json만 고친다(그 사이 새 판을 설치했으면 건드리지 않음). */
+function updateRunState(fn) {
+  if (!RUN) return
+  try {
+    const c = UC.readCurrent(UPDATES_DIR())
+    if (c && c.dir === RUN.name) UC.writeCurrentAtomic(UPDATES_DIR(), fn(c))
+  } catch {
+    /* 상태를 못 써도 앱은 계속 */
+  }
+}
+/** render-process-gone·did-fail-load: 실패로 세고 다시 켠다(두 번이면 decideStart가 prev/내장으로). */
+function bundleFailed() {
+  if (!RUN || relaunching) return
+  relaunching = true
+  failedThisRun = true
+  updateRunState(UC.recordFailure)
+  app.relaunch()
+  app.exit(0)
 }
 let DIST = BUILT_DIST
 let RUNNING_VERSION = app.getVersion()
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }])
 
-if (!app.requestSingleInstanceLock()) app.quit()
+const GOT_LOCK = app.requestSingleInstanceLock()
+if (!GOT_LOCK) app.quit()
 
 let win
 // 화면이 부를 수 있는 바깥 주소는 AI와 NEIS뿐이다.
@@ -59,6 +127,26 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: !app.isPackaged },
   })
   win.setMenuBarVisibility(false)
+  // 되돌리기 판정: 화면이 죽거나 못 읽으면 실패. 다 읽고도 20초 안에 alive가 없으면 실패로 센다(다시 켜지는 않음).
+  win.webContents.on('render-process-gone', (_e, d) => {
+    if (d && d.reason !== 'clean-exit') bundleFailed()
+  })
+  win.webContents.on('did-fail-load', (_e, code, _desc, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3) bundleFailed()
+  })
+  win.webContents.on('did-finish-load', () => {
+    if (!RUN || aliveSeen || aliveTimer) return
+    aliveTimer = setTimeout(() => {
+      if (aliveSeen || failedThisRun) return
+      failedThisRun = true
+      updateRunState(UC.recordFailure)
+    }, 20000)
+  })
+  // 사용자가 닫은 실행은 세지 않는다(alive 전이라도 정상 종료 표시).
+  win.on('closed', () => {
+    clearTimeout(aliveTimer)
+    if (!aliveSeen && !relaunching) updateRunState(UC.markClean)
+  })
   win.loadURL('app://local/index.html')
   // 바깥 링크는 기본 브라우저로 연다.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -105,7 +193,8 @@ app.whenReady().then(() => {
 
 let updateState = { status: 'idle' }
 function sendUpdate(state) {
-  updateState = state
+  updateState = startNotice ? { ...state, notice: startNotice } : state
+  state = updateState
   if (win) win.webContents.send('update:state', state)
 }
 async function checkForUpdate() {
@@ -113,20 +202,25 @@ async function checkForUpdate() {
   const { fetchCapped } = require('./fetchcap.cjs')
   const info = JSON.parse((await fetchCapped((u, i) => net.fetch(u, i), UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' }, { timeoutMs: 20000, maxBytes: 1024 * 1024 })).toString('utf8'))
   if (!newer(info.version, RUNNING_VERSION)) return sendUpdate({ status: 'latest', current: RUNNING_VERSION })
+  const skipped = UC.readCurrent(UPDATES_DIR())
+  // 두 번 열리지 않아 되돌린 판은 다시 설치하지 않는다.
+  if (skipped && skipped.skip.includes(info.version)) return sendUpdate({ status: 'latest', current: RUNNING_VERSION })
   if (info.shell > SHELL) return sendUpdate({ status: 'need-exe', current: RUNNING_VERSION, version: info.version, note: info.note || '' })
   const bundleUrl = new URL(info.bundle, UPDATE_URL).toString()
   const bytes = await fetchCapped((u, i) => net.fetch(u, i), bundleUrl, { cache: 'no-store' }, { timeoutMs: 180000, maxBytes: 60 * 1024 * 1024 })
   const crypto = require('node:crypto')
   const sha = crypto.createHash('sha256').update(bytes).digest('hex')
-  const signed = `${info.version}\n${info.shell}\n${sha}`
-  // 서명이 맞지 않으면(위조·손상) 절대 적용하지 않는다.
-  if (sha !== info.sha256 || !crypto.verify(null, Buffer.from(signed), UPDATE_PUBLIC_KEY, Buffer.from(info.sig, 'base64'))) {
-    return sendUpdate({ status: 'error', current: RUNNING_VERSION, message: '업데이트 파일 확인(서명)에 실패해 적용하지 않았습니다.' })
-  }
+  // sha·옛 서명·서명2(1.0부터 필수)가 맞지 않으면(위조·손상) 절대 적용하지 않는다. 기한이 지났으면 경고만.
+  const verdict = UC.verifyInstall(info, sha, UPDATE_PUBLIC_KEY)
+  if (!verdict.ok) return sendUpdate({ status: 'error', current: RUNNING_VERSION, message: verdict.message })
   const JSZip = require('jszip')
   const zip = await JSZip.loadAsync(bytes)
   const dirName = `v${info.version}-${Date.now()}`
   const target = path.join(UPDATES_DIR(), dirName)
+  const fail = async (message) => {
+    await fs.rm(target, { recursive: true, force: true }).catch(() => {})
+    return sendUpdate({ status: 'error', current: RUNNING_VERSION, message })
+  }
   for (const [name, entry] of Object.entries(zip.files)) {
     if (entry.dir) continue
     const out = path.normalize(path.join(target, name))
@@ -134,14 +228,36 @@ async function checkForUpdate() {
     await fs.mkdir(path.dirname(out), { recursive: true })
     await fs.writeFile(out, await entry.async('nodebuffer'))
   }
-  if (!fsSync.existsSync(path.join(target, 'index.html'))) throw new Error('bundle without index.html')
-  await fs.writeFile(path.join(UPDATES_DIR(), 'current.json'), JSON.stringify({ version: info.version, shell: info.shell, dir: dirName }))
-  // 예전에 받은 폴더 정리(지금 쓰는 것과 새것만 남김)
-  for (const d of await fs.readdir(UPDATES_DIR())) {
-    const full = path.join(UPDATES_DIR(), d)
-    if (d !== dirName && d !== 'current.json' && full !== DIST) await fs.rm(full, { recursive: true, force: true }).catch(() => {})
+  if (!fsSync.existsSync(path.join(target, 'index.html'))) return fail('업데이트 파일에 화면이 없어 적용하지 않았습니다.')
+  // 묶음 안 manifest.json: 모든 파일 해시가 맞고 목록 밖 파일이 없어야 한다(1.0부터 필수).
+  let cache
+  const mfPath = path.join(target, 'manifest.json')
+  if (verdict.needManifest || fsSync.existsSync(mfPath)) {
+    let r
+    try {
+      r = UC.checkManifest(target, JSON.parse(await fs.readFile(mfPath, 'utf8')))
+    } catch {
+      r = { ok: false }
+    }
+    if (!r.ok) return fail('업데이트 파일 확인(목록)에 실패해 적용하지 않았습니다.')
+    cache = r.cache
   }
-  sendUpdate({ status: 'ready', current: RUNNING_VERSION, version: info.version, note: info.note || '' })
+  const v1 = UC.versionGte(info.version, '1.0.0')
+  let prev = RUN ? { version: RUN.version, shell: RUN.shell, dir: RUN.name } : null
+  if (prev && v1 && !UC.versionGte(prev.version, '1.0.0')) prev = null
+  const before = UC.readCurrent(UPDATES_DIR())
+  UC.writeCurrentAtomic(UPDATES_DIR(), { version: info.version, shell: info.shell, dir: dirName, prev, failedStarts: 0, cleanExit: true, skip: before ? before.skip : [], cache })
+  if (v1) {
+    // 1.0 이상: 1.0 미만 묶음과 새 판·prev 밖 묶음을 지운다(지금 쓰는 폴더는 이번 실행 동안 남김).
+    UC.pruneBundles(UPDATES_DIR(), [dirName, prev && prev.dir], RUN && RUN.name)
+  } else {
+    // 예전에 받은 폴더 정리(지금 쓰는 것과 새것만 남김)
+    for (const d of await fs.readdir(UPDATES_DIR())) {
+      const full = path.join(UPDATES_DIR(), d)
+      if (d !== dirName && d !== 'current.json' && full !== DIST) await fs.rm(full, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+  sendUpdate({ status: 'ready', current: RUNNING_VERSION, version: info.version, note: info.note || '', ...(verdict.warning ? { warning: verdict.warning } : {}) })
 }
 app.on('window-all-closed', () => app.quit())
 
@@ -486,7 +602,15 @@ handle('stt:run', async ({ path: input, wav, model } = {}) => {
   }
 })
 
-handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION }))
+handle('update:get', async () => ({ ...updateState, current: RUNNING_VERSION, ...(startNotice ? { notice: startNotice } : {}) }))
+// 되돌리기 판정: 화면의 React 뿌리가 붙었다(받은 판이 열렸다).
+handle('bundle:alive', async () => {
+  if (aliveSeen) return true
+  aliveSeen = true
+  clearTimeout(aliveTimer)
+  updateRunState(UC.markAlive)
+  return true
+})
 handle('update:check', async () => {
   try {
     await checkForUpdate()

@@ -81,3 +81,31 @@ describe('VaultGate(1.0 시작 관문)', () => {
     expect(vault.status).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('bundle:alive(되돌리기 판정)', () => {
+  afterEach(() => { delete (window as { desktop?: unknown }).desktop })
+
+  test('React 뿌리가 붙으면 곧바로 alive — 옛 exe 지킴이의 비동기 확인·vault보다 먼저', async () => {
+    const order: string[] = []
+    const alive = vi.fn(() => { order.push('alive') })
+    const status = vi.fn(() => { order.push('vault'); return new Promise(() => {}) })
+    ;(window as { desktop?: unknown }).desktop = { shell: 7, isDesktop: true, bundle: { alive }, vault: { status } }
+    render(<App fs={createMemoryFsAdapter()} />)
+    await waitFor(() => expect(alive).toHaveBeenCalled())
+    expect(order[0]).toBe('alive')
+  })
+
+  test('옛 exe 확인이 끝나지 않아도(화면 없음) alive는 이미 불렸다', async () => {
+    const alive = vi.fn(async () => true)
+    ;(window as { desktop?: unknown }).desktop = { shell: 6, isDesktop: true, bundle: { alive } }
+    render(<App fs={createMemoryFsAdapter()} />)
+    expect(alive).toHaveBeenCalled()
+  })
+
+  test('옛 exe(bundle 없음)·alive가 던져도 앱은 그대로', async () => {
+    ;(window as { desktop?: unknown }).desktop = { shell: 7, isDesktop: true, bundle: { alive: () => { throw new Error('x') } } }
+    window.location.hash = ''
+    render(<App db={createDb('test-' + crypto.randomUUID())} fs={createMemoryFsAdapter()} />)
+    expect(await screen.findByText('Watson')).toBeInTheDocument()
+  })
+})

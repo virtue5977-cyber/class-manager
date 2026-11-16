@@ -77,13 +77,6 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
   }, [])
   const current = (id: number) => mounted.current && id === runId.current
 
-  useEffect(() => {
-    try {
-      const r = getDesktop()?.bundle?.alive?.()
-      if (r && typeof (r as Promise<unknown>).catch === 'function') (r as Promise<unknown>).catch(() => {})
-    } catch { /* 옛 exe */ }
-  }, [])
-
   /**
    * 이 열쇠의 DB를 확인하고 연다. 없으면 만들지 않고 'missing', 확인값이 다르면 'wrong-key'(쓰지 않음),
    * 완료 행이 없으면 'incomplete'. 그 사이 다른 실행이 시작됐거나 언마운트됐으면 열었던 DB를 닫고 null.

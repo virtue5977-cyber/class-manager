@@ -6,10 +6,12 @@ export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_V
 /** 어떤 판으로 빌드됐나: single = HTML 단일 파일(0.17로 종료). 시험에서 바꾼다. */
 export const edition = { single: typeof __SINGLE__ !== 'undefined' && __SINGLE__ === true }
 
+/** notice: 켤 때 되돌린 알림(한 번), warning: 받아 둔 판의 서명 기한 지남 등. */
+type UpdateExtra = { notice?: string; warning?: string }
 export type UpdateState =
-  | { status: 'idle' | 'checking' | 'latest'; current: string }
-  | { status: 'ready' | 'need-exe'; current: string; version: string; note?: string }
-  | { status: 'error'; current: string; message: string }
+  | ({ status: 'idle' | 'checking' | 'latest'; current: string } & UpdateExtra)
+  | ({ status: 'ready' | 'need-exe'; current: string; version: string; note?: string } & UpdateExtra)
+  | ({ status: 'error'; current: string; message: string } & UpdateExtra)
 
 export interface DesktopUpdateApi {
   get(): Promise<UpdateState>

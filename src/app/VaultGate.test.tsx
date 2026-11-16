@@ -85,7 +85,8 @@ test('ok → 자식이 vault DB로 그려지고, 넣은 행은 원시 저장에�
   let got: AppDB | undefined
   render(<VaultGate>{(db) => <Probe db={db} onDb={(d) => { got = d }} />}</VaultGate>)
   expect(await screen.findByText(new RegExp(`열린 DB ${v.payload.dbName}`))).toBeInTheDocument()
-  expect(alive).toHaveBeenCalledTimes(1)
+  // alive는 App 뿌리로 옮겼다(Task 15) — VaultGate는 부르지 않는다
+  expect(alive).not.toHaveBeenCalled()
   expect(got!.isVault).toBe(true)
   await got!.students.add(kid())
   const raw = new AppDB(v.payload.dbName, { vault: true })

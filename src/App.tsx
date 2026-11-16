@@ -1,8 +1,9 @@
 import { useLayoutPrefs } from './lib/ui/layoutPrefs'
 import NotesPage from './pages/notes/NotesPage'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { isDesktopApp } from './lib/settings'
 import { newerDataPresent } from './lib/vault/guard'
+import { getDesktop } from './lib/desktop/bridge'
 import OldExeScreen from './components/OldExeScreen'
 import VaultGate, { type RenderSetup } from './app/VaultGate'
 import MigrationWizard from './app/MigrationWizard'
@@ -58,6 +59,14 @@ const renderSetup: RenderSetup = (p) => <MigrationWizard reason={p.reason} done=
 
 /** 옛 exe(SHELL ≤6)는 새 암호화 DB가 있으면 DB를 열기 전에 멈춘다. */
 export default function App(props: AppProps) {
+  // 되돌리기 판정: React 뿌리가 붙으면 곧바로 알린다(옛 exe 지킴이·vault·마법사·PIN보다 먼저).
+  // 자식(VaultGate 등)의 useEffect보다 먼저 돌도록 레이아웃 효과로 부른다.
+  useLayoutEffect(() => {
+    try {
+      const r = getDesktop()?.bundle?.alive?.()
+      if (r && typeof (r as Promise<unknown>).catch === 'function') (r as Promise<unknown>).catch(() => {})
+    } catch { /* 옛 exe */ }
+  }, [])
   const old = isDesktopApp() && ((window as { desktop?: { shell?: number } }).desktop?.shell ?? 0) <= 6
   const [blocked, setBlocked] = useState<boolean | null>(old ? null : false)
   useEffect(() => {

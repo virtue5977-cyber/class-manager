@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('desktop', {
       return () => ipcRenderer.removeListener('update:state', h)
     },
   },
+  /** 화면(React 뿌리)이 붙었음을 알린다(받은 판 되돌리기 판정). */
+  bundle: {
+    alive: () => ipcRenderer.invoke('bundle:alive'),
+  },
   google: {
     status: () => ipcRenderer.invoke('google:status'),
     setClient: (json) => ipcRenderer.invoke('google:setClient', json),
