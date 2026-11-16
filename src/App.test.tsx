@@ -62,3 +62,22 @@ describe('옛 exe 지킴이', () => {
     indexedDB.deleteDatabase('watson-x')
   })
 })
+
+describe('VaultGate(1.0 시작 관문)', () => {
+  afterEach(() => { delete (window as { desktop?: unknown }).desktop })
+
+  test('exe에서 열쇠가 잠겨 있으면 자료 열기 화면만 보이고 앱(홈)은 붙지 않는다', async () => {
+    const vault = {
+      status: vi.fn(async () => ({
+        state: 'needs-pass',
+        vault: { v: 1, keyId: '00000000-0000-4000-8000-000000000000', dbName: 'watson-00000000', pass: { salt: 'AAAAAAAAAAAAAAAAAAAAAA==', iter: 1000, iv: 'AAAAAAAAAAAAAAAA', ct: 'AAAA', updatedAt: 'x' } },
+      })),
+      unlockDpapi: vi.fn(async () => null), readBackup: vi.fn(async () => null), store: vi.fn(async () => true),
+    }
+    ;(window as { desktop?: unknown }).desktop = { shell: 7, isDesktop: true, vault }
+    render(<App fs={createMemoryFsAdapter()} />)
+    expect(await screen.findByRole('heading', { name: '자료 열기' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: '메뉴' })).not.toBeInTheDocument()
+    expect(vault.status).toHaveBeenCalledTimes(1)
+  })
+})

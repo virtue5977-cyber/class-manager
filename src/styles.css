@@ -173,6 +173,10 @@ ol.briefing-list button { padding: 2px 6px; font-size: 12px; }
 .lock-card input { min-width: 0; font-size: 24px; letter-spacing: 6px; text-align: center; }
 .locked-under { visibility: hidden; }
 .lock { position: fixed; inset: 0; z-index: 1000; }
+.vault-card { width: min(440px, 92vw); align-items: stretch; }
+.vault-card label { display: flex; flex-direction: column; gap: 4px; }
+.vault-card input { width: 100%; }
+.recovery-code { font-family: ui-monospace, Consolas, monospace; font-size: 20px; letter-spacing: 1px; text-align: center; user-select: all; padding: 8px; border: 1px dashed var(--line); border-radius: 8px; }
 /* 11: 상담 분류 버튼 */
 .choice { gap: 4px; align-items: center; }
 .choice > .muted { min-width: 36px; }

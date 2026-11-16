@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { isDesktopApp } from './lib/settings'
 import { newerDataPresent } from './lib/vault/guard'
 import OldExeScreen from './components/OldExeScreen'
+import VaultGate from './app/VaultGate'
 import { flushAll } from './lib/ui/flush'
 import HtmlEndBanner from './components/HtmlEndBanner'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
@@ -26,7 +27,7 @@ import CounselingPage from './pages/counseling/CounselingPage'
 import HomePage from './pages/home/HomePage'
 import CalendarPage from './pages/calendar/CalendarPage'
 import { GlobalClassContext } from './pages/common/useClasses'
-import { createDb, type AppDB } from './lib/db/schema'
+import type { AppDB } from './lib/db/schema'
 import { createWebFsAdapter } from './lib/fs/web'
 import { createDesktopFsAdapter, type DesktopBackupApi } from './lib/fs/desktop'
 import type { FsAdapter } from './lib/fs/adapter'
@@ -62,11 +63,13 @@ export default function App(props: AppProps) {
   }, [old])
   if (blocked === null) return null
   if (blocked) return <OldExeScreen />
-  return <AppMain {...props} />
+  // 시험이 DB를 넣어 주면 그대로, 아니면 VaultGate가 열쇠를 풀어 DB를 연 뒤에만 앱을 붙인다(웹은 평문 createDb).
+  if (props.db) return <AppMain {...props} db={props.db} />
+  return <VaultGate>{(db) => <AppMain {...props} db={db} />}</VaultGate>
 }
 
-function AppMain(props: AppProps) {
-  const db = useMemo(() => props.db ?? createDb(), [props.db])
+function AppMain(props: AppProps & { db: AppDB }) {
+  const db = props.db
   const fs = useMemo(() => {
     if (props.fs) return props.fs
     const desktop = (window as { desktop?: { backup?: DesktopBackupApi } }).desktop?.backup
