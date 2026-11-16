@@ -78,7 +78,7 @@ async function pickDist() {
       if (q.verdict === 'ok') cache = q.cache
       else if (q.verdict === 'bad') badBundle = true
       // 'io'(백신 잠금 등): 그대로 켜고 세지 않는다. 코드만 남긴다.
-      else log.error('update.manifest_io', { codes: (q.codes || []).join(',') })
+      else log.error('update.manifest_io', { codes: (q.codes || []).join('.') })
     } else if (UC.versionGte(next.version, '1.0.0')) badBundle = true
     if (badBundle) {
       log.error('update.manifest_bad', { ver: next.version })

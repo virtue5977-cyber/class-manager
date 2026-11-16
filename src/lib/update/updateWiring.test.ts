@@ -43,3 +43,7 @@ test('main: 해시 주소로 화면을 옮겨도(같은 문서) 닫기 전 저�
   expect(m).toMatch(/did-start-navigation/)
   expect(m).toMatch(/if \(main && !same\) closeFlow\.setReady\(false\)/)
 })
+
+test('main: 업데이트 확인 io 오류 코드는 로그에 남는 글자(.)로 잇는다', () => {
+  expect(read('main.cjs')).toMatch(/update\.manifest_io', \{ codes: \(q\.codes \|\| \[\]\)\.join\('\.'\) \}/)
+})
