@@ -64,8 +64,10 @@ function cmdExpand(s: string): string {
   return out
 }
 
-test('agy는 한 번만 답하는 계획 모드·샌드박스로 부른다', () => {
-  expect(agyArgs('안녕')).toEqual(['-p', '안녕', '--output-format', 'json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'])
+test('agy는 한 번만 답하는 계획 모드·샌드박스로 부르고 글은 인자에 넣지 않는다(표준 입력)', () => {
+  const a = agyArgs('안녕')
+  expect(a).not.toContain('안녕')
+  expect(a.slice(2)).toEqual(['--output-format', 'json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'])
 })
 
 test('프롬프트가 20,000자를 넘으면 보내지 않는다', () => {
@@ -134,7 +136,7 @@ test('Claude Code는 대화 기록을 남기지 않고 도구·MCP 없이 부른
     expect(a.slice(0, 2)).toEqual(['-p', '--output-format'])
     expect(a).toContain('--no-session-persistence')
     expect(a).toContain('--strict-mcp-config')
-    expect(a[a.indexOf('--tools') + 1]).toBe(pf === 'win32' ? '""' : '')
+    expect(a[a.indexOf('--tools') + 1]).toBe('') // 셸을 거치지 않으니 빈 글 그대로(cmd 줄에서는 quoteCmdArg가 "" 로)
   }
 })
 
@@ -143,4 +145,8 @@ test('Claude Code 오류 글: 모르는 옵션이면 업데이트 안내, 로그
   expect(claudeErrorText("error: unknown option '--no-session-persistence'")).toBe('Claude Code가 오래된 판입니다. 명령 창에서 claude update 를 실행해 새 판으로 올리세요.')
   expect(claudeErrorText('Please log in')).toContain('로그인')
   expect(claudeErrorText('rate limit')).toBe('Claude Code 실행 중 오류가 났습니다. Pro 사용 한도를 확인하세요.')
+})
+
+test('cmd 줄: 빈 인자(--tools "")도 사라지지 않는다', () => {
+  expect(splitWinArgs(cmdLine('C:\\npm\\claude.cmd', ['--tools', '', '-p']).slice(1, -1))).toEqual(['C:\\npm\\claude.cmd', '--tools', '', '-p'])
 })
