@@ -500,10 +500,11 @@ handle('update:restart', async () => {
   app.exit(0)
 })
 
-// ---- 구글 캘린더: 로그인(시스템 브라우저 + 127.0.0.1 되돌아오기 + PKCE)과 API 호출 ----
-// 토큰은 메인 프로세스만 가지고 Windows 암호화(safeStorage)로 저장한다. 화면은 API 결과만 받는다.
+// ---- 구글: 로그인(시스템 브라우저 + 127.0.0.1 되돌아오기 + PKCE)과 API 통로 ----
+// 토큰은 메인 프로세스만 가지고 safeStorage 비동기로 감싸 저장한다(못 쓰면 저장하지 않음). 화면은 API 결과만 받는다.
+// 본체는 googleApi.cjs(시험됨). 여기는 연결만.
 const http = require('node:http')
-const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/calendar.app.created', 'https://www.googleapis.com/auth/calendar.events.readonly', 'https://www.googleapis.com/auth/calendar.calendarlist.readonly']
+const gLib = require('./googleApi.cjs')
 const G_CLIENT = () => path.join(app.getPath('userData'), 'google-client.json')
 const G_TOKEN = () => path.join(app.getPath('userData'), 'google-token.bin')
 const readClient = () => {
@@ -513,44 +514,16 @@ const readClient = () => {
     return null
   }
 }
-const readRefresh = () => {
-  try {
-    const b = fsSync.readFileSync(G_TOKEN())
-    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(b) : b.toString('utf8')
-  } catch {
-    return null
-  }
-}
-const writeRefresh = (t) => fsSync.writeFileSync(G_TOKEN(), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(t) : Buffer.from(t, 'utf8'))
-let gAccess = null // { token, until }
+let gClientInst = null
+const gClient = () =>
+  (gClientInst ??= gLib.createGoogleClient({
+    // 되돌려 보내기를 따라가지 않는다(Bearer 토큰이 다른 곳으로 가지 않게). 구글 API는 되돌려 보내지 않는다.
+    fetchFn: (url, init) => net.fetch(url, { ...init, redirect: 'error' }),
+    store: gLib.createTokenStore({ file: G_TOKEN(), safe: safeStorage }),
+    readClient,
+  }))
 
-async function tokenRequest(params) {
-  const c = readClient()
-  if (!c) throw new Error('구글 연결 파일을 먼저 올리세요.')
-  let res
-  try {
-    res = await net.fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: c.client_id, client_secret: c.client_secret, ...params }).toString(),
-    })
-  } catch {
-    throw new Error('구글에 연결하지 못했습니다. 인터넷 연결을 확인하세요.')
-  }
-  const body = await res.json()
-  if (!res.ok) throw new Error(body.error === 'invalid_grant' ? '구글 로그인이 만료되었습니다. 다시 로그인하세요.' : '구글 인증에 실패했습니다.')
-  return body
-}
-async function accessToken() {
-  if (gAccess && gAccess.until > Date.now() + 60000) return gAccess.token
-  const refresh = readRefresh()
-  if (!refresh) throw new Error('구글에 로그인되어 있지 않습니다.')
-  const t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refresh })
-  gAccess = { token: t.access_token, until: Date.now() + (t.expires_in || 3600) * 1000 }
-  return gAccess.token
-}
-
-handle('google:status', async () => ({ client: !!readClient(), loggedIn: !!readRefresh() }))
+handle('google:status', () => gClient().status())
 handle('google:setClient', async (jsonText) => {
   let j
   try {
@@ -564,77 +537,52 @@ handle('google:setClient', async (jsonText) => {
   await fs.writeFile(G_CLIENT(), JSON.stringify({ client_id: c.client_id, client_secret: c.client_secret }))
   return true
 })
-handle('google:logout', async () => {
-  const refresh = readRefresh()
-  gAccess = null
-  await fs.rm(G_TOKEN(), { force: true })
-  if (refresh) net.fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(refresh), { method: 'POST' }).catch(() => {})
-  return true
-})
-handle('google:login', async () => {
+handle('google:logout', () => gClient().logout())
+let gLoginBusy = false
+handle('google:login', async (scopesIn, opts) => {
+  const scopes = gLib.validScopes(scopesIn)
+  const incremental = !!(opts && opts.incremental)
   const c = readClient()
   if (!c) throw new Error('구글 연결 파일을 먼저 올리세요.')
-  const crypto = require('node:crypto')
-  const verifier = crypto.randomBytes(48).toString('base64url')
-  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url')
-  const state = crypto.randomBytes(16).toString('hex')
-  const { code, redirect } = await new Promise((resolve, reject) => {
-    let port = 0 // 듣기 시작할 때 정해 둔다(서버를 닫은 뒤에는 주소를 읽을 수 없음)
-    const server = http.createServer((req, res) => {
-      const u = new URL(req.url, 'http://127.0.0.1')
-      if (u.pathname !== '/callback') return res.writeHead(404).end()
-      const ok = u.searchParams.get('state') === state && u.searchParams.get('code')
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-      res.end(`<meta charset="utf-8"><p style="font:18px sans-serif;margin:40px">${ok ? '구글 연결이 끝났습니다. 이 창을 닫고 담임 업무로 돌아가세요.' : '연결하지 못했습니다. 앱에서 다시 시도하세요.'}</p>`)
-      clearTimeout(timer)
-      server.close()
-      if (ok) resolve({ code: u.searchParams.get('code'), redirect: `http://127.0.0.1:${port}/callback` })
-      else reject(new Error(u.searchParams.get('error') === 'access_denied' ? '구글 로그인을 취소했습니다.' : '구글 로그인에 실패했습니다.'))
+  if (gLoginBusy) throw new Error('구글 로그인이 이미 진행 중입니다. 브라우저를 확인하세요.')
+  gLoginBusy = true
+  try {
+    const crypto = require('node:crypto')
+    const verifier = crypto.randomBytes(48).toString('base64url')
+    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url')
+    const state = crypto.randomBytes(16).toString('hex')
+    const loginHint = incremental ? await gClient().loginHint().catch(() => null) : null
+    const { code, redirect } = await new Promise((resolve, reject) => {
+      let port = 0 // 듣기 시작할 때 정해 둔다(서버를 닫은 뒤에는 주소를 읽을 수 없음)
+      const server = http.createServer((req, res) => {
+        const u = new URL(req.url, 'http://127.0.0.1')
+        if (u.pathname !== '/callback') return res.writeHead(404).end()
+        const ok = u.searchParams.get('state') === state && u.searchParams.get('code')
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        res.end(`<meta charset="utf-8"><p style="font:18px sans-serif;margin:40px">${ok ? '구글 연결이 끝났습니다. 이 창을 닫고 담임 업무로 돌아가세요.' : '연결하지 못했습니다. 앱에서 다시 시도하세요.'}</p>`)
+        clearTimeout(timer)
+        server.close()
+        if (ok) resolve({ code: u.searchParams.get('code'), redirect: `http://127.0.0.1:${port}/callback` })
+        else reject(new Error(u.searchParams.get('error') === 'access_denied' ? '구글 로그인을 취소했습니다.' : '구글 로그인에 실패했습니다.'))
+      })
+      const timer = setTimeout(() => {
+        server.close()
+        reject(new Error('구글 로그인 시간이 지났습니다. 다시 시도하세요.'))
+      }, 5 * 60000)
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port
+        shell.openExternal(gLib.authUrl({ clientId: c.client_id, redirect: `http://127.0.0.1:${port}/callback`, challenge, state, scopes, incremental, loginHint }))
+      })
     })
-    const timer = setTimeout(() => {
-      server.close()
-      reject(new Error('구글 로그인 시간이 지났습니다. 다시 시도하세요.'))
-    }, 5 * 60000)
-    server.listen(0, '127.0.0.1', () => {
-      port = server.address().port
-      const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-      url.search = new URLSearchParams({
-        client_id: c.client_id,
-        redirect_uri: `http://127.0.0.1:${port}/callback`,
-        response_type: 'code',
-        scope: GOOGLE_SCOPES.join(' '),
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        state,
-        access_type: 'offline',
-        prompt: 'consent',
-      }).toString()
-      shell.openExternal(url.toString())
-    })
-  })
-  const t = await tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirect, code_verifier: verifier })
-  if (!t.refresh_token) throw new Error('구글이 로그인 유지 정보를 주지 않았습니다. 다시 시도하세요.')
-  writeRefresh(t.refresh_token)
-  gAccess = { token: t.access_token, until: Date.now() + (t.expires_in || 3600) * 1000 }
-  if (win) win.focus()
-  return true
-})
-// 캘린더 API만 부를 수 있다(다른 구글 주소로는 토큰을 보내지 않음).
-handle('google:api', async (method, apiPath, body) => {
-  if (!/^\/calendar\/v3\//.test(String(apiPath))) throw new Error('허용되지 않은 주소입니다.')
-  if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) throw new Error('허용되지 않은 요청입니다.')
-  const send = async () =>
-    net.fetch('https://www.googleapis.com' + apiPath, {
-      method,
-      headers: { authorization: 'Bearer ' + (await accessToken()), ...(body ? { 'content-type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    })
-  let res = await send()
-  if (res.status === 401) {
-    gAccess = null
-    res = await send()
+    const t = await gClient().tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirect, code_verifier: verifier })
+    await gClient().completeLogin(t, scopes, incremental)
+    if (win) win.focus()
+    return true
+  } finally {
+    gLoginBusy = false
   }
-  const text = await res.text()
-  if (!res.ok) throw new Error(`구글 캘린더 오류(${res.status})${res.status === 403 ? ': 권한을 확인하세요' : ''}`)
-  return text ? JSON.parse(text) : null
 })
+// 허용 목록(캘린더·드라이브 파일)의 www.googleapis.com 주소만. 다른 곳으로는 토큰을 보내지 않는다.
+handle('google:api', (method, url, body, opts) => gClient().api(method, url, body, opts))
+handle('google:upload-resumable', (meta, bytes, fileId) => gClient().uploadResumable(meta, bytes, fileId))
+handle('google:download', (fileId) => gClient().download(fileId))

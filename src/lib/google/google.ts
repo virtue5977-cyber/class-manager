@@ -5,13 +5,77 @@ import type { GoogleEventRec, SchoolCalendarRec } from '../db/types'
 import { listReportsForMonth } from '../absenceReports/list'
 import { addDays } from '../schoolDays'
 
+/** 메인(electron/googleApi.cjs)과 같은 목록. 렌더러는 이 둘 중 하나를 login에 넘긴다. */
+export const BASE_SCOPES = ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/drive.file']
+export const CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar.app.created', 'https://www.googleapis.com/auth/calendar.events.readonly', 'https://www.googleapis.com/auth/calendar.calendarlist.readonly']
+
+export interface GoogleStatus {
+  client: boolean
+  connected: boolean
+  email: string | null
+  /** 받은 권한(토큰 응답의 scope). 옛 설치는 캘린더 세 권한. */
+  scopes: string[]
+  /** safeStorage 비동기를 못 써서 이번 실행에만 연결됨 */
+  sessionOnly?: boolean
+}
+export interface GoogleApiResult {
+  status: number
+  headers?: Record<string, string>
+  json?: unknown
+  bytes?: Uint8Array
+}
+export type GoogleMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
 /** exe의 preload가 넣어 주는 구글 연결(토큰은 메인 프로세스에만 있음) */
 export interface GoogleBridge {
-  status(): Promise<{ client: boolean; loggedIn: boolean }>
+  status(): Promise<GoogleStatus>
   setClient(json: string): Promise<boolean>
-  login(): Promise<boolean>
+  login(scopes: string[], opts: { incremental: boolean }): Promise<boolean>
   logout(): Promise<boolean>
-  api(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<unknown>
+  /** 2xx가 아니어도 던지지 않고 status(+오류 json)를 돌려준다. */
+  api(method: GoogleMethod, url: string, body?: unknown, opts?: { binary?: boolean; wantHeaders?: boolean; contentType?: string }): Promise<GoogleApiResult>
+  uploadResumable?(meta: Record<string, unknown>, bytes: Uint8Array, fileId?: string): Promise<{ id: string }>
+  download?(fileId: string): Promise<Uint8Array>
+}
+
+/** 받은 권한에 캘린더 세 권한이 다 있는지 */
+export const hasCalendar = (st: Pick<GoogleStatus, 'connected' | 'scopes'> | undefined) => !!st?.connected && CALENDAR_SCOPES.every((s) => st.scopes?.includes(s))
+
+/** 구글 API 오류(상태·이유를 가진다. 화면은 status 401이면 '다시 연결'). */
+export class GoogleApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: string | undefined,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'GoogleApiError'
+  }
+}
+const errReason = (json: unknown): string | undefined => {
+  const e = (json as { error?: unknown } | undefined)?.error
+  if (typeof e === 'string') return e
+  const o = e as { errors?: { reason?: string }[]; status?: string } | undefined
+  return o?.errors?.[0]?.reason ?? o?.status
+}
+export function googleErrorText(status: number, reason?: string): string {
+  if (status === 401) return '구글 연결이 끊겼습니다. 설정에서 다시 연결하세요.'
+  if (reason === 'admin_policy_enforced' || reason === 'access_not_configured' || reason === 'accessNotConfigured') return '학교 구글 계정은 관리자가 막았을 수 있습니다. 개인 Gmail을 쓰거나 학교 관리자에게 앱 등록을 부탁하세요.'
+  if (reason === 'storageQuotaExceeded') return '구글 드라이브 저장 공간이 가득 찼습니다. 공간을 비운 뒤 다시 하세요.'
+  if (status === 429 || reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded' || reason === 'quotaExceeded') return '구글 요청이 너무 많습니다. 잠시 뒤 다시 하세요.'
+  return `구글 캘린더 오류(${status})${status === 403 ? ': 권한을 확인하세요' : ''}`
+}
+
+const RESULT_KEYS = new Set(['status', 'headers', 'json', 'bytes'])
+/** api를 부르고 2xx면 json, 아니면 GoogleApiError. (옛 exe는 json을 바로 돌려주고 오류는 던졌다 → 그대로 받는다.) */
+export async function callJson<T = unknown>(g: GoogleBridge, method: GoogleMethod, url: string, body?: unknown): Promise<T> {
+  const r = (await g.api(method, url, body)) as unknown
+  const isNew = !!r && typeof r === 'object' && typeof (r as GoogleApiResult).status === 'number' && Object.keys(r).every((k) => RESULT_KEYS.has(k))
+  if (!isNew) return r as T
+  const res = r as GoogleApiResult
+  if (res.status >= 200 && res.status < 300) return res.json as T
+  const reason = errReason(res.json)
+  throw new GoogleApiError(res.status, reason, googleErrorText(res.status, reason))
 }
 
 export function getGoogle(): GoogleBridge | undefined {
@@ -39,7 +103,7 @@ async function listAll<T>(g: GoogleBridge, path: string): Promise<T[]> {
   const out: T[] = []
   let token = ''
   for (let i = 0; i < 20; i++) {
-    const r = (await g.api('GET', `${path}${path.includes('?') ? '&' : '?'}maxResults=250${token ? `&pageToken=${enc(token)}` : ''}`)) as List<T>
+    const r = (await callJson(g, 'GET', `${path}${path.includes('?') ? '&' : '?'}maxResults=250${token ? `&pageToken=${enc(token)}` : ''}`)) as List<T>
     out.push(...(r.items ?? []))
     if (!r.nextPageToken) break
     token = r.nextPageToken
@@ -53,7 +117,7 @@ export async function ensureAppCalendar(db: AppDB, g: GoogleBridge): Promise<str
   const list = await listAll<{ id: string; summary?: string }>(g, '/calendar/v3/users/me/calendarList?minAccessRole=owner')
   const found = list.find((c) => c.id === saved) ?? list.find((c) => c.summary === APP_CALENDAR_NAME)
   let id = found?.id
-  if (!id) id = ((await g.api('POST', '/calendar/v3/calendars', { summary: APP_CALENDAR_NAME, timeZone: TZ, description: '담임 업무 앱이 만든 캘린더입니다. 앱에서 고치세요.' })) as { id: string }).id
+  if (!id) id = ((await callJson(g, 'POST', '/calendar/v3/calendars', { summary: APP_CALENDAR_NAME, timeZone: TZ, description: '담임 업무 앱이 만든 캘린더입니다. 앱에서 고치세요.' })) as { id: string }).id
   await db.device_local.put({ id: CAL_ID_KEY, value: id })
   return id
 }
@@ -110,15 +174,15 @@ export async function pushToGoogle(g: GoogleBridge, calId: string, items: PushIt
     const cur = byKey.get(it.key)
     byKey.delete(it.key)
     if (!cur) {
-      await g.api('POST', `/calendar/v3/calendars/${enc(calId)}/events`, body)
+      await callJson(g, 'POST', `/calendar/v3/calendars/${enc(calId)}/events`, body)
       created++
     } else if (!sameEvent(cur, it)) {
-      await g.api('PATCH', `/calendar/v3/calendars/${enc(calId)}/events/${enc(cur.id)}`, body)
+      await callJson(g, 'PATCH', `/calendar/v3/calendars/${enc(calId)}/events/${enc(cur.id)}`, body)
       updated++
     }
   }
   for (const e of byKey.values()) {
-    await g.api('DELETE', `/calendar/v3/calendars/${enc(calId)}/events/${enc(e.id)}`)
+    await callJson(g, 'DELETE', `/calendar/v3/calendars/${enc(calId)}/events/${enc(e.id)}`)
     removed++
   }
   return { created, updated, removed }
@@ -168,10 +232,17 @@ export async function listGoogleEvents(db: AppDB, from: string, to: string): Pro
   return (await db.google_events.where('date').between(from, to, true, true).toArray()).sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1))
 }
 
+/** 옛 exe의 status({client, loggedIn})도 새 모양으로 */
+function normStatus(st: unknown): GoogleStatus {
+  const o = (st ?? {}) as Partial<GoogleStatus> & { loggedIn?: boolean }
+  const connected = typeof o.connected === 'boolean' ? o.connected : !!o.loggedIn
+  return { client: !!o.client, connected, email: typeof o.email === 'string' ? o.email : null, scopes: Array.isArray(o.scopes) ? o.scopes : connected ? CALENDAR_SCOPES.slice() : [], ...(o.sessionOnly ? { sessionOnly: true } : {}) }
+}
+
 /** 연결 정보가 아직 없으면 앱에 든 기본 연결 정보를 넣는다(로그인 버튼만 누르면 되게). */
-export async function ensureGoogleClient(g: GoogleBridge, builtin: string): Promise<{ client: boolean; loggedIn: boolean }> {
-  const st = await g.status()
+export async function ensureGoogleClient(g: GoogleBridge, builtin: string): Promise<GoogleStatus> {
+  const st = normStatus(await g.status())
   if (st.client || !builtin) return st
   await g.setClient(builtin)
-  return g.status()
+  return normStatus(await g.status())
 }

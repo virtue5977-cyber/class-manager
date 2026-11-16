@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useDb, useFs } from '../../app/context'
-import { ensureGoogleClient, getGoogle, lastGoogleSync, syncGoogle, APP_CALENDAR_NAME } from '../../lib/google/google'
+import { ensureGoogleClient, getGoogle, hasCalendar, lastGoogleSync, syncGoogle, APP_CALENDAR_NAME, CALENDAR_SCOPES, type GoogleStatus } from '../../lib/google/google'
 import { withGoogleLock } from '../../lib/google/runner'
 import { BUILTIN_GOOGLE_CLIENT } from '../../lib/google/client-config'
 import { getCurrentClassId } from '../../lib/roster/roster'
@@ -12,7 +12,7 @@ export default function GoogleSettings() {
   const db = useDb()
   const fs = useFs()
   const g = getGoogle()
-  const [st, setSt] = useState<{ client: boolean; loggedIn: boolean }>()
+  const [st, setSt] = useState<GoogleStatus>()
   const [last, setLast] = useState<string | null>(null)
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
@@ -45,15 +45,15 @@ export default function GoogleSettings() {
       ) : (
         <>
           <div className="row">
-            <span>{!st ? '확인 중…' : !st.client ? '연결 정보가 없습니다. 아래 "다른 연결 파일 쓰기"로 넣으세요.' : !st.loggedIn ? '로그인이 필요합니다.' : `연결됨${last ? ` · 마지막 동기화 ${new Date(last).toLocaleString('ko-KR')}` : ''}`}</span>
+            <span>{!st ? '확인 중…' : !st.client ? '연결 정보가 없습니다. 아래 "다른 연결 파일 쓰기"로 넣으세요.' : !hasCalendar(st) ? (st.connected ? '구글 계정은 연결됐지만 캘린더 권한이 없습니다. "구글로 로그인"으로 캘린더를 더하세요.' : '로그인이 필요합니다.') : `연결됨${last ? ` · 마지막 동기화 ${new Date(last).toLocaleString('ko-KR')}` : ''}`}</span>
           </div>
           <div className="row">
-            <button type="button" className="primary" disabled={busy || !st?.client} onClick={() => run('브라우저에서 구글 로그인을 마치세요', async () => { await g.login(); return '구글에 연결했습니다. "지금 동기화"를 누르세요.' })}>
+            <button type="button" className="primary" disabled={busy || !st?.client} onClick={() => run('브라우저에서 구글 로그인을 마치세요', async () => { await g.login(CALENDAR_SCOPES, { incremental: !!st?.connected }); return '구글에 연결했습니다. "지금 동기화"를 누르세요.' })}>
               구글로 로그인
             </button>
             <button
               type="button"
-              disabled={busy || !st?.loggedIn}
+              disabled={busy || !hasCalendar(st)}
               onClick={() =>
                 run('동기화 중', async () => {
                   const r = await withGoogleLock(async () => syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db)))
@@ -63,7 +63,7 @@ export default function GoogleSettings() {
             >
               지금 동기화
             </button>
-            {st?.loggedIn && (
+            {st?.connected && (
               <button type="button" className="link" disabled={busy} onClick={() => run('로그아웃', async () => { await g.logout(); return '구글 연결을 끊었습니다.' })}>
                 로그아웃
               </button>

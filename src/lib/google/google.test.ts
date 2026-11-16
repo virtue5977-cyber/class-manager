@@ -5,7 +5,7 @@ import type { SchoolCalendarRec } from '../db/types'
 import { createClass, emptyStudent, saveStudent } from '../roster/roster'
 import { saveAttendance } from '../attendance/attendance'
 import { reconcileStudent } from '../absenceReports/reconcile'
-import { syncGoogle, listGoogleEvents, APP_CALENDAR_NAME, type GoogleBridge } from './google'
+import { syncGoogle, listGoogleEvents, APP_CALENDAR_NAME, CALENDAR_SCOPES, BASE_SCOPES, callJson, hasCalendar, GoogleApiError, type GoogleBridge } from './google'
 
 /** 구글 캘린더 API를 흉내 내는 가짜(요청 경로·본문만 확인) */
 function fakeGoogle(primary: unknown[]) {
@@ -13,12 +13,8 @@ function fakeGoogle(primary: unknown[]) {
   const events = new Map<string, Record<string, unknown>>()
   let n = 0
   const calls: string[] = []
-  const g: GoogleBridge = {
-    status: async () => ({ client: true, loggedIn: true }),
-    setClient: async () => true,
-    login: async () => true,
-    logout: async () => true,
-    api: async (method, path, body) => {
+  // 예전 모양(json을 바로 돌려줌)의 가짜를 새 모양 {status, json}으로 감싼다
+  const legacy = async (method: string, path: string, body?: unknown): Promise<unknown> => {
       calls.push(`${method} ${path.split('?')[0]}`)
       if (path.startsWith('/calendar/v3/users/me/calendarList')) return { items: calendars }
       if (method === 'POST' && path === '/calendar/v3/calendars') {
@@ -39,6 +35,15 @@ function fakeGoogle(primary: unknown[]) {
         if (method === 'DELETE') return void events.delete(m[1])
       }
       throw new Error('예상 못 한 호출 ' + method + ' ' + path)
+  }
+  const g: GoogleBridge = {
+    status: async () => ({ client: true, connected: true, email: 't@x.kr', scopes: [...CALENDAR_SCOPES] }),
+    setClient: async () => true,
+    login: async () => true,
+    logout: async () => true,
+    api: async (method, path, body) => {
+      const j = await legacy(method, path, body)
+      return j === undefined ? { status: 204 } : { status: 200, json: j }
     },
   }
   return { g, events, calls, calendars }
@@ -88,8 +93,8 @@ test('연결 정보가 없으면 앱에 든 기본값을 넣고, 이미 있으�
   const { ensureGoogleClient } = await import('./google')
   let client = false
   const set: string[] = []
-  const g = { ...fakeGoogle([]).g, status: async () => ({ client, loggedIn: false }), setClient: async (j: string) => { set.push(j); client = true; return true } }
-  expect(await ensureGoogleClient(g, '{"installed":{}}')).toEqual({ client: true, loggedIn: false })
+  const g = { ...fakeGoogle([]).g, status: async () => ({ client, connected: false, email: null, scopes: [] }), setClient: async (j: string) => { set.push(j); client = true; return true } }
+  expect(await ensureGoogleClient(g, '{"installed":{}}')).toEqual({ client: true, connected: false, email: null, scopes: [] })
   await ensureGoogleClient(g, '{"installed":{}}')
   expect(set).toHaveLength(1)
 })
@@ -133,4 +138,27 @@ test('구글로 보내는 메모: 보호자 이름·다른 반 학생·전화번
   const { buildPushItems } = await import('./google')
   const it = (await buildPushItems(db, '2026-11-01', '2026-11-30', c.id)).find((i) => i.title.includes('상담'))!
   expect(it.description).toBe('○○ [전화], ○○ 동석')
+})
+
+test('옛 exe status({client, loggedIn})는 캘린더 권한으로 연결된 것으로 읽는다', async () => {
+  const { ensureGoogleClient } = await import('./google')
+  const g = { ...fakeGoogle([]).g, status: async () => ({ client: true, loggedIn: true }) as never }
+  const st = await ensureGoogleClient(g, '')
+  expect(st).toEqual({ client: true, connected: true, email: null, scopes: CALENDAR_SCOPES })
+  expect(hasCalendar(st)).toBe(true)
+  expect(hasCalendar({ connected: true, scopes: BASE_SCOPES })).toBe(false)
+})
+
+test('callJson: 2xx 아니면 GoogleApiError(상태·이유·문구), 옛 exe 모양은 그대로', async () => {
+  const mk = (r: unknown) => ({ ...fakeGoogle([]).g, api: async () => r as never })
+  await expect(callJson(mk({ status: 401 }), 'GET', '/calendar/v3/x')).rejects.toMatchObject({ status: 401, message: expect.stringContaining('다시 연결') })
+  const e = (await callJson(mk({ status: 403, json: { error: { errors: [{ reason: 'storageQuotaExceeded' }] } } }), 'GET', '/drive/v3/files').catch((x: unknown) => x)) as GoogleApiError
+  expect(e).toBeInstanceOf(GoogleApiError)
+  expect(e.reason).toBe('storageQuotaExceeded')
+  expect(e.message).toMatch(/저장 공간/)
+  await expect(callJson(mk({ status: 400, json: { error: 'admin_policy_enforced' } }), 'GET', '/drive/v3/files')).rejects.toThrow(/관리자/)
+  await expect(callJson(mk({ status: 429 }), 'GET', '/drive/v3/files')).rejects.toThrow(/잠시 뒤/)
+  expect(await callJson(mk({ status: 200, json: { a: 1 } }), 'GET', '/x')).toEqual({ a: 1 })
+  // 옛 exe: json을 바로(일정 자체에 status 글자 칸이 있어도)
+  expect(await callJson(mk({ id: 'e', status: 'confirmed' }), 'GET', '/x')).toEqual({ id: 'e', status: 'confirmed' })
 })

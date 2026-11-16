@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useDb } from '../app/context'
-import { ensureGoogleClient, getGoogle, syncGoogle } from '../lib/google/google'
+import { ensureGoogleClient, getGoogle, hasCalendar, syncGoogle } from '../lib/google/google'
 import { BUILTIN_GOOGLE_CLIENT } from '../lib/google/client-config'
 import { createSyncRunner, withGoogleLock } from '../lib/google/runner'
 import { getCurrentClassId } from '../lib/roster/roster'
@@ -10,7 +10,7 @@ import { useLive } from '../lib/ui/useLive'
 export const GOOGLE_EVERY_MS = 30 * 60_000
 export const GOOGLE_AFTER_CHANGE_MS = 10_000
 
-/** 구글 달력 자동 맞춤(로그인돼 있을 때만, 조용히): 켤 때(5초 뒤) · 켜 있는 동안 30분마다 · 내 일정·학사일정이 바뀌면 10초 뒤 한 번. */
+/** 구글 달력 자동 맞춤(캘린더 권한까지 연결돼 있을 때만, 조용히): 켤 때(5초 뒤) · 켜 있는 동안 30분마다 · 내 일정·학사일정이 바뀌면 10초 뒤 한 번. */
 export default function GoogleAutoSync() {
   const db = useDb()
   const g = getGoogle()
@@ -18,7 +18,7 @@ export default function GoogleAutoSync() {
     () =>
       g
         ? createSyncRunner(async () => {
-            if ((await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT)).loggedIn) await withGoogleLock(async () => syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db)))
+            if (hasCalendar(await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT))) await withGoogleLock(async () => syncGoogle(db, g, toYmd(new Date()), await getCurrentClassId(db)))
           }, GOOGLE_AFTER_CHANGE_MS)
         : null,
     [db, g],

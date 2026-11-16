@@ -51,9 +51,13 @@ export interface DesktopApi {
   google?: {
     status(): Promise<unknown>
     setClient(json: string): Promise<unknown>
-    login(): Promise<unknown>
+    /** scopes ⊆ BASE_SCOPES ∪ CALENDAR_SCOPES(메인이 확인). incremental이면 prompt=consent 없이 더한다. */
+    login(scopes: string[], opts: { incremental: boolean }): Promise<unknown>
     logout(): Promise<unknown>
-    api(method: string, path: string, body?: unknown): Promise<unknown>
+    /** 응답 { status, headers?, json? | bytes? }. 2xx가 아니어도 던지지 않는다. */
+    api(method: string, url: string, body?: unknown, opts?: { binary?: boolean; wantHeaders?: boolean; contentType?: string }): Promise<unknown>
+    uploadResumable?(meta: Record<string, unknown>, bytes: Uint8Array, fileId?: string): Promise<{ id: string }>
+    download?(fileId: string): Promise<Uint8Array>
     [k: string]: unknown
   }
   ai?: { status(): Promise<unknown>; ask(req: unknown): Promise<unknown> }

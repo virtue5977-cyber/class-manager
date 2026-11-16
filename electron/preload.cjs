@@ -22,9 +22,11 @@ contextBridge.exposeInMainWorld('desktop', {
   google: {
     status: () => ipcRenderer.invoke('google:status'),
     setClient: (json) => ipcRenderer.invoke('google:setClient', json),
-    login: () => ipcRenderer.invoke('google:login'),
+    login: (scopes, opts) => ipcRenderer.invoke('google:login', scopes, opts),
     logout: () => ipcRenderer.invoke('google:logout'),
-    api: (method, path, body) => ipcRenderer.invoke('google:api', method, path, body),
+    api: (method, url, body, opts) => ipcRenderer.invoke('google:api', method, url, body, opts),
+    uploadResumable: (meta, bytes, fileId) => ipcRenderer.invoke('google:upload-resumable', meta, bytes, fileId),
+    download: (fileId) => ipcRenderer.invoke('google:download', fileId),
   },
   ai: {
     status: () => ipcRenderer.invoke('ai:status'),
