@@ -26,7 +26,10 @@ export async function restoreIntoNewVault(
   const key = await deriveKey(passphrase, header.salt, header.iterations)
   const snapshot = validateSnapshot(parseSnapshot(await decrypt(key, iv, ciphertext, headerBytes)))
 
-  const { dek, keyId } = newDek()
+  // 이미 있는 DB 이름과 겹치면(드묾) 새 열쇠로 다시 만든다. 남의 DB를 건드리지 않기 위해서다.
+  const existing = new Set(await Dexie.getDatabaseNames())
+  let { dek, keyId } = newDek()
+  while (existing.has(dbNameFor(keyId))) ({ dek, keyId } = newDek())
   const dbName = dbNameFor(keyId)
   const db = openVaultDb(dbName, dek)
   try {
@@ -40,9 +43,10 @@ export async function restoreIntoNewVault(
       keyId, dek, passRaw: k.raw, passSalt: k.salt, passIter: k.iter,
       recoveryRaw, recoverySalt: recSalt, recoveryIter: RECOVERY_ITER,
     })
-    await deps.store(payload)
+    // 완료 표시 → 닫기 → vault.store는 맨 마지막. store가 성공한 뒤에는 DB를 지우지 않는다.
     await db.meta.put({ id: 'vault', complete: true })
     db.close()
+    await deps.store(payload)
     return { dbName, recoveryCode }
   } catch (e) {
     try { db.close() } catch { /* ignore */ }

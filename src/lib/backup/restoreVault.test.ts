@@ -4,7 +4,9 @@ import { newRecord } from '../db/records'
 import { createMemoryFolder } from '../fs/memory'
 import { setupPassphrase, runBackup, getCachedKey } from './service'
 import { restoreIntoNewVault } from './restoreVault'
-import { openVaultDb } from '../vault/vaultDb'
+import * as vaultDbMod from '../vault/vaultDb'
+const realOpen = vaultDbMod.openVaultDb
+const { openVaultDb } = vaultDbMod
 import { unwrapDek, passKeyRaw, recoveryKeyRaw, type VaultPayload } from '../vault/keys'
 import { fromBase64 } from './crypto'
 import { BackupDecryptError } from './errors'
@@ -56,6 +58,42 @@ test('store가 실패하면 새 DB를 지우고 오류를 올린다', async () =
   const { bytes } = await backup()
   const before = new Set(await Dexie.getDatabaseNames())
   await expect(restoreIntoNewVault(bytes, PASS, { store: async () => { throw new Error('boom') } })).rejects.toThrow('boom')
+  const after = await Dexie.getDatabaseNames()
+  expect(after.filter((n) => !before.has(n))).toEqual([])
+})
+
+test('store가 불릴 때 DB에는 이미 meta.complete가 있다', async () => {
+  const { bytes } = await backup()
+  let seen: unknown
+  await restoreIntoNewVault(bytes, PASS, {
+    store: async (p) => {
+      const d = openVaultDb(p.dbName, fromBase64(p.dekB64))
+      seen = (await d.meta.get('vault'))?.complete
+      d.close()
+    },
+  })
+  expect(seen).toBe(true)
+})
+
+test('store가 성공한 뒤에는 DB를 지우지 않는다', async () => {
+  const { bytes } = await backup()
+  const r = await restoreIntoNewVault(bytes, PASS, { store: async () => undefined })
+  expect(await Dexie.exists(r.dbName)).toBe(true)
+})
+
+test('meta.put이 실패하면 store를 부르지 않고 새 DB를 지운다', async () => {
+  const { bytes } = await backup()
+  const before = new Set(await Dexie.getDatabaseNames())
+  const spy = vi.spyOn(vaultDbMod, 'openVaultDb').mockImplementation((name, dek) => {
+    const d = realOpen(name, dek)
+    d.meta.put = () => Promise.reject(new Error('meta-fail')) as never
+    return d
+  })
+  const store = vi.fn()
+  try {
+    await expect(restoreIntoNewVault(bytes, PASS, { store })).rejects.toThrow('meta-fail')
+  } finally { spy.mockRestore() }
+  expect(store).not.toHaveBeenCalled()
   const after = await Dexie.getDatabaseNames()
   expect(after.filter((n) => !before.has(n))).toEqual([])
 })
