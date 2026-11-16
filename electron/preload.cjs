@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('desktop', {
     store: (v) => ipcRenderer.invoke('vault:store', v),
     reset: () => ipcRenderer.invoke('vault:reset'),
   },
+  file: {
+    saveAs: (name, bytes) => ipcRenderer.invoke('file:save-as', name, bytes),
+  },
   agy: {
     status: () => ipcRenderer.invoke('ai:agy:status'),
     ask: (prompt) => ipcRenderer.invoke('ai:agy:ask', prompt),

@@ -180,6 +180,14 @@ handle('vault:unlock-dpapi', () => vaultH().unlockDpapi())
 handle('vault:read-backup', () => vaultH().readBackup())
 handle('vault:store', (p) => vaultH().store(p))
 handle('vault:reset', () => vaultH().reset())
+// 다른 이름으로 저장(옮기기 마법사의 새 백업 파일): 본체는 saveFile.cjs(시험됨). 실제로 쓰고 크기를 확인했을 때만 ok.
+const saveAs = require('./saveFile.cjs').createSaveAs({
+  showSaveDialog: ({ defaultName }) => dialog.showSaveDialog(win, {
+    title: '백업 파일 저장', defaultPath: path.join(app.getPath('documents'), defaultName),
+    filters: [{ name: 'Watson 백업', extensions: ['enc'] }],
+  }),
+})
+handle('file:save-as', (name, bytes) => saveAs(name, bytes))
 handle('backup:pick', async () => {
   const r = await dialog.showOpenDialog(win, { title: '백업 폴더 고르기', properties: ['openDirectory', 'createDirectory'] })
   if (r.canceled || !r.filePaths[0]) return null

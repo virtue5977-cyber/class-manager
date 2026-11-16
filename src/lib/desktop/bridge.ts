@@ -30,6 +30,8 @@ export interface DesktopVaultApi {
   reset?(): Promise<boolean>
 }
 
+export type SaveAsResult = { ok: true; name: string } | { ok: false }
+
 type Off = () => void
 
 /**
@@ -69,6 +71,8 @@ export interface DesktopApi {
   agy?: { status(): Promise<unknown>; ask(prompt: string): Promise<unknown> }
   backup?: DesktopBackupApi
   vault?: DesktopVaultApi
+  /** 다른 이름으로 저장: 실제로 쓰고 크기를 확인했을 때만 ok(취소·실패는 ok:false). */
+  file?: { saveAs(name: string, bytes: Uint8Array): Promise<SaveAsResult> }
   /** Task 15: 렌더러가 붙었음을 메인에 알린다(되돌리기 판정). */
   bundle?: { alive?(): Promise<unknown> | void; [k: string]: unknown }
   app?: { [k: string]: unknown }

@@ -130,6 +130,8 @@ test('저장 공간 부족 → 이유를 보이고 아무것도 만들지 않는
   render(<MigrationWizard reason="migrate" done={vi.fn()} deps={deps(api, undefined, { estimate: async () => ({ usage: 100, quota: 150 }) })} />)
   await toPassStep(user)
   expect(await screen.findByRole('alert')).toHaveTextContent('저장 공간')
+  expect(screen.getByText('옛 자료는 그대로입니다.')).toBeInTheDocument()
+  expect(screen.queryByText(/아무것도 바꾸지 않았습니다/)).toBeNull()
   expect(api.store).not.toHaveBeenCalled()
   expect(await watsonDbs()).toEqual([])
   expect(await Dexie.exists(OLD)).toBe(true)
@@ -159,25 +161,114 @@ test('옮기기 전체(백업 폴더 있음): 옛 백업 → 암호구 → 복�
   expect(await watsonDbs()).toEqual([stored[0].dbName])
 })
 
-test('백업 폴더가 없으면 \'내려받기\'를 해야 계속할 수 있다', async () => {
+async function toDownloadStep(user: ReturnType<typeof userEvent.setup>) {
+  await toPassStep(user)
+  await user.type(await screen.findByLabelText('백업 암호구'), PASS)
+  await user.click(screen.getByRole('button', { name: '확인' }))
+  await user.click(await screen.findByRole('button', { name: '건너뛰기(권장하지 않음)' }))
+  return screen.findByRole('button', { name: '계속' }, { timeout: 5000 })
+}
+
+test('백업 폴더 없음(exe): 저장 대화 상자로 실제 저장해야 계속할 수 있다', async () => {
+  await seed()
+  const fs = createMemoryFsAdapter()
+  const saved: { name: string; bytes: Uint8Array }[] = []
+  const saveAs = vi.fn(async (name: string, bytes: Uint8Array) => { saved.push({ name, bytes }); return { ok: true as const, name: '고른이름.enc' } })
+  const { api } = fakeApi()
+  const user = userEvent.setup()
+  render(<MigrationWizard reason="migrate" done={vi.fn()} deps={deps(api, fs, { saveAs })} />)
+  const go = await toDownloadStep(user)
+  expect(go).toBeDisabled()
+  expect(await Dexie.exists(OLD)).toBe(true)
+  await user.click(screen.getByRole('button', { name: '내려받기' }))
+  await waitFor(() => expect(go).toBeEnabled())
+  expect(saved).toHaveLength(1)
+  expect(fs.downloads).toHaveLength(0) // exe는 브라우저 내려받기를 쓰지 않는다
+  expect(screen.queryByLabelText('파일이 저장된 것을 확인했습니다')).toBeNull()
+  await user.click(go)
+  expect(await screen.findByText(/BitLocker/)).toBeInTheDocument()
+  expect(await Dexie.exists(OLD)).toBe(false)
+})
+
+test('저장 대화 상자를 취소하면 그 단계에 머물고 옛 DB는 그대로', async () => {
+  await seed()
+  const saveAs = vi.fn(async () => ({ ok: false as const }))
+  const { api } = fakeApi()
+  const user = userEvent.setup()
+  render(<MigrationWizard reason="migrate" done={vi.fn()} deps={deps(api, createMemoryFsAdapter(), { saveAs })} />)
+  const go = await toDownloadStep(user)
+  await user.click(screen.getByRole('button', { name: '내려받기' }))
+  expect(await screen.findByText(/저장하지 않았습니다/)).toBeInTheDocument()
+  expect(go).toBeDisabled()
+  expect(await Dexie.exists(OLD)).toBe(true)
+})
+
+test('웹(desktop 없음): 내려받기 뒤 \'파일이 저장된 것을 확인했습니다\'를 체크해야 계속', async () => {
   await seed()
   const fs = createMemoryFsAdapter()
   const { api } = fakeApi()
   const user = userEvent.setup()
   render(<MigrationWizard reason="migrate" done={vi.fn()} deps={deps(api, fs)} />)
+  const go = await toDownloadStep(user)
+  await user.click(screen.getByRole('button', { name: '내려받기' }))
+  await waitFor(() => expect(fs.downloads).toHaveLength(1))
+  expect(go).toBeDisabled()
+  await user.click(screen.getByLabelText('파일이 저장된 것을 확인했습니다'))
+  expect(go).toBeEnabled()
+  await user.click(go)
+  expect(await screen.findByText(/BitLocker/)).toBeInTheDocument()
+})
+
+test('exe인데 저장 API가 없으면 브라우저 내려받기로 대신하지 않는다', async () => {
+  await seed()
+  const fs = createMemoryFsAdapter()
+  const { api } = fakeApi()
+  ;(window as { desktop?: unknown }).desktop = { isDesktop: true, shell: 7, vault: api }
+  try {
+    const user = userEvent.setup()
+    render(<MigrationWizard reason="migrate" done={vi.fn()} deps={deps(api, fs)} />)
+    const go = await toDownloadStep(user)
+    await user.click(screen.getByRole('button', { name: '내려받기' }))
+    expect(await screen.findByText(/파일로 저장할 수 없습니다/)).toBeInTheDocument()
+    expect(fs.downloads).toHaveLength(0)
+    expect(screen.queryByLabelText('파일이 저장된 것을 확인했습니다')).toBeNull()
+    expect(go).toBeDisabled()
+  } finally {
+    delete (window as { desktop?: unknown }).desktop
+  }
+})
+
+test('시작하면 완료 행 없는 watson-* DB(지난 실패)를 지우고, 완료된 것은 남긴다', async () => {
+  await seed()
+  const a = newDek(); const b = newDek()
+  const orphan = await createNewVaultDb(a.dek, a.keyId, { migration: true })
+  orphan.close()
+  const kept = await createNewVaultDb(b.dek, b.keyId)
+  await kept.meta.put({ id: 'vault', complete: true, keyId: b.keyId, check: 'x' })
+  kept.close()
+  const { api } = fakeApi()
+  const user = userEvent.setup()
+  render(<MigrationWizard reason="migrate" done={vi.fn()} deps={deps(api)} />)
+  await toPassStep(user)
+  await screen.findByLabelText('백업 암호구')
+  expect(await Dexie.exists(orphan.name)).toBe(false)
+  expect(await Dexie.exists(kept.name)).toBe(true)
+})
+
+test('실패 뒤 열쇠 파일을 지우지 못하면 그렇다고 말한다', async () => {
+  await seed()
+  const { api } = fakeApi({
+    store: vi.fn(async () => { throw new Error('가상 저장 실패') }),
+    reset: vi.fn(async () => { throw new Error('가상 지우기 실패') }),
+  })
+  const user = userEvent.setup()
+  render(<MigrationWizard reason="migrate" done={vi.fn()} deps={deps(api)} />)
   await toPassStep(user)
   await user.type(await screen.findByLabelText('백업 암호구'), PASS)
   await user.click(screen.getByRole('button', { name: '확인' }))
   await user.click(await screen.findByRole('button', { name: '건너뛰기(권장하지 않음)' }))
-  const go = await screen.findByRole('button', { name: '계속' }, { timeout: 5000 })
-  expect(go).toBeDisabled()
-  expect(await Dexie.exists(OLD)).toBe(true)
-  await user.click(screen.getByRole('button', { name: '내려받기' }))
-  await waitFor(() => expect(fs.downloads).toHaveLength(1))
-  expect(go).toBeEnabled()
-  await user.click(go)
-  expect(await screen.findByText(/BitLocker/)).toBeInTheDocument()
-  expect(await Dexie.exists(OLD)).toBe(false)
+  expect(await screen.findByText(/열쇠 파일을 지우지 못했습니다/)).toBeInTheDocument()
+  expect(screen.queryByText(/새로 만들던 자료는 지웠습니다\.$/)).toBeNull()
 })
 
 test('실패 → 새 DB·vault 지움, 옛 DB 그대로, \'다시 시도\'·\'백업 파일 내려받기\'(옛 암호구로 열림)', async () => {

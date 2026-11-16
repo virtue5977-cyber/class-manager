@@ -446,3 +446,14 @@ test('needs-pass + dpapiAvailable 거짓 → 열기 화면에 정확한 이유',
   render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
   expect(await screen.findByText(/윈도우 보호 저장소\(DPAPI\)를 쓸 수 없어, 켤 때마다 암호구를 묻습니다/)).toBeInTheDocument()
 })
+
+test('incomplete면 renderSetup에 열쇠(dek·keyId·dbName)를 넘긴다(이어 하기 확인용)', async () => {
+  const v = await makeVault({ complete: false })
+  fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+  let got: { dek: Uint8Array; keyId: string; dbName: string } | undefined
+  render(<VaultGate renderSetup={(p) => { got = p.key; return <p>마법사 {p.reason}</p> }}>{(db) => <Probe db={db} />}</VaultGate>)
+  expect(await screen.findByText('마법사 incomplete')).toBeInTheDocument()
+  expect(got?.keyId).toBe(v.payload.keyId)
+  expect(got?.dbName).toBe(v.payload.dbName)
+  expect(got?.dek).toEqual(v.dek)
+})

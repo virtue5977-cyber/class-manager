@@ -3,17 +3,17 @@ import type { AppDB } from '../lib/db/schema'
 import type { FsAdapter } from '../lib/fs/adapter'
 import { createWebFsAdapter } from '../lib/fs/web'
 import { createDesktopFsAdapter } from '../lib/fs/desktop'
-import { getDesktop, type DesktopVaultApi } from '../lib/desktop/bridge'
+import { getDesktop, type DesktopVaultApi, type SaveAsResult } from '../lib/desktop/bridge'
 import { deriveKey, verifyKeyCheck } from '../lib/backup/crypto'
 import {
   backupFileName, buildBackupFile, cachedKeyFrom, deviceTag, getCachedKey, runBackup, type CachedKey, type DerivedPassKey,
 } from '../lib/backup/service'
 import { newRecoveryCode, passKeyRaw, recoveryKeyRaw, PASS_ITER, RECOVERY_ITER } from '../lib/vault/keys'
 import {
-  BITLOCKER_NOTICE_KEY, dbExists, discardNewVault, finishMigration, OLD_DB_NAME, openOldDb, planStorage, resumeOrReset,
+  BITLOCKER_NOTICE_KEY, cleanupOrphans, dbExists, discardNewVault, type DiscardStatus, finishMigration, OLD_DB_NAME, openOldDb, planStorage, resumeOrReset,
   setupNewVault, type BackupProof, type Progress, type SetupResult,
 } from '../lib/vault/migrate'
-import { RestoreScreen, saveCodeFile, type SetupReason } from './VaultGate'
+import { RestoreScreen, saveCodeFile, type SetupKey, type SetupReason } from './VaultGate'
 
 /** 시험에서 바꿔 끼우는 것들(기본은 exe의 preload·브라우저). */
 export interface WizardDeps {
@@ -24,6 +24,8 @@ export interface WizardDeps {
   iterations?: { pass: number; recovery: number }
   oldName?: string
   now?: () => Date
+  /** 다른 이름으로 저장(exe: desktop.file.saveAs). 실제로 쓴 때만 ok. */
+  saveAs?: (name: string, bytes: Uint8Array) => Promise<SaveAsResult>
 }
 
 type Mode = 'migrate' | 'first-install'
@@ -38,7 +40,7 @@ type Step =
   | { k: 'progress' }
   | { k: 'download' }
   | { k: 'bitlocker' }
-  | { k: 'failed'; message: string; kept?: boolean }
+  | { k: 'failed'; message: string; discard?: DiscardStatus }
 
 const MIN_PASS = 8
 const INTRO = '학생 자료를 이 PC의 윈도우 계정과 백업 암호구로 잠급니다. 약 1분. 끝까지 창을 닫지 마세요.'
@@ -81,8 +83,17 @@ function Card({ title, label, children }: { title: string; label?: string; child
  * 옮기기·첫 설치 마법사(spec §4.2·§4.3). VaultGate의 renderSetup 자리에 들어간다.
  * 안내 → (옛 DB 백업) → 암호구 → 복구 코드 → 진행 → 확인 → 새 백업 → 옛 DB 지우기 → BitLocker 안내.
  */
-export default function MigrationWizard({ reason, done, deps = {} }: { reason: SetupReason; done: () => void; deps?: WizardDeps }) {
-  const api = deps.api ?? getDesktop()?.vault ?? null
+export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
+  reason: SetupReason
+  done: () => void
+  setupKey?: SetupKey
+  deps?: WizardDeps
+}) {
+  const desktop = getDesktop()
+  const api = deps.api ?? desktop?.vault ?? null
+  // 새 백업 파일 저장: exe는 저장 대화 상자(실제로 썼을 때만 증거), 웹(개발)만 브라우저 내려받기 + 확인 체크.
+  const saveAs = deps.saveAs ?? (desktop?.file?.saveAs ? (n: string, b: Uint8Array) => desktop.file!.saveAs(n, b) : undefined)
+  const saveMode: 'dialog' | 'web' | 'none' = saveAs ? 'dialog' : desktop ? 'none' : 'web'
   const fsFor = deps.fsFor ?? defaultFs
   const oldName = deps.oldName ?? OLD_DB_NAME
   const now = () => (deps.now ? deps.now() : new Date())
@@ -97,6 +108,8 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
   const [proof, setProof] = useState<BackupProof | null>(null)
   const [busy, setBusy] = useState(false)
   const [oldSaved, setOldSaved] = useState(false)
+  const [webSaved, setWebSaved] = useState<string | null>(null)
+  const [webAck, setWebAck] = useState(false)
 
   const oldDb = useRef<AppDB | null>(null)
   const oldKey = useRef<CachedKey | null>(null)
@@ -104,6 +117,8 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
   const passKey = useRef<DerivedPassKey | null>(null)
   const setup = useRef<SetupResult | null>(null)
   const started = useRef(false)
+  /** 정리하지 못한 새 DB 이름(다시 시도 때 먼저 정리한다) */
+  const pending = useRef<string | null>(null)
 
   const resetFn = () => (api?.reset ? api.reset() : Promise.reject(new Error('이 프로그램에서는 열쇠 파일을 지울 수 없습니다. 새 Watson.exe를 쓰세요.')))
 
@@ -115,14 +130,13 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
     started.current = true
     void (async () => {
       try {
-        const st = await api.status()
-        const dbName = st.vault?.dbName
+        const dbName = setupKey?.dbName ?? (await api.status()).vault?.dbName
         if (!dbName) {
           setMode((await dbExists(oldName)) ? 'migrate' : 'first-install')
           setStep({ k: 'intro' })
           return
         }
-        const r = await resumeOrReset({ dbName, reset: resetFn, oldName })
+        const r = await resumeOrReset({ dbName, reset: resetFn, oldName, key: setupKey })
         if (r.action === 'resumed') return done()
         if (r.action === 'blocked') return setStep({ k: 'blocked', reason: r.reason })
         setMode(r.restart)
@@ -141,6 +155,8 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
     setBusy(true)
     setNote(undefined)
     try {
+      // 지난 실패·중단으로 남은 watson-* DB(완료 행 없음)를 먼저 정리한다. 완료된 것은 건드리지 않는다.
+      await cleanupOrphans()
       if (mode === 'first-install') { setStep({ k: 'pass' }); return }
       const plan = await planStorage(deps.estimate)
       if (!plan.ok) {
@@ -216,6 +232,8 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
         }
       }
       setProof(null)
+      setWebSaved(null)
+      setWebAck(false)
       setStep({ k: 'download' })
     } catch (e) {
       await fail(e)
@@ -231,8 +249,18 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
       if (!cached) throw new Error('백업 열쇠가 없습니다.')
       const t = now()
       const name = backupFileName(t, new Set(), '백업_', await deviceTag(r.db))
-      fsFor(r.db).downloadFile(name, await buildBackupFile(r.db, cached, t))
-      setProof({ kind: 'download', name })
+      const bytes = await buildBackupFile(r.db, cached, t)
+      setNote(undefined)
+      if (saveMode === 'dialog') {
+        const res = await saveAs!(name, bytes)
+        if (res.ok) setProof({ kind: 'download', name: res.name })
+        else setNote("저장하지 않았습니다. 백업 파일을 저장해야 옛 자료를 지울 수 있습니다. 다시 '내려받기'를 눌러 저장할 곳을 고르세요.")
+      } else if (saveMode === 'web') {
+        fsFor(r.db).downloadFile(name, bytes)
+        setWebSaved(name)
+      } else {
+        setNote('이 프로그램에서는 파일로 저장할 수 없습니다. 새 Watson.exe로 다시 시도하세요. 옛 자료는 그대로입니다.')
+      }
     } catch (e) {
       setNote(`백업 파일을 만들지 못했습니다: ${msgOf(e, '알 수 없는 오류')}`)
     } finally {
@@ -256,16 +284,20 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
     }
   }
 
-  /** 실패: 새 DB·vault를 지운다(조건이 맞을 때만, 옛 DB는 그대로). 지우지 못하면 남겨 두고 다음 실행이 이어 한다. */
+  /** 실패: 새 DB·vault를 지운다(조건이 맞을 때만, 옛 DB는 그대로). 무엇을 지웠는지 그대로 보인다. */
   async function fail(e: unknown) {
-    let kept = false
+    const info = (e ?? {}) as { discard?: DiscardStatus; dbName?: string }
+    let discard = info.discard
+    let dbName = info.dbName
     const r = setup.current
     if (r) {
       try { r.db.close() } catch { /* ignore */ }
       setup.current = null
-      kept = !(await discardNewVault({ dbName: r.db.name, reset: resetFn, oldName }).catch(() => false))
+      dbName = r.db.name
+      discard = await discardNewVault({ dbName, reset: resetFn, oldName })
     }
-    setStep({ k: 'failed', message: msgOf(e, '옮기지 못했습니다.'), kept })
+    pending.current = discard === 'db-failed' || discard === 'reset-failed' ? dbName ?? null : null
+    setStep({ k: 'failed', message: msgOf(e, '옮기지 못했습니다.'), discard })
   }
 
   async function downloadOld() {
@@ -278,7 +310,13 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
       const cached = passOk.current === 'old' ? await getCachedKey(db) : passKey.current ? await cachedKeyFrom(passKey.current) : null
       if (!cached) throw new Error('암호구를 먼저 확인해야 백업 파일을 만들 수 있습니다.')
       const t = now()
-      fsFor(db).downloadFile(backupFileName(t, new Set(), '백업_', await readTag(db)), await buildBackupFile(db, cached, t))
+      const name = backupFileName(t, new Set(), '백업_', await readTag(db))
+      const bytes = await buildBackupFile(db, cached, t)
+      if (saveMode === 'dialog') {
+        const res = await saveAs!(name, bytes)
+        if (!res.ok) { setNote('저장하지 않았습니다.'); return }
+      } else if (saveMode === 'web') fsFor(db).downloadFile(name, bytes)
+      else throw new Error('이 프로그램에서는 파일로 저장할 수 없습니다.')
       setOldSaved(true)
     } catch (e) {
       setNote(`백업 파일을 만들지 못했습니다: ${msgOf(e, '알 수 없는 오류')}`)
@@ -287,7 +325,17 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
     }
   }
 
-  function retry() {
+  async function retry() {
+    if (pending.current) {
+      setBusy(true)
+      const st = await discardNewVault({ dbName: pending.current, reset: resetFn, oldName })
+      setBusy(false)
+      if (st !== 'done') {
+        if (step.k === 'failed') setStep({ ...step, discard: st })
+        return
+      }
+      pending.current = null
+    }
     passOk.current = null
     passKey.current = null
     setProof(null)
@@ -324,7 +372,7 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
       return (
         <Card title="자료 잠그기">
           <p className="error" role="alert">{step.message}</p>
-          <p className="muted">아무것도 바꾸지 않았습니다.</p>
+          <p className="muted">옛 자료는 그대로입니다.</p>
           <button type="button" className="primary" onClick={() => void begin()} disabled={busy}>다시 시도</button>
         </Card>
       )
@@ -373,9 +421,18 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
         <Card title="새 백업 파일 받기">
           <p>새 자료로 만든 백업 파일 하나를 받아 두어야 옛 자료를 지울 수 있습니다. 백업 폴더가 정해져 있지 않아 파일로 내려받습니다.</p>
           {note && <p className="muted">{note}</p>}
-          <button type="button" className={proof ? '' : 'primary'} onClick={() => void downloadNew()} disabled={busy}>내려받기</button>
-          {proof && <p role="status">'{proof.name}'을(를) 내려받았습니다. 안전한 곳(USB 등)에 옮겨 두세요.</p>}
-          <button type="button" className="primary" disabled={!proof || busy} onClick={() => proof && void finish(proof)}>계속</button>
+          <button type="button" className={proof || webSaved ? '' : 'primary'} onClick={() => void downloadNew()} disabled={busy}>내려받기</button>
+          {proof && <p role="status">'{proof.name}'(으)로 저장했습니다. 안전한 곳(USB 등)에도 옮겨 두세요.</p>}
+          {!proof && webSaved && (
+            <label className="row">
+              <input type="checkbox" checked={webAck} onChange={(e) => setWebAck(e.target.checked)} disabled={busy} />
+              파일이 저장된 것을 확인했습니다
+            </label>
+          )}
+          {(() => {
+            const p: BackupProof | null = proof ?? (webSaved && webAck ? { kind: 'download', name: webSaved } : null)
+            return <button type="button" className="primary" disabled={!p || busy} onClick={() => p && void finish(p)}>계속</button>
+          })()}
         </Card>
       )
     case 'bitlocker':
@@ -390,14 +447,10 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
       return (
         <Card title={mode === 'migrate' ? '옮기지 못했습니다' : '만들지 못했습니다'}>
           <p className="error" role="alert">{step.message}</p>
-          <p className="muted">
-            {step.kept
-              ? '새 자료는 지우지 않고 남겨 두었습니다. 프로그램을 다시 켜면 이어서 확인합니다.'
-              : mode === 'migrate' ? '옛 자료는 그대로입니다. 새로 만들던 자료는 지웠습니다.' : '만들던 자료는 지웠습니다.'}
-          </p>
+          <p className="muted">{failNote(step.discard, mode)}</p>
           {note && <p className="muted">{note}</p>}
           <div className="row">
-            <button type="button" className="primary" onClick={retry} disabled={busy}>다시 시도</button>
+            <button type="button" className="primary" onClick={() => void retry()} disabled={busy}>다시 시도</button>
             {mode === 'migrate' && (oldKey.current || passKey.current) && (
               <button type="button" onClick={() => void downloadOld()} disabled={busy}>백업 파일 내려받기</button>
             )}
@@ -405,6 +458,18 @@ export default function MigrationWizard({ reason, done, deps = {} }: { reason: S
           {oldSaved && <p role="status">옛 자료 백업 파일을 내려받았습니다.</p>}
         </Card>
       )
+  }
+}
+
+/** 실패 화면의 정리 결과 문구(지우지 못한 것을 지웠다고 말하지 않는다). */
+function failNote(d: DiscardStatus | undefined, mode: Mode): string {
+  const old = mode === 'migrate' ? ' 옛 자료는 그대로입니다.' : ''
+  switch (d) {
+    case 'done': return mode === 'migrate' ? '옛 자료는 그대로입니다. 새로 만들던 자료는 지웠습니다.' : '만들던 자료는 지웠습니다.'
+    case 'refused': return '새 자료는 지우지 않고 남겨 두었습니다. 프로그램을 다시 켜면 이어서 확인합니다.' + old
+    case 'db-failed': return "새로 만들던 자료를 지우지 못했습니다. '다시 시도'하면 먼저 정리합니다." + old
+    case 'reset-failed': return "새로 만들던 자료는 지웠지만 열쇠 파일을 지우지 못했습니다. '다시 시도'하면 먼저 정리합니다." + old
+    default: return mode === 'migrate' ? '옛 자료는 그대로입니다.' : '아직 아무것도 만들지 않았습니다.'
   }
 }
 

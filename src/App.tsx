@@ -53,7 +53,7 @@ function FlushOnLeave() {
 type AppProps = { db?: AppDB; fs?: FsAdapter; backupIterations?: number }
 
 /** VaultGate 설정 자리: 옮기기·첫 설치·끝나지 않은 작업은 마법사가 맡는다. */
-const renderSetup: RenderSetup = (p) => <MigrationWizard reason={p.reason} done={p.done} />
+const renderSetup: RenderSetup = (p) => <MigrationWizard reason={p.reason} done={p.done} setupKey={p.key} />
 
 /** 옛 exe(SHELL ≤6)는 새 암호화 DB가 있으면 DB를 열기 전에 멈춘다. */
 export default function App(props: AppProps) {

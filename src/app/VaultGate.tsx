@@ -12,7 +12,9 @@ import type { DerivedPassKey } from '../lib/backup/service'
 import { MIGRATION_MARKER } from '../lib/vault/migrate'
 
 export type SetupReason = 'migrate' | 'first-install' | 'incomplete'
-export type RenderSetup = (p: { reason: SetupReason; done: () => void }) => ReactNode
+/** incomplete일 때 key: 이 열쇠의 DEK·keyId·DB 이름(마법사가 완료 행을 확인해 이어 할지 정한다). */
+export interface SetupKey { dek: Uint8Array; keyId: string; dbName: string }
+export type RenderSetup = (p: { reason: SetupReason; done: () => void; key?: SetupKey }) => ReactNode
 
 /** 이만큼 틀리면 백업 파일에서 복원하는 길을 보인다(다시 시도는 계속 된다). */
 export const RESTORE_HINT_AFTER = 5
@@ -20,7 +22,7 @@ const OLD_DB = 'class-manager'
 
 type Phase =
   | { k: 'loading' }
-  | { k: 'setup'; reason: SetupReason }
+  | { k: 'setup'; reason: SetupReason; key?: SetupKey }
   | { k: 'open'; db: AppDB; notice?: string }
   | { k: 'unlock'; vault: PublicVault; dpapi?: boolean }
   | { k: 'broken' }
@@ -105,12 +107,13 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
     }
     if (!current(id)) { db.close(); return null }
     const bound = row && (row.keyId !== undefined || row.check !== undefined)
+    const incomplete: Phase = { k: 'setup', reason: 'incomplete', key: { dek, keyId: vault.keyId, dbName: vault.dbName } }
     let next: Phase
-    if (!row) next = { k: 'setup', reason: 'incomplete' }
+    if (!row) next = incomplete
     else if (bound) {
       if (!verifyMetaCheck(dek, vault.keyId, row)) next = { k: 'wrong-key' }
-      else next = row.complete === true && !migrating ? { k: 'open', db } : { k: 'setup', reason: 'incomplete' }
-    } else next = row.complete === true ? { k: 'wrong-key' } : { k: 'setup', reason: 'incomplete' } // 묶음 확인값 없는 완료 행은 믿지 않는다
+      else next = row.complete === true && !migrating ? { k: 'open', db } : incomplete
+    } else next = row.complete === true ? { k: 'wrong-key' } : incomplete // 묶음 확인값 없는 완료 행은 믿지 않는다
     if (next.k !== 'open') db.close()
     return next
   }, [])
@@ -192,7 +195,7 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
       )
     case 'setup': {
       const done = () => { void run() }
-      return <>{renderSetup ? renderSetup({ reason: phase.reason, done }) : <SetupPending reason={phase.reason} />}</>
+      return <>{renderSetup ? renderSetup({ reason: phase.reason, done, key: phase.key }) : <SetupPending reason={phase.reason} />}</>
     }
     case 'unlock':
       return (
