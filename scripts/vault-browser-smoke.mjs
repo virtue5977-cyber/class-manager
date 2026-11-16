@@ -16,12 +16,22 @@ import { liveQuery } from 'dexie'
 import { openTestVaultDb } from ${vault('testing.ts')}
 import { readRaw, rawWrite, onBrokenRow } from ${vault('middleware.ts')}
 import { attachFile, readFile, createNote } from ${JSON.stringify(path.join(root, 'src/lib/notes/notes.ts'))}
+import Dexie from 'dexie'
+import { AppDB } from ${JSON.stringify(path.join(root, 'src/lib/db/schema.ts'))}
+import { openVaultDb } from ${vault('vaultDb.ts')}
+import { setupNewVault, finishMigration } from ${vault('migrate.ts')}
+import { passKeyRaw } from ${vault('keys.ts')}
+import { fromBase64 } from ${JSON.stringify(path.join(root, 'src/lib/backup/crypto.ts'))}
 
 const T0 = '2020-01-01T00:00:00.000Z'
 const st = (id, n, over = {}) => ({ id, class_id: 'c1', number: n, name: '가상학생', address: '', birth_date: '',
   prev_school: '', phone: '010-1111-2222', hobby: '', talent: '', commute: '', friends: '', memo: '',
   guardian_name: '', guardian_phone: '', active: true, created_at: T0, updated_at: T0, deleted: false, ...over })
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+/** 키 순서와 상관없이 같은지(풀어 낸 행은 정규 JSON 순서로 온다) */
+const sortKeys = (v) => Array.isArray(v) ? v.map(sortKeys) : v && typeof v === 'object'
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v
+const sameData = (a, b) => JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b))
 
 window.run = async () => {
   const out = []
@@ -108,6 +118,37 @@ window.run = async () => {
   }, [true, 9, 9])
   db.close()
   await db.delete()
+
+  // 옮기기: 작은 평문 DB(학생·출결·노트+첨부) → 암호화 vault, 같은 자료로 열리고 옛 DB는 없어진다
+  await check('migrate plaintext → vault', async () => {
+    const oldName = 'class-manager-smoke'
+    await Dexie.delete(oldName)
+    const old = new AppDB(oldName)
+    await old.students.bulkAdd([st('s1', 1, { updated_at: T0 }), st('s2', 2)])
+    await old.attendance.add({ id: 'a1', student_id: 's1', date: '2026-03-04', kind: '결석', category: '질병', period: null,
+      reason: '가상 사유', evidence_type: null, memo: '', created_at: T0, updated_at: T0, deleted: false })
+    const n = await createNote(old, '가상 노트')
+    const bytes = new TextEncoder().encode('가상 첨부 내용 0123456789')
+    const f = await attachFile(old, n.id, { name: 'a.txt', mime: 'text/plain', bytes })
+    const before = { students: await old.students.toArray(), attendance: await old.attendance.toArray(), notes: await old.notes.toArray() }
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    const passKey = { salt, iter: 1000, raw: await passKeyRaw('가상시험암호구', salt, 1000) }
+    let payload
+    const r = await setupNewVault({ passKey, migrateFrom: old, store: async (p) => { payload = p }, reset: async () => true })
+    await finishMigration(old, r.db, { vault: payload, verify: r.verify, backup: { kind: 'download', name: 'smoke.enc' } })
+    r.db.close()
+    const v = openVaultDb(payload.dbName, fromBase64(payload.dekB64))
+    const after = { students: await v.students.toArray(), attendance: await v.attendance.toArray(), notes: await v.notes.toArray() }
+    const back = (await readFile(v, f.id)).bytes
+    const raw = (await readRaw(v, 'students')).map(r => JSON.stringify({ ...r, _enc: undefined }) + new TextDecoder().decode(r._enc)).join('')
+    const res = [
+      sameData(after, before), new TextDecoder().decode(back), (await Dexie.getDatabaseNames()).includes(oldName),
+      (await v.meta.get('vault'))?.complete, raw.includes('가상학생'), raw.includes('010-1111-2222'), r.verify.ok,
+    ]
+    v.close()
+    await Dexie.delete(payload.dbName)
+    return res
+  }, [true, '가상 첨부 내용 0123456789', false, true, false, false, true])
   return out
 }
 `

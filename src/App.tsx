@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { isDesktopApp } from './lib/settings'
 import { newerDataPresent } from './lib/vault/guard'
 import OldExeScreen from './components/OldExeScreen'
-import VaultGate from './app/VaultGate'
+import VaultGate, { type RenderSetup } from './app/VaultGate'
+import MigrationWizard from './app/MigrationWizard'
 import { flushAll } from './lib/ui/flush'
 import HtmlEndBanner from './components/HtmlEndBanner'
 import { HashRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
@@ -51,6 +52,9 @@ function FlushOnLeave() {
 
 type AppProps = { db?: AppDB; fs?: FsAdapter; backupIterations?: number }
 
+/** VaultGate 설정 자리: 옮기기·첫 설치·끝나지 않은 작업은 마법사가 맡는다. */
+const renderSetup: RenderSetup = (p) => <MigrationWizard reason={p.reason} done={p.done} />
+
 /** 옛 exe(SHELL ≤6)는 새 암호화 DB가 있으면 DB를 열기 전에 멈춘다. */
 export default function App(props: AppProps) {
   const old = isDesktopApp() && ((window as { desktop?: { shell?: number } }).desktop?.shell ?? 0) <= 6
@@ -65,7 +69,7 @@ export default function App(props: AppProps) {
   if (blocked) return <OldExeScreen />
   // 시험이 DB를 넣어 주면 그대로, 아니면 VaultGate가 열쇠를 풀어 DB를 연 뒤에만 앱을 붙인다(웹은 평문 createDb).
   if (props.db) return <AppMain {...props} db={props.db} />
-  return <VaultGate>{(db) => <AppMain {...props} db={db} />}</VaultGate>
+  return <VaultGate renderSetup={renderSetup}>{(db) => <AppMain {...props} db={db} />}</VaultGate>
 }
 
 function AppMain(props: AppProps & { db: AppDB }) {

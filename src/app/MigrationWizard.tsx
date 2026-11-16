@@ -1,0 +1,506 @@
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import type { AppDB } from '../lib/db/schema'
+import type { FsAdapter } from '../lib/fs/adapter'
+import { createWebFsAdapter } from '../lib/fs/web'
+import { createDesktopFsAdapter } from '../lib/fs/desktop'
+import { getDesktop, type DesktopVaultApi } from '../lib/desktop/bridge'
+import { deriveKey, verifyKeyCheck } from '../lib/backup/crypto'
+import {
+  backupFileName, buildBackupFile, cachedKeyFrom, deviceTag, getCachedKey, runBackup, type CachedKey, type DerivedPassKey,
+} from '../lib/backup/service'
+import { newRecoveryCode, passKeyRaw, recoveryKeyRaw, PASS_ITER, RECOVERY_ITER } from '../lib/vault/keys'
+import {
+  BITLOCKER_NOTICE_KEY, dbExists, discardNewVault, finishMigration, OLD_DB_NAME, openOldDb, planStorage, resumeOrReset,
+  setupNewVault, type BackupProof, type Progress, type SetupResult,
+} from '../lib/vault/migrate'
+import { RestoreScreen, saveCodeFile, type SetupReason } from './VaultGate'
+
+/** 시험에서 바꿔 끼우는 것들(기본은 exe의 preload·브라우저). */
+export interface WizardDeps {
+  api?: DesktopVaultApi
+  fsFor?: (db: AppDB) => FsAdapter
+  estimate?: () => Promise<{ usage?: number; quota?: number }>
+  /** PBKDF2 반복 수(시험 속도용). 기본 PASS_ITER·RECOVERY_ITER */
+  iterations?: { pass: number; recovery: number }
+  oldName?: string
+  now?: () => Date
+}
+
+type Mode = 'migrate' | 'first-install'
+type Step =
+  | { k: 'checking' }
+  | { k: 'blocked'; reason: string }
+  | { k: 'restore'; reason: string }
+  | { k: 'intro' }
+  | { k: 'stopped'; message: string }
+  | { k: 'pass' }
+  | { k: 'recovery'; code: string }
+  | { k: 'progress' }
+  | { k: 'download' }
+  | { k: 'bitlocker' }
+  | { k: 'failed'; message: string; kept?: boolean }
+
+const MIN_PASS = 8
+const INTRO = '학생 자료를 이 PC의 윈도우 계정과 백업 암호구로 잠급니다. 약 1분. 끝까지 창을 닫지 마세요.'
+const BITLOCKER = '이전 평문 자료의 흔적이 디스크에 남아 있을 수 있습니다. 윈도우의 BitLocker(장치 암호화)를 켜 두세요.'
+
+const TABLE_LABEL: Record<string, string> = {
+  device_local: '이 기기 설정', classes: '학급', students: '학생', attendance: '출결', absence_reports: '결석신고서',
+  report_attendance: '신고서 연결', counseling_logs: '상담·누가기록', seating_charts: '자리', cleaning_charts: '청소',
+  school_calendar: '학사일정', neis_cache: '나이스 자료', teacher_timetable: '시간표', ai_prompts: '지시문', notices: '알림장',
+  briefings: '브리핑', hwpx_templates: '양식', app_settings: '설정', notice_items: '전달사항', notes: '노트', note_files: '첨부',
+  todos: '할 일', local_events: '일정', chat_log: '대화', reflections: '반성문', reflection_phrases: '반성문 문장', google_events: '구글 일정',
+}
+
+const mb = (n: number) => (Number.isFinite(n) ? `${Math.max(0, Math.ceil(n / 1048576))}MB` : '알 수 없음')
+const msgOf = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback)
+
+/** 옛 DB의 기기 표시(읽기만: 옛 DB에 쓰지 않는다). */
+async function readTag(db: AppDB): Promise<string | undefined> {
+  const v = (await db.device_local.get('deviceId'))?.value
+  return typeof v === 'string' && /^[0-9a-f]{4}/.test(v) ? v.slice(0, 4) : undefined
+}
+
+function defaultFs(db: AppDB): FsAdapter {
+  const backup = getDesktop()?.backup
+  return backup ? createDesktopFsAdapter(db, backup) : createWebFsAdapter(db)
+}
+
+function Card({ title, label, children }: { title: string; label?: string; children: ReactNode }) {
+  return (
+    <div className="lock">
+      <div className="card stack vault-card" role="region" aria-label={label ?? title}>
+        <h2>{title}</h2>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 옮기기·첫 설치 마법사(spec §4.2·§4.3). VaultGate의 renderSetup 자리에 들어간다.
+ * 안내 → (옛 DB 백업) → 암호구 → 복구 코드 → 진행 → 확인 → 새 백업 → 옛 DB 지우기 → BitLocker 안내.
+ */
+export default function MigrationWizard({ reason, done, deps = {} }: { reason: SetupReason; done: () => void; deps?: WizardDeps }) {
+  const api = deps.api ?? getDesktop()?.vault ?? null
+  const fsFor = deps.fsFor ?? defaultFs
+  const oldName = deps.oldName ?? OLD_DB_NAME
+  const now = () => (deps.now ? deps.now() : new Date())
+  const iter = deps.iterations ?? { pass: PASS_ITER, recovery: RECOVERY_ITER }
+
+  const [mode, setMode] = useState<Mode>(reason === 'first-install' ? 'first-install' : 'migrate')
+  const [step, setStep] = useState<Step>(reason === 'incomplete' ? { k: 'checking' } : { k: 'intro' })
+  const [restarted, setRestarted] = useState(false)
+  const [note, setNote] = useState<string>()
+  const [progress, setProgress] = useState<Progress | null>(null)
+  const [phase, setPhase] = useState('')
+  const [proof, setProof] = useState<BackupProof | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [oldSaved, setOldSaved] = useState(false)
+
+  const oldDb = useRef<AppDB | null>(null)
+  const oldKey = useRef<CachedKey | null>(null)
+  const passOk = useRef<'old' | 'new' | null>(null)
+  const passKey = useRef<DerivedPassKey | null>(null)
+  const setup = useRef<SetupResult | null>(null)
+  const started = useRef(false)
+
+  const resetFn = () => (api?.reset ? api.reset() : Promise.reject(new Error('이 프로그램에서는 열쇠 파일을 지울 수 없습니다. 새 Watson.exe를 쓰세요.')))
+
+  useEffect(() => () => { oldDb.current?.close(); setup.current?.db.close() }, [])
+
+  // 끝나지 않은 옮기기: 이어 하거나(옛 DB 지우던 중) 조건이 맞을 때만 지우고 처음부터.
+  useEffect(() => {
+    if (reason !== 'incomplete' || started.current || !api) return
+    started.current = true
+    void (async () => {
+      try {
+        const st = await api.status()
+        const dbName = st.vault?.dbName
+        if (!dbName) {
+          setMode((await dbExists(oldName)) ? 'migrate' : 'first-install')
+          setStep({ k: 'intro' })
+          return
+        }
+        const r = await resumeOrReset({ dbName, reset: resetFn, oldName })
+        if (r.action === 'resumed') return done()
+        if (r.action === 'blocked') return setStep({ k: 'blocked', reason: r.reason })
+        setMode(r.restart)
+        setRestarted(true)
+        setStep({ k: 'intro' })
+      } catch (e) {
+        setStep({ k: 'blocked', reason: `확인하지 못했습니다: ${msgOf(e, '알 수 없는 오류')}. 아무것도 지우지 않았습니다.` })
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (!api) return <Card title="Watson"><p className="error" role="alert">이 화면은 Watson 프로그램에서만 쓸 수 있습니다.</p></Card>
+
+  async function begin() {
+    setBusy(true)
+    setNote(undefined)
+    try {
+      if (mode === 'first-install') { setStep({ k: 'pass' }); return }
+      const plan = await planStorage(deps.estimate)
+      if (!plan.ok) {
+        setStep({ k: 'stopped', message: `저장 공간이 모자랍니다. 옮기는 동안 자료가 잠시 두 벌 있어야 해서 ${mb(plan.need)}가 남아 있어야 하는데 ${mb(plan.free)}만 남았습니다. 디스크의 필요 없는 파일을 지우고 다시 시도하세요.` })
+        return
+      }
+      if (!oldDb.current) oldDb.current = openOldDb(oldName)
+      const db = oldDb.current
+      await db.open()
+      oldKey.current = await getCachedKey(db)
+      // 옛 DB 백업: 백업 폴더와 옛 캐시 열쇠가 있으면 지금 형식으로 하나(옛 DB에는 쓰지 않는다).
+      if (oldKey.current) {
+        try {
+          const st = await fsFor(db).restoreFolder()
+          if (st.status === 'ready') {
+            const t = now()
+            const name = backupFileName(t, new Set(await st.folder.listFiles()), '백업_', await readTag(db))
+            await st.folder.writeFile(name, await buildBackupFile(db, oldKey.current, t))
+            setNote(`옮기기 전 자료를 백업 폴더에 '${name}'로 남겼습니다.`)
+          }
+        } catch (e) {
+          setNote(`옮기기 전 자료 백업을 만들지 못했습니다(${msgOf(e, '알 수 없는 오류')}). 옛 자료는 새 자료를 확인하고 새 백업을 만든 뒤에만 지웁니다.`)
+        }
+      }
+      setStep({ k: 'pass' })
+    } catch (e) {
+      setStep({ k: 'failed', message: msgOf(e, '옛 자료를 열지 못했습니다.') })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function derive(passphrase: string, from: 'old' | 'new') {
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    passKey.current = { salt, iter: iter.pass, raw: await passKeyRaw(passphrase, salt, iter.pass) }
+    passOk.current = from
+    setStep({ k: 'recovery', code: newRecoveryCode() })
+  }
+
+  async function run(code: string | null) {
+    setStep({ k: 'progress' })
+    setProgress(null)
+    setPhase('준비하는 중')
+    try {
+      let recovery: { raw: Uint8Array; salt: Uint8Array; iter: number } | undefined
+      if (code) {
+        const salt = crypto.getRandomValues(new Uint8Array(16))
+        recovery = { raw: await recoveryKeyRaw(code, salt, iter.recovery), salt, iter: iter.recovery }
+      }
+      setPhase(mode === 'migrate' ? '자료를 옮기는 중' : '새 자료를 만드는 중')
+      const r = await setupNewVault({
+        passKey: passKey.current!, recovery, store: (p) => api!.store(p), reset: resetFn,
+        migrateFrom: mode === 'migrate' ? oldDb.current! : undefined,
+        onProgress: (p) => { setProgress(p); if (p.done >= p.total && p.overall.done >= p.overall.total) setPhase('옮긴 자료를 확인하는 중') },
+      })
+      setup.current = r
+      if (mode === 'first-install') {
+        r.db.close()
+        setup.current = null
+        done()
+        return
+      }
+      setPhase('새 자료로 백업을 만드는 중')
+      let st: Awaited<ReturnType<FsAdapter['restoreFolder']>> = { status: 'none' }
+      try { st = await fsFor(r.db).restoreFolder() } catch { st = { status: 'none' } }
+      if (st.status === 'ready') {
+        try {
+          const name = await runBackup(r.db, st.folder, { now: now() })
+          await finish({ kind: 'folder', name })
+          return
+        } catch (e) {
+          setNote(`백업 폴더에 쓰지 못했습니다(${msgOf(e, '알 수 없는 오류')}). 대신 백업 파일을 내려받으세요.`)
+        }
+      }
+      setProof(null)
+      setStep({ k: 'download' })
+    } catch (e) {
+      await fail(e)
+    }
+  }
+
+  async function downloadNew() {
+    const r = setup.current
+    if (!r) return
+    setBusy(true)
+    try {
+      const cached = await getCachedKey(r.db)
+      if (!cached) throw new Error('백업 열쇠가 없습니다.')
+      const t = now()
+      const name = backupFileName(t, new Set(), '백업_', await deviceTag(r.db))
+      fsFor(r.db).downloadFile(name, await buildBackupFile(r.db, cached, t))
+      setProof({ kind: 'download', name })
+    } catch (e) {
+      setNote(`백업 파일을 만들지 못했습니다: ${msgOf(e, '알 수 없는 오류')}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function finish(p: BackupProof) {
+    const r = setup.current!
+    setStep({ k: 'progress' })
+    setPhase('옛 자료를 지우는 중')
+    try {
+      await finishMigration(oldDb.current!, r.db, { vault: r.payload, verify: r.verify!, backup: p })
+      oldDb.current = null
+      try { await r.db.device_local.put({ id: BITLOCKER_NOTICE_KEY, value: now().toISOString() }) } catch { /* 안내 표시는 막지 않는다 */ }
+      r.db.close()
+      setup.current = null
+      setStep({ k: 'bitlocker' })
+    } catch (e) {
+      await fail(e)
+    }
+  }
+
+  /** 실패: 새 DB·vault를 지운다(조건이 맞을 때만, 옛 DB는 그대로). 지우지 못하면 남겨 두고 다음 실행이 이어 한다. */
+  async function fail(e: unknown) {
+    let kept = false
+    const r = setup.current
+    if (r) {
+      try { r.db.close() } catch { /* ignore */ }
+      setup.current = null
+      kept = !(await discardNewVault({ dbName: r.db.name, reset: resetFn, oldName }).catch(() => false))
+    }
+    setStep({ k: 'failed', message: msgOf(e, '옮기지 못했습니다.'), kept })
+  }
+
+  async function downloadOld() {
+    setBusy(true)
+    try {
+      const db = oldDb.current ?? openOldDb(oldName)
+      oldDb.current = db
+      if (!(await dbExists(oldName))) throw new Error('옛 자료가 없습니다.')
+      await db.open()
+      const cached = passOk.current === 'old' ? await getCachedKey(db) : passKey.current ? await cachedKeyFrom(passKey.current) : null
+      if (!cached) throw new Error('암호구를 먼저 확인해야 백업 파일을 만들 수 있습니다.')
+      const t = now()
+      fsFor(db).downloadFile(backupFileName(t, new Set(), '백업_', await readTag(db)), await buildBackupFile(db, cached, t))
+      setOldSaved(true)
+    } catch (e) {
+      setNote(`백업 파일을 만들지 못했습니다: ${msgOf(e, '알 수 없는 오류')}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function retry() {
+    passOk.current = null
+    passKey.current = null
+    setProof(null)
+    setNote(undefined)
+    setOldSaved(false)
+    setStep({ k: 'intro' })
+  }
+
+  switch (step.k) {
+    case 'checking':
+      return <Card title="자료 확인"><p role="status">지난번 작업을 확인하는 중…</p></Card>
+    case 'blocked':
+      return (
+        <Card title="자료 열기">
+          <div className="stack" role="alert">
+            <p>지난번 옮기기가 끝나지 않았습니다. {step.reason}</p>
+          </div>
+          <p className="muted">백업 파일과 그 파일을 만든 때의 암호구가 있으면 자료를 되살릴 수 있습니다. 지금 자료는 이 PC에 그대로 남습니다.</p>
+          <button type="button" className="primary" onClick={() => setStep({ k: 'restore', reason: step.reason })}>백업 파일에서 복원</button>
+        </Card>
+      )
+    case 'restore':
+      return <RestoreScreen api={api} replacing onBack={() => setStep({ k: 'blocked', reason: step.reason })} onDone={done} />
+    case 'intro':
+      return (
+        <Card title={mode === 'migrate' ? '자료 잠그기' : 'Watson 시작하기'}>
+          {restarted && <p className="notice">지난번 작업이 끝나지 않아 처음부터 다시 합니다. 옛 자료는 그대로입니다.</p>}
+          <p>{INTRO}</p>
+          {mode === 'first-install' && <p className="muted">먼저 백업 암호구를 정합니다. 이 암호구로 백업 파일을 열고, 다른 PC에서도 자료를 엽니다.</p>}
+          <button type="button" className="primary" onClick={() => void begin()} disabled={busy}>{busy ? '확인하는 중…' : '시작'}</button>
+        </Card>
+      )
+    case 'stopped':
+      return (
+        <Card title="자료 잠그기">
+          <p className="error" role="alert">{step.message}</p>
+          <p className="muted">아무것도 바꾸지 않았습니다.</p>
+          <button type="button" className="primary" onClick={() => void begin()} disabled={busy}>다시 시도</button>
+        </Card>
+      )
+    case 'pass':
+      return (
+        <PassStep
+          hasOld={mode === 'migrate' && !!oldKey.current}
+          oldKey={oldKey.current}
+          note={note}
+          onDone={(p, from) => derive(p, from)}
+        />
+      )
+    case 'recovery':
+      return (
+        <Card title="복구 코드">
+          <p>암호구를 잊었을 때 자료를 여는 코드입니다. 지금 한 번만 보입니다. 인쇄하거나 파일로 저장해 남이 보지 못하는 곳에 두세요.</p>
+          <p className="recovery-code" data-testid="recovery-code">{step.code}</p>
+          <div className="row">
+            <button type="button" onClick={() => window.print()}>인쇄</button>
+            <button type="button" onClick={() => saveCodeFile(step.code)}>파일로 저장</button>
+          </div>
+          <button type="button" className="primary" onClick={() => void run(step.code)}>적어 두었습니다. 다음</button>
+          <button type="button" onClick={() => void run(null)}>건너뛰기(권장하지 않음)</button>
+        </Card>
+      )
+    case 'progress': {
+      const o = progress?.overall
+      return (
+        <Card title={mode === 'migrate' ? '자료 옮기는 중' : '새 자료 만드는 중'}>
+          <p className="notice">끝까지 창을 닫지 마세요.</p>
+          <progress
+            style={{ width: '100%' }}
+            max={o && o.total > 0 ? o.total : 1}
+            value={o ? Math.min(o.done, o.total) : 0}
+            aria-label="진행"
+          />
+          <p role="status" aria-live="polite">
+            {phase}
+            {progress && phase === '자료를 옮기는 중' ? ` — ${TABLE_LABEL[progress.table] ?? progress.table} ${progress.done}/${progress.total}` : ''}
+          </p>
+        </Card>
+      )
+    }
+    case 'download':
+      return (
+        <Card title="새 백업 파일 받기">
+          <p>새 자료로 만든 백업 파일 하나를 받아 두어야 옛 자료를 지울 수 있습니다. 백업 폴더가 정해져 있지 않아 파일로 내려받습니다.</p>
+          {note && <p className="muted">{note}</p>}
+          <button type="button" className={proof ? '' : 'primary'} onClick={() => void downloadNew()} disabled={busy}>내려받기</button>
+          {proof && <p role="status">'{proof.name}'을(를) 내려받았습니다. 안전한 곳(USB 등)에 옮겨 두세요.</p>}
+          <button type="button" className="primary" disabled={!proof || busy} onClick={() => proof && void finish(proof)}>계속</button>
+        </Card>
+      )
+    case 'bitlocker':
+      return (
+        <Card title="다 됐습니다">
+          <p>학생 자료를 잠갔습니다. 이제 이 PC의 윈도우 계정과 백업 암호구로 엽니다.</p>
+          <p className="notice">{BITLOCKER}</p>
+          <button type="button" className="primary" autoFocus onClick={done}>시작하기</button>
+        </Card>
+      )
+    case 'failed':
+      return (
+        <Card title={mode === 'migrate' ? '옮기지 못했습니다' : '만들지 못했습니다'}>
+          <p className="error" role="alert">{step.message}</p>
+          <p className="muted">
+            {step.kept
+              ? '새 자료는 지우지 않고 남겨 두었습니다. 프로그램을 다시 켜면 이어서 확인합니다.'
+              : mode === 'migrate' ? '옛 자료는 그대로입니다. 새로 만들던 자료는 지웠습니다.' : '만들던 자료는 지웠습니다.'}
+          </p>
+          {note && <p className="muted">{note}</p>}
+          <div className="row">
+            <button type="button" className="primary" onClick={retry} disabled={busy}>다시 시도</button>
+            {mode === 'migrate' && (oldKey.current || passKey.current) && (
+              <button type="button" onClick={() => void downloadOld()} disabled={busy}>백업 파일 내려받기</button>
+            )}
+          </div>
+          {oldSaved && <p role="status">옛 자료 백업 파일을 내려받았습니다.</p>}
+        </Card>
+      )
+  }
+}
+
+/** 암호구 확인(옛 백업 열쇠가 있으면) 또는 정하기. '나중에'는 없다. */
+function PassStep({ hasOld, oldKey, note, onDone }: {
+  hasOld: boolean
+  oldKey: CachedKey | null
+  note?: string
+  onDone: (passphrase: string, from: 'old' | 'new') => Promise<void>
+}) {
+  const [mode, setMode] = useState<'confirm' | 'new' | 'forgot'>(hasOld ? 'confirm' : 'new')
+  const [value, setValue] = useState('')
+  const [again, setAgain] = useState('')
+  const [ack, setAck] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (error && !busy) inputRef.current?.focus() }, [error, busy])
+
+  async function confirm(e: FormEvent) {
+    e.preventDefault()
+    if (busy || !value || !oldKey) return
+    setBusy(true)
+    setError(undefined)
+    try {
+      const key = await deriveKey(value, oldKey.salt, oldKey.iterations)
+      if (!(await verifyKeyCheck(key, oldKey.check))) {
+        setValue('')
+        setError('암호구가 맞지 않습니다. 다시 입력해 주세요.')
+        return
+      }
+      await onDone(value, 'old')
+    } catch {
+      setError('암호구를 확인하지 못했습니다. 다시 시도해 주세요.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const newReady = value.length >= MIN_PASS && value === again && (mode !== 'forgot' || ack)
+  async function setNew(e: FormEvent) {
+    e.preventDefault()
+    if (busy || !newReady) return
+    setBusy(true)
+    try { await onDone(value, 'new') } finally { setBusy(false) }
+  }
+
+  if (mode === 'confirm') {
+    return (
+      <div className="lock">
+        <form className="card stack vault-card" onSubmit={confirm} aria-label="백업 암호구 확인">
+          <h2>백업 암호구 확인</h2>
+          {note && <p className="muted">{note}</p>}
+          <p>지금 쓰는 백업 암호구를 입력하세요. 이 암호구로 학생 자료를 잠급니다.</p>
+          <label>
+            백업 암호구
+            <input ref={inputRef} type="password" autoFocus autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
+          </label>
+          <div className="row">
+            <button type="submit" className="primary" disabled={busy || !value}>{busy ? '확인하는 중…' : '확인'}</button>
+            <button type="button" onClick={() => { setMode('forgot'); setValue(''); setError(undefined) }} disabled={busy}>잊었어요</button>
+          </div>
+          {error && <p className="error" role="alert">{error}</p>}
+        </form>
+      </div>
+    )
+  }
+
+  const mismatch = again.length > 0 && value !== again
+  return (
+    <div className="lock">
+      <form className="card stack vault-card" onSubmit={setNew} aria-label="백업 암호구 정하기">
+        <h2>백업 암호구 정하기</h2>
+        {note && <p className="muted">{note}</p>}
+        <p>백업 파일을 열고, 이 PC에서 자동으로 열리지 않을 때 자료를 여는 암호구입니다. 잊지 않을 문장으로 정하세요.</p>
+        <label>
+          새 암호구(8자 이상)
+          <input type="password" autoFocus autoComplete="new-password" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
+        </label>
+        <label>
+          한 번 더
+          <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} disabled={busy} aria-invalid={mismatch || undefined} />
+        </label>
+        {value.length > 0 && value.length < MIN_PASS && <p className="muted">{MIN_PASS}자 이상이어야 합니다.</p>}
+        {mismatch && <p className="muted">두 칸이 같지 않습니다.</p>}
+        {mode === 'forgot' && (
+          <label className="row">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={busy} />
+            이전 백업 파일은 이전 암호구로만 열립니다
+          </label>
+        )}
+        <div className="row">
+          <button type="submit" className="primary" disabled={busy || !newReady}>{busy ? '정하는 중…' : '정하기'}</button>
+          {mode === 'forgot' && <button type="button" onClick={() => { setMode('confirm'); setValue(''); setAgain(''); setAck(false) }} disabled={busy}>돌아가기</button>}
+        </div>
+      </form>
+    </div>
+  )
+}
