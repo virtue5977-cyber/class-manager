@@ -52,7 +52,8 @@ async function derivePass(passphrase: string, iterations?: number): Promise<Deri
   return { salt, iter, raw: await passKeyRaw(passphrase, salt, iter) }
 }
 
-async function storeBackupKey(db: AppDB, k: DerivedPassKey): Promise<void> {
+/** 이미 유도한 passKey를 이 DB의 백업 열쇠로 둔다(옮기기: vault pass 감싸기와 같은 값을 쓴다). */
+export async function storeBackupKey(db: AppDB, k: DerivedPassKey): Promise<void> {
   const key = await importRaw(k.raw)
   const check = await makeKeyCheck(key)
   if (db.isVault) {
@@ -144,7 +145,14 @@ export async function rotateBackups(folder: BackupFolder, keep: number, tag?: st
   return remove
 }
 
-async function buildBackupFile(db: AppDB, cached: CachedKey, now: Date): Promise<Uint8Array> {
+/** 이미 유도한 passKey로 백업 열쇠(CachedKey)를 만든다(DB에 쓰지 않음). */
+export async function cachedKeyFrom(k: DerivedPassKey): Promise<CachedKey> {
+  const key = await importRaw(k.raw)
+  return { key, salt: k.salt, iterations: k.iter, check: await makeKeyCheck(key) }
+}
+
+/** 이 DB 전체를 백업 파일 바이트로(쓰지 않음). 옮기기 마법사의 '내려받기'가 쓴다. */
+export async function buildBackupFile(db: AppDB, cached: CachedKey, now: Date): Promise<Uint8Array> {
   const header: BackupHeader = { formatVersion: 1, iterations: cached.iterations, salt: cached.salt }
   const data = serializeSnapshot(await exportSnapshot(db, now))
   const { iv, ciphertext } = await encrypt(cached.key, data, encodeHeader(header))

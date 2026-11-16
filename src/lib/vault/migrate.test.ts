@@ -1,0 +1,390 @@
+// @vitest-environment node
+import Dexie from 'dexie'
+import { AppDB } from '../db/schema'
+import { listStudents } from '../roster/roster'
+import { listAttendanceByStudent } from '../attendance/attendance'
+import { listReportsForStudent } from '../absenceReports/list'
+import { listNotes, readFile } from '../notes/notes'
+import { noticesOn } from '../notices/notices'
+import { listLogsByStudent } from '../counseling/counseling'
+import { reportId } from '../absenceReports/ids'
+import { getCachedKey, setupPassphrase, type DerivedPassKey } from '../backup/service'
+import { passKeyRaw, newDek, PASS_ITER, type VaultPayload } from './keys'
+import { rawWrite, readRaw } from './middleware'
+import { openVaultDb } from './vaultDb'
+import { fromBase64 } from '../backup/crypto'
+import {
+  createNewVaultDb, filterDeviceLocal, finishMigration, markComplete, migrate, planReports, planStorage, resumeOrReset,
+  setupNewVault, verifyMigration, COPY_ORDER,
+} from './migrate'
+
+const ITER = 1000
+const T = '2025-03-02T01:02:03.000Z'
+const PASS = '가상시험암호구2026'
+const base = (id: string, over: Record<string, unknown> = {}) => ({ id, created_at: T, updated_at: T, deleted: false, ...over })
+const enc = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)))
+const ATTACH = '가상 첨부 내용입니다 0123456789'
+
+let oldName: string
+beforeEach(() => { oldName = 'class-manager-t-' + crypto.randomUUID() })
+afterEach(async () => {
+  for (const n of await Dexie.getDatabaseNames()) await Dexie.delete(n)
+})
+
+async function derived(): Promise<DerivedPassKey> {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  return { salt, iter: ITER, raw: await passKeyRaw(PASS, salt, ITER) }
+}
+
+/** 평문 시험 자료: 학급1·학생3·출결·신고서·노트+첨부·전달사항·누가기록 (가상 자료) */
+async function seedOld(name = oldName): Promise<AppDB> {
+  const db = new AppDB(name)
+  await db.open()
+  await db.classes.add(base('c1', { school_year: 2026, grade: 3, class_no: 5 }) as never)
+  for (let i = 1; i <= 3; i++) {
+    await db.students.add(base('s' + i, {
+      class_id: 'c1', number: i, name: `가상학생${i}`, address: '가상시 가상구', birth_date: '', prev_school: '',
+      phone: `010-0000-000${i}`, hobby: '', talent: '', commute: '', friends: '', memo: '가상 메모', guardian_name: '',
+      guardian_phone: '', active: true,
+    }) as never)
+  }
+  await db.attendance.add(base('a1', {
+    student_id: 's1', date: '2026-03-04', kind: '결석', category: '질병', period: null, reason: '가상 감기', evidence_type: null, memo: '',
+  }) as never)
+  await db.absence_reports.add(base('r-old-1', {
+    student_id: 's1', start_date: '2026-03-04', end_date: '2026-03-04', kind: '결석', category: '질병', period: null, school_days: 1,
+    evidence_type: '2일 이내 질병', confirm_methods: [0], written_date: '2026-03-05', confirmed_date: '2026-03-05',
+    diagnosis_required: false, diagnosis_received: false, submitted: false, submitted_at: null, detail: '가상 사유', overrides: [], stale: false,
+  }) as never)
+  await db.report_attendance.add(base('l-old-1', { report_id: 'r-old-1', attendance_id: 'a1' }) as never)
+  await db.counseling_logs.add(base('g1', {
+    student_id: 's2', date: '2026-03-06', place: '교실', content: '가상 상담 내용', nuga_text: '가상 누가기록', nuga_status: '미정리', nuga_entered_at: null,
+  }) as never)
+  await db.notice_items.add(base('ni1', { text: '가상 전달사항', start_date: '2026-03-04', end_date: '2026-03-04', done: false, pinned: false, order: 0 }) as never)
+  await db.notes.add(base('n1', { title: '가상 노트', blocks: [{ id: 'b1', type: 'p', text: '가상 노트 본문' }], folder_id: null }) as never)
+  await db.note_files.add(base('f1', { note_id: 'n1', name: '첨부.txt', mime: 'text/plain', size: new TextEncoder().encode(ATTACH).length, data: enc(ATTACH) }) as never)
+  await db.device_local.bulkPut([
+    { id: 'aiApiKey', value: 'sk-가상키' },
+    { id: 'backupFolder', value: { kind: 'directory', name: '가상폴더' } },
+    { id: 'deviceId', value: 'abcd1234-0000-4000-8000-000000000000' },
+  ])
+  return db
+}
+
+async function fullSetup(old: AppDB, extra: Partial<Parameters<typeof setupNewVault>[0]> = {}) {
+  const passKey = await derived()
+  let payload: VaultPayload | undefined
+  const store = vi.fn(async (p: VaultPayload) => { payload = p })
+  const reset = vi.fn(async () => true)
+  const r = await setupNewVault({ passKey, store, reset, migrateFrom: old, ...extra })
+  return { ...r, passKey, store, reset, payload: payload! }
+}
+
+test('평문 시험 자료 옮긴 뒤 화면 함수 결과가 같다(updated_at 유지)', async () => {
+  const old = await seedOld()
+  const progress: string[] = []
+  const { db, counts } = await fullSetup(old, { onProgress: (p) => { progress.push(p.table) } })
+  expect(db.isVault).toBe(true)
+  expect(await listStudents(db, 'c1')).toEqual(await listStudents(old, 'c1'))
+  expect((await listStudents(db, 'c1'))[0].updated_at).toBe(T)
+  expect(await listAttendanceByStudent(db, 's1')).toEqual(await listAttendanceByStudent(old, 's1'))
+  expect(await listLogsByStudent(db, 's2')).toEqual(await listLogsByStudent(old, 's2'))
+  expect(await noticesOn(db, '2026-03-04')).toEqual(await noticesOn(old, '2026-03-04'))
+  expect(await listNotes(db, '2026-03-04')).toEqual(await listNotes(old, '2026-03-04'))
+  expect(new TextDecoder().decode((await readFile(db, 'f1')).bytes)).toBe(ATTACH)
+  const [nr] = await listReportsForStudent(db, 's1')
+  const [or] = await listReportsForStudent(old, 's1')
+  expect(nr.report.id).toBe(reportId(or.report))
+  expect({ ...nr.report, id: 'x' }).toEqual({ ...or.report, id: 'x' })
+  const links = await db.report_attendance.toArray()
+  expect(links.map((l) => [l.report_id, l.attendance_id])).toEqual([[nr.report.id, 'a1']])
+  expect(counts.students).toBe(3)
+  expect(progress).toContain('students')
+  // device_local: 안전한 키만, backupKeyRaw는 같은 passKey
+  expect((await db.device_local.get('aiApiKey'))?.value).toBe('sk-가상키')
+  expect(await db.device_local.get('backupFolder')).toBeUndefined()
+  expect(await db.device_local.get('backupKey')).toBeUndefined()
+  const cached = await getCachedKey(db)
+  expect(cached?.iterations).toBe(ITER)
+  // 완료 행, 옮기기 표시는 아직 남아 있음(옛 DB를 지우기 전)
+  expect((await db.meta.get('vault'))?.complete).toBe(true)
+  expect(await db.meta.get('migration')).toBeTruthy()
+  // 옛 DB는 그대로
+  expect(await Dexie.exists(oldName)).toBe(true)
+  expect(await old.students.count()).toBe(3)
+  db.close()
+})
+
+test('pass wrap과 backupKeyRaw가 같은 passKey(같은 salt·iter)', async () => {
+  const old = await seedOld()
+  const { db, payload, passKey } = await fullSetup(old)
+  expect(fromBase64(payload.pass.salt)).toEqual(passKey.salt)
+  const raw = (await db.device_local.get('backupKeyRaw'))?.value as { salt: string; raw: string; iter: number }
+  expect(fromBase64(raw.salt)).toEqual(passKey.salt)
+  expect(fromBase64(raw.raw)).toEqual(passKey.raw)
+  db.close()
+})
+
+test('순서: DB를 만든 뒤 vault.store, 그 뒤 복사, 마지막에 완료 행', async () => {
+  const old = await seedOld()
+  const seen: string[] = []
+  const passKey = await derived()
+  const r = await setupNewVault({
+    passKey, migrateFrom: old, reset: async () => true,
+    store: async (p) => {
+      seen.push('store:' + (await Dexie.exists(p.dbName)))
+      const probe = new AppDB(p.dbName, { vault: true })
+      seen.push('vault-row:' + !!(await probe.meta.get('vault')))
+      seen.push('students:' + (await probe.students.count()))
+      probe.close()
+    },
+  })
+  expect(seen).toEqual(['store:true', 'vault-row:false', 'students:0'])
+  r.db.close()
+})
+
+test('중단(3번째 표에서 throw) → resumeOrReset 뒤 옛 DB 그대로, 새 DB 없음', async () => {
+  const old = await seedOld()
+  const { dek, keyId } = newDek()
+  const db = await createNewVaultDb(dek, keyId, { migration: true })
+  const tables: string[] = []
+  await expect(migrate({
+    oldDb: old, newDb: db, passKey: await derived(),
+    onProgress: (p) => {
+      if (!tables.includes(p.table)) tables.push(p.table)
+      if (tables.length === 3) throw new Error('가상 중단')
+    },
+  })).rejects.toThrow('가상 중단')
+  db.close() // 꺼진 셈
+  const reset = vi.fn(async () => true)
+  const r = await resumeOrReset({ dbName: db.name, reset, oldName })
+  expect(r).toEqual({ action: 'reset', restart: 'migrate' })
+  expect(reset).toHaveBeenCalledTimes(1)
+  expect(await Dexie.exists(db.name)).toBe(false)
+  expect(await old.students.count()).toBe(3)
+  expect((await old.note_files.get('f1'))?.data).toBe(enc(ATTACH))
+})
+
+test('setupNewVault 도중 실패 → 새 DB 지우고 vault.reset, 옛 DB 그대로', async () => {
+  const old = await seedOld()
+  const reset = vi.fn(async () => true)
+  let name = ''
+  await expect(setupNewVault({
+    passKey: await derived(), migrateFrom: old, reset,
+    store: async (p) => { name = p.dbName },
+    onProgress: (p) => { if (p.table === 'notes') throw new Error('가상 실패') },
+  })).rejects.toThrow('가상 실패')
+  expect(reset).toHaveBeenCalledTimes(1)
+  expect(await Dexie.exists(name)).toBe(false)
+  expect(await old.students.count()).toBe(3)
+})
+
+test('resumeOrReset: 옛 DB 없고 새 DB에 자료가 있으면 지우지 않는다', async () => {
+  const { dek, keyId } = newDek()
+  const db = await createNewVaultDb(dek, keyId, { migration: true })
+  await db.students.add(base('s1', { class_id: 'c1', number: 1, name: '가상학생' }) as never)
+  db.close()
+  const reset = vi.fn(async () => true)
+  const r = await resumeOrReset({ dbName: db.name, reset, oldName })
+  expect(r.action).toBe('blocked')
+  expect(reset).not.toHaveBeenCalled()
+  expect(await Dexie.exists(db.name)).toBe(true)
+})
+
+test('resumeOrReset: 옛 DB 없고 새 DB가 비었으면(meta·device_local만) 지우고 첫 설치', async () => {
+  const { dek, keyId } = newDek()
+  const db = await createNewVaultDb(dek, keyId)
+  await db.device_local.put({ id: 'aiApiKey', value: 'x' })
+  db.close()
+  const reset = vi.fn(async () => true)
+  expect(await resumeOrReset({ dbName: db.name, reset, oldName })).toEqual({ action: 'reset', restart: 'first-install' })
+  expect(reset).toHaveBeenCalled()
+  expect(await Dexie.exists(db.name)).toBe(false)
+})
+
+test('resumeOrReset: 옛 DB 지우는 중 꺼졌으면(완료 행 + delete-old 표시) 마저 끝낸다', async () => {
+  const { dek, keyId } = newDek()
+  const db = await createNewVaultDb(dek, keyId, { migration: true })
+  await db.students.add(base('s1', { class_id: 'c1', number: 1, name: '가상학생' }) as never)
+  await markComplete(db, dek, keyId)
+  await db.meta.put({ id: 'migration', from: oldName, stage: 'delete-old' })
+  db.close()
+  const reset = vi.fn(async () => true)
+  expect(await resumeOrReset({ dbName: db.name, reset, oldName })).toEqual({ action: 'resumed' })
+  expect(reset).not.toHaveBeenCalled()
+  const again = openVaultDb(db.name, dek)
+  expect(await again.meta.get('migration')).toBeUndefined()
+  expect((await again.meta.get('migratedFrom'))?.name).toBe(oldName)
+  expect(await again.students.count()).toBe(1)
+  again.close()
+})
+
+test('저장 공간 부족 → ok:false (사용량 × 1.3)', async () => {
+  expect(await planStorage(async () => ({ usage: 100, quota: 200 }))).toEqual({ ok: false, need: 130, free: 100 })
+  expect(await planStorage(async () => ({ usage: 100, quota: 300 }))).toEqual({ ok: true, need: 130, free: 200 })
+})
+
+describe('finishMigration 조건', () => {
+  async function ready() {
+    const old = await seedOld()
+    const r = await fullSetup(old)
+    return { old, ...r, verify: r.verify! }
+  }
+
+  test('pass 없음 → 거절, 옛 DB 남음', async () => {
+    const { old, db, payload, verify } = await ready()
+    const { pass: _p, ...noPass } = payload
+    await expect(finishMigration(old, db, { vault: noPass as never, verify, backup: { kind: 'folder', name: '백업_x.enc' } })).rejects.toThrow()
+    expect(await Dexie.exists(oldName)).toBe(true)
+    db.close()
+  })
+
+  test('새 백업 없음 → 거절', async () => {
+    const { old, db, payload, verify } = await ready()
+    await expect(finishMigration(old, db, { vault: payload, verify, backup: undefined as never })).rejects.toThrow()
+    await expect(finishMigration(old, db, { vault: payload, verify, backup: { kind: 'folder', name: '' } })).rejects.toThrow()
+    expect(await Dexie.exists(oldName)).toBe(true)
+    db.close()
+  })
+
+  test('검증 결과를 흉내 낸 객체 → 거절', async () => {
+    const { old, db, payload } = await ready()
+    await expect(finishMigration(old, db, { vault: payload, verify: { ok: true, problems: [] }, backup: { kind: 'download', name: 'a.enc' } })).rejects.toThrow()
+    expect(await Dexie.exists(oldName)).toBe(true)
+    db.close()
+  })
+
+  test('모두 갖추면 옛 DB를 지우고 migratedFrom을 남긴다', async () => {
+    const { old, db, payload, verify } = await ready()
+    await finishMigration(old, db, { vault: payload, verify, backup: { kind: 'download', name: '백업_x.enc' } })
+    expect(await Dexie.exists(oldName)).toBe(false)
+    expect((await db.meta.get('migratedFrom'))?.name).toBe(oldName)
+    expect(await db.meta.get('migration')).toBeUndefined()
+    expect(await db.students.count()).toBe(3)
+    db.close()
+  })
+})
+
+describe('device_local 허용·거부', () => {
+  test('backupKey·backupKeyRaw·backupFolder와 직렬화할 수 없는 값은 뺀다', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt'])
+    const r = filterDeviceLocal([
+      { id: 'backupKey', value: { key, salt: new Uint8Array(16), iterations: 1, check: 'x' } },
+      { id: 'backupKeyRaw', value: { raw: 'x' } },
+      { id: 'backupFolder', value: { name: 'x' } },
+      { id: 'when', value: new Date(0) },
+      { id: 'nested', value: { a: [1, { k: key }] } },
+      { id: 'pin', value: { hash: 'h', salt: 's', iterations: 10 } },
+      { id: 'bytes', value: new Uint8Array([1, 2]) },
+      { id: 'aiApiKey', value: 'sk' },
+      { id: 'lastBackupAt', value: T },
+      { id: 'currentClassId', value: 'c1' },
+    ])
+    expect(r.keep.map((x) => x.id)).toEqual(['pin', 'bytes', 'aiApiKey', 'lastBackupAt', 'currentClassId'])
+    expect(Object.fromEntries(r.dropped.map((d) => [d.id, d.reason]))).toEqual({
+      backupKey: 'deny', backupKeyRaw: 'deny', backupFolder: 'deny', when: 'unserializable', nested: 'unserializable',
+    })
+  })
+})
+
+describe('verifyMigration', () => {
+  test('바뀐 행을 잡는다', async () => {
+    const old = await seedOld()
+    const { db } = await fullSetup(old)
+    await db.students.update('s2', { memo: '바뀜' })
+    const v = await verifyMigration(old, db, 50)
+    expect(v.ok).toBe(false)
+    expect(v.problems.join('\n')).toMatch(/students/)
+    db.close()
+  })
+
+  test('행 수가 다르면 잡는다', async () => {
+    const old = await seedOld()
+    const { db } = await fullSetup(old)
+    await db.students.delete('s3')
+    const v = await verifyMigration(old, db)
+    expect(v.ok).toBe(false)
+    db.close()
+  })
+
+  test('원시 행에 평문 이름이 보이면 잡는다', async () => {
+    const old = await seedOld()
+    const { db } = await fullSetup(old)
+    const raw = (await readRaw(db, 'students')).find((r) => r.id === 's1')!
+    await rawWrite(db, [db.students], () => db.students.put({ ...raw, name: '가상학생1' } as never))
+    const v = await verifyMigration(old, db, 50)
+    expect(v.ok).toBe(false)
+    expect(v.problems.join('\n')).toMatch(/원시/)
+    db.close()
+  })
+
+  test('암호문 자리에 평문 바이트가 있으면(전화번호) 잡는다', async () => {
+    const old = await seedOld()
+    const { db } = await fullSetup(old)
+    const raw = (await readRaw(db, 'students')).find((r) => r.id === 's2')!
+    const leak = new TextEncoder().encode(JSON.stringify({ phone: '010-0000-0002' }))
+    await rawWrite(db, [db.students], () => db.students.put({ ...raw, _enc: leak } as never))
+    const v = await verifyMigration(old, db, 50)
+    expect(v.problems.join('\n')).toMatch(/students: 원시 행 s2에 평문이 보입니다/)
+    db.close()
+  })
+
+  test('첨부 내용이 다르면 잡는다', async () => {
+    const old = await seedOld()
+    const { db } = await fullSetup(old)
+    await db.note_blobs.delete('f1')
+    expect((await verifyMigration(old, db, 50)).ok).toBe(false)
+    db.close()
+  })
+})
+
+describe('신고서 id 바꾸기(아무것도 잃지 않음)', () => {
+  const rep = (id: string, over: Record<string, unknown> = {}) =>
+    base(id, { student_id: 's1', start_date: '2026-03-04', kind: '결석', category: '질병', detail: id, ...over }) as never
+  test('같은 결정적 id로 겹치는 살아 있는 신고서 둘 다 남고 연결도 제 짝을 따라간다', () => {
+    const p = planReports(
+      [rep('ra', { updated_at: '2025-01-01T00:00:00.000Z' }), rep('rb', { updated_at: '2025-02-01T00:00:00.000Z' })],
+      [base('la', { report_id: 'ra', attendance_id: 'a1' }) as never, base('lb', { report_id: 'rb', attendance_id: 'a2' }) as never],
+    )
+    expect(p.reports).toHaveLength(2)
+    const ids = new Set(p.reports.map((r) => r.id))
+    expect(ids.size).toBe(2)
+    expect(ids.has(reportId(p.reports[0]))).toBe(true)
+    for (const l of p.links) expect(p.reports.find((r) => r.id === l.report_id)?.detail).toBe(l.attendance_id === 'a1' ? 'ra' : 'rb')
+  })
+  test('이미 결정적 id인 신고서는 그대로, 짝 없는 연결도 그대로 남는다', () => {
+    const p = planReports([rep('report:s1:2026-03-04:결석:질병:x1')], [base('lz', { report_id: 'gone', attendance_id: 'a9' }) as never])
+    expect(p.reports[0].id).toBe('report:s1:2026-03-04:결석:질병:x1')
+    expect(p.links).toEqual([base('lz', { report_id: 'gone', attendance_id: 'a9' })])
+  })
+})
+
+test('첫 설치: 빈 새 DB + 완료 행 + backupKeyRaw', async () => {
+  const passKey = await derived()
+  let payload: VaultPayload | undefined
+  const r = await setupNewVault({ passKey, store: async (p) => { payload = p }, reset: async () => true })
+  expect(payload!.dbName).toBe(r.db.name)
+  expect(payload!.recovery).toBeUndefined()
+  expect((await r.db.meta.get('vault'))?.complete).toBe(true)
+  expect(await r.db.meta.get('migration')).toBeUndefined()
+  expect(await r.db.students.count()).toBe(0)
+  expect(await getCachedKey(r.db)).toBeTruthy()
+  r.db.close()
+})
+
+test('COPY_ORDER는 옛 DB의 모든 자료 표를 담는다(meta·sync_rows·note_blobs 제외)', () => {
+  const db = new AppDB('x-' + crypto.randomUUID())
+  const all = db.tables.map((t) => t.name).filter((n) => !['meta', 'sync_rows', 'note_blobs'].includes(n)).sort()
+  expect([...COPY_ORDER].sort()).toEqual(all)
+})
+
+test('옛 백업 열쇠(legacy CryptoKey)가 있어도 새 DB에는 backupKeyRaw만', async () => {
+  const old = await seedOld()
+  await setupPassphrase(old, PASS, { iterations: ITER })
+  expect((await old.device_local.get('backupKey'))).toBeTruthy()
+  const { db } = await fullSetup(old)
+  expect(await db.device_local.get('backupKey')).toBeUndefined()
+  expect(await db.device_local.get('backupKeyRaw')).toBeTruthy()
+  void PASS_ITER
+  db.close()
+})

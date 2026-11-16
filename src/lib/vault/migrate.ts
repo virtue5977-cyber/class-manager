@@ -1,0 +1,574 @@
+import Dexie from 'dexie'
+import { AppDB, SYNCED_TABLES, UNENCRYPTED_TABLES } from '../db/schema'
+import type { AbsenceReportRec, DeviceLocalRec, NoteBlobRec, NoteFileRec, ReportAttendanceRec } from '../db/types'
+import { linkId, reportId } from '../absenceReports/ids'
+import { storeBackupKey, type DerivedPassKey } from '../backup/service'
+import { b64ToBytes, openBlobBytes, sealBlobRows } from '../notes/blobs'
+import { canonicalJson } from './canon'
+import { buildVaultPayload, completeMetaRow, dbNameFor, newDek, type VaultPayload } from './keys'
+import { mergeWrite, readRaw } from './middleware'
+import { plainFieldsOf } from './plainFields'
+import { openVaultDb } from './vaultDb'
+
+/**
+ * 옮기기(0.x 평문 'class-manager' → 1.0 암호화 'watson-*')와 첫 설치(spec §4).
+ * 순서(컨트롤러 판정 1): DEK → 새 DB 만들기(옮기기 표시만, 완료 행 없음) → vault.store → 표 복사 → 확인 →
+ * 완료 행(completeMetaRow) → 새 DB 백업(폴더 또는 내려받기) → finishMigration(옛 DB 지우기, migratedFrom).
+ * 옛 DB는 finishMigration 전까지 읽기만 한다.
+ */
+
+export const OLD_DB_NAME = 'class-manager'
+/** 새 DB meta 표의 옮기기 표시. 있으면 VaultGate는 앱을 열지 않는다(incomplete). */
+export const MIGRATION_MARKER = 'migration'
+export const MIGRATED_FROM = 'migratedFrom'
+export const BATCH = 1000
+/** note_files는 행에 base64 내용이 들어 있어 한 번에 적게 읽는다. */
+const FILE_BATCH = 20
+/** 끝 BitLocker 안내를 보였다는 device_local 표시. */
+export const BITLOCKER_NOTICE_KEY = 'bitlockerNoticeShown'
+
+type Row = Record<string, unknown> & { id: string }
+
+/** 옛 DB에서 옮기는 표(순서대로). meta·sync_rows·note_blobs는 평문 DB에서 비어 있고 새 DB가 따로 채운다. */
+export const COPY_ORDER = ['device_local', ...SYNCED_TABLES, 'google_events'] as const
+
+export interface Progress {
+  table: string
+  done: number
+  total: number
+  overall: { done: number; total: number }
+}
+
+// ---- 저장 공간 ----
+type Estimate = { usage?: number; quota?: number }
+const defaultEstimate = (): Promise<Estimate> =>
+  typeof navigator !== 'undefined' && navigator.storage?.estimate ? navigator.storage.estimate() : Promise.resolve({})
+
+/** 두 벌이 잠시 함께 있으므로 남은 할당량이 지금 사용량 × 1.3 이상이어야 한다. 알 수 없으면 막지 않는다. */
+export async function planStorage(estimate: () => Promise<Estimate> = defaultEstimate): Promise<{ ok: boolean; need: number; free: number }> {
+  let e: Estimate | null = null
+  try { e = await estimate() } catch { e = null }
+  if (!e || typeof e.usage !== 'number' || typeof e.quota !== 'number' || !Number.isFinite(e.usage) || !Number.isFinite(e.quota)) {
+    return { ok: true, need: 0, free: Infinity }
+  }
+  const need = Math.ceil(e.usage * 1.3)
+  const free = e.quota - e.usage
+  return { ok: need <= free, need, free }
+}
+
+// ---- 옛 DB ----
+export async function dbExists(name: string): Promise<boolean> {
+  try { return await Dexie.exists(name) } catch { return false }
+}
+
+/** 옛 평문 DB를 연다(시험의 WATSON_VAULT_TEST 갈고리를 타지 않도록 createDb가 아니라 AppDB). */
+export function openOldDb(name = OLD_DB_NAME): AppDB {
+  return new AppDB(name)
+}
+
+// ---- device_local: 허용·거부(컨트롤러 판정 9) ----
+/**
+ * 거부: backupKey(꺼낼 수 없는 CryptoKey, 보안 H2), backupKeyRaw(새 passKey로 새로 쓴다), backupFolder(웹 폴더 핸들).
+ * 그 밖에도 암호화 직렬화(canonicalJson)를 통과하지 못하는 값(CryptoKey·핸들·Date·Map 등)은 뺀다.
+ * 나머지(pin·API 키·deviceId·현재 학급 등)는 그대로 옮겨 암호화한다.
+ */
+export const DEVICE_LOCAL_DENY: ReadonlySet<string> = new Set(['backupKey', 'backupKeyRaw', 'backupFolder'])
+
+export function filterDeviceLocal(rows: DeviceLocalRec[]): { keep: DeviceLocalRec[]; dropped: { id: string; reason: 'deny' | 'unserializable' }[] } {
+  const keep: DeviceLocalRec[] = []
+  const dropped: { id: string; reason: 'deny' | 'unserializable' }[] = []
+  for (const r of rows) {
+    const id = String(r.id)
+    if (DEVICE_LOCAL_DENY.has(id)) { dropped.push({ id, reason: 'deny' }); continue }
+    try {
+      canonicalJson({ id: r.id, value: r.value })
+    } catch {
+      dropped.push({ id, reason: 'unserializable' })
+      continue
+    }
+    keep.push(r)
+  }
+  return { keep, dropped }
+}
+
+// ---- 결석신고서 id ----
+/**
+ * 옛(무작위 id) 신고서를 결정적 id(spec §7.3)로 바꾼다. remapReportIds와 달리 아무것도 버리지 않는다:
+ * 같은 결정적 id로 겹치면(살아 있는 둘이든 지운 것이든) 뒤의 것은 `:2`, `:3` …을 붙인다. 바꾸기는 일대일이라
+ * 연결(report_attendance)은 언제나 제 신고서를 따라간다. 이미 'report:'로 시작하는 id와 짝 없는 연결은 그대로 둔다.
+ */
+export function planReports(
+  reports: AbsenceReportRec[],
+  links: ReportAttendanceRec[],
+): { reports: AbsenceReportRec[]; links: ReportAttendanceRec[]; map: Map<string, string> } {
+  const map = new Map<string, string>()
+  const used = new Set<string>()
+  const free = (base: string) => {
+    let id = base
+    for (let n = 2; used.has(id); n++) id = `${base}:${n}`
+    used.add(id)
+    return id
+  }
+  const kept = reports.filter((r) => r.id.startsWith('report:'))
+  for (const r of kept) { used.add(r.id); map.set(r.id, r.id) }
+  const rest = reports
+    .filter((r) => !r.id.startsWith('report:'))
+    .sort((a, b) => Number(a.deleted) - Number(b.deleted) || (a.updated_at > b.updated_at ? -1 : a.updated_at < b.updated_at ? 1 : 0) || (a.id < b.id ? -1 : 1))
+  for (const r of rest) map.set(r.id, free(reportId(r)))
+  const outReports = reports.map((r) => ({ ...r, id: map.get(r.id)! }))
+  const lused = new Set<string>()
+  for (const l of links) if (!map.has(l.report_id)) lused.add(l.id) // 짝 없는 연결은 id 그대로
+  const outLinks = links.map((l) => {
+    const nr = map.get(l.report_id)
+    if (!nr) return l
+    const base = linkId(nr, l.attendance_id)
+    let id = base
+    for (let n = 2; lused.has(id); n++) id = `${base}:${n}`
+    lused.add(id)
+    return { ...l, report_id: nr, id }
+  })
+  return { reports: outReports, links: outLinks, map }
+}
+
+// ---- 새 DB ----
+/** 이 PC에 없는 이름이 나올 때까지 새 DEK·keyId를 만든다(남의 DB를 건드리지 않는다). */
+export async function pickNewKey(): Promise<{ dek: Uint8Array; keyId: string }> {
+  const existing = new Set(await Dexie.getDatabaseNames())
+  let k = newDek()
+  while (existing.has(dbNameFor(k.keyId))) k = newDek()
+  return k
+}
+
+/** 새 암호화 DB를 만들어 연다. 완료 행은 쓰지 않는다. 옮기기면 옮기기 표시를 남긴다. 이미 있으면 거절. */
+export async function createNewVaultDb(dek: Uint8Array, keyId: string, opts: { migration?: boolean; from?: string } = {}): Promise<AppDB> {
+  const name = dbNameFor(keyId)
+  if (await dbExists(name)) throw new Error('같은 이름의 자료가 이미 있습니다. 다시 시도해 주세요.')
+  const db = openVaultDb(name, dek)
+  await db.open()
+  if (opts.migration) await db.meta.put({ id: MIGRATION_MARKER, from: opts.from ?? OLD_DB_NAME, stage: 'copy', at: new Date().toISOString() })
+  return db
+}
+
+export async function markComplete(db: AppDB, dek: Uint8Array, keyId: string): Promise<void> {
+  await db.meta.put(completeMetaRow(dek, keyId))
+}
+
+// ---- 복사 ----
+function stripFile(r: NoteFileRec): NoteFileRec {
+  const { data: _d, chunks: _c, ...meta } = r
+  void _d; void _c
+  return meta as NoteFileRec
+}
+
+async function pages(table: Dexie.Table, size: number, fn: (rows: Row[]) => Promise<void>): Promise<void> {
+  let last: string | undefined
+  for (;;) {
+    const coll = last === undefined ? table.orderBy(':id') : table.where(':id').above(last)
+    const rows = (await coll.limit(size).toArray()) as Row[]
+    if (!rows.length) return
+    await fn(rows)
+    last = rows[rows.length - 1].id
+    if (rows.length < size) return
+  }
+}
+
+/**
+ * 옛 DB의 표를 새 DB로 옮긴다(병합 쓰기: 원래 updated_at 유지, 1천 행씩 묶음, 평문 → 미들웨어가 암호화).
+ * device_local은 filterDeviceLocal, note_files 내용은 note_blobs로, 신고서는 planReports.
+ * passKey가 있으면 새 DB의 backupKeyRaw로 둔다(vault pass 감싸기와 같은 값, spec §3).
+ */
+export async function migrate(opts: {
+  oldDb: AppDB
+  newDb: AppDB
+  passKey?: DerivedPassKey
+  onProgress?: (p: Progress) => void
+  batch?: number
+}): Promise<{ newName: string; counts: Record<string, number> }> {
+  const { oldDb, newDb } = opts
+  const size = opts.batch ?? BATCH
+  if (!newDb.isVault) throw new Error('새 DB가 암호화 DB가 아닙니다.')
+  if (oldDb.isVault) throw new Error('옛 DB가 평문 DB가 아닙니다.')
+  if (!oldDb.isOpen()) await oldDb.open()
+  const totals: Record<string, number> = {}
+  for (const t of COPY_ORDER) totals[t] = await oldDb.table(t).count()
+  const overall = { done: 0, total: Object.values(totals).reduce((a, b) => a + b, 0) }
+  const counts: Record<string, number> = {}
+  const tell = (table: string, done: number) => opts.onProgress?.({ table, done, total: totals[table], overall: { ...overall } })
+
+  const plan = planReports(
+    (await oldDb.absence_reports.toArray()) as AbsenceReportRec[],
+    (await oldDb.report_attendance.toArray()) as ReportAttendanceRec[],
+  )
+
+  for (const t of COPY_ORDER) {
+    tell(t, 0)
+    const dst = newDb.table(t)
+    let done = 0
+    const step = async (n: number) => {
+      done += n
+      overall.done += n
+      tell(t, done)
+    }
+    if (t === 'device_local') {
+      const { keep } = filterDeviceLocal((await oldDb.device_local.toArray()) as DeviceLocalRec[])
+      await mergeWrite(newDb, [dst], () => dst.bulkAdd(keep))
+      if (opts.passKey) await storeBackupKey(newDb, opts.passKey)
+      counts[t] = keep.length
+      await step(totals[t])
+      continue
+    }
+    if (t === 'absence_reports' || t === 'report_attendance') {
+      const rows = (t === 'absence_reports' ? plan.reports : plan.links) as unknown as Row[]
+      for (let i = 0; i < rows.length; i += size) {
+        const part = rows.slice(i, i + size)
+        await mergeWrite(newDb, [dst], () => dst.bulkAdd(part))
+        await step(part.length)
+      }
+      counts[t] = rows.length
+      continue
+    }
+    if (t === 'note_files') {
+      let n = 0
+      await pages(oldDb.note_files, Math.min(size, FILE_BATCH), async (rows) => {
+        const files: NoteFileRec[] = []
+        const blobs: NoteBlobRec[] = []
+        for (const r of rows as unknown as NoteFileRec[]) {
+          const out = stripFile(r)
+          if (!r.deleted) {
+            // 묶음 밖에서 암호화(sealBlobRows가 큰 파일을 조각내고 양보한다). 내용 없는 첨부도 빈 blob을 둔다(평문 readFile과 같게).
+            const sealed = await sealBlobRows(newDb, r.id, b64ToBytes(typeof r.data === 'string' ? r.data : ''))
+            blobs.push(...sealed.rows)
+            if (sealed.chunks) out.chunks = sealed.chunks
+          }
+          files.push(out)
+        }
+        await mergeWrite(newDb, [dst, newDb.note_blobs], async () => {
+          if (blobs.length) await newDb.note_blobs.bulkAdd(blobs)
+          await dst.bulkAdd(files)
+        })
+        n += rows.length
+        await step(rows.length)
+      })
+      counts[t] = n
+      continue
+    }
+    let n = 0
+    await pages(oldDb.table(t), size, async (rows) => {
+      await mergeWrite(newDb, [dst], () => dst.bulkAdd(rows))
+      n += rows.length
+      await step(rows.length)
+    })
+    counts[t] = n
+  }
+  return { newName: newDb.name, counts }
+}
+
+// ---- 확인 ----
+export interface VerifyResult { ok: boolean; problems: string[] }
+/** verifyMigration이 통과시킨 결과 → 그 새 DB. finishMigration은 여기 있는 결과만 받는다(흉내 낸 객체 거절). */
+const VERIFIED = new WeakMap<object, AppDB>()
+const UNENCRYPTED = new Set<string>(UNENCRYPTED_TABLES)
+/** 새 DB에만 있어도 되는 device_local 키(옮기기가 쓰는 것). */
+const DEVICE_LOCAL_EXTRA = new Set(['backupKeyRaw'])
+
+function pickSample<T>(arr: T[], n: number): T[] {
+  const a = arr.slice()
+  const k = Math.min(n, a.length)
+  for (let i = 0; i < k; i++) {
+    const j = i + (crypto.getRandomValues(new Uint32Array(1))[0] % (a.length - i))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a.slice(0, k)
+}
+
+const latin1 = (b: Uint8Array) => {
+  let s = ''
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000) as unknown as number[])
+  return s
+}
+const asU8 = (v: unknown): Uint8Array | null =>
+  ArrayBuffer.isView(v) ? new Uint8Array((v as Uint8Array).buffer, (v as Uint8Array).byteOffset, (v as Uint8Array).byteLength) : null
+
+const u8len = (s: string) => new TextEncoder().encode(s).length
+/**
+ * 표본에서 '드러나면 안 되는' 글: 평문 칸 밖의 모든 문자열(이름·글·전화 등). UTF-8로 6바이트 이상만 본다
+ * (한글 두 글자 이름부터 잡고, 짧은 숫자가 암호문 바이트에 우연히 맞는 일은 피한다).
+ */
+function secretsOf(row: Row, plain: ReadonlySet<string>): string[] {
+  const out: string[] = []
+  const walk = (v: unknown) => {
+    if (typeof v === 'string') { const s = v.trim(); if (u8len(s) >= 6) out.push(s) }
+    else if (Array.isArray(v)) v.forEach(walk)
+    else if (v && typeof v === 'object' && !ArrayBuffer.isView(v)) Object.values(v).forEach(walk)
+  }
+  for (const [k, v] of Object.entries(row)) if (!plain.has(k)) walk(v)
+  return out
+}
+
+async function rawGet(db: AppDB, table: string, ids: string[]): Promise<(Row | undefined)[]> {
+  const idb = db.backendDB()
+  const store = idb.transaction(table, 'readonly').objectStore(table)
+  return Promise.all(ids.map((id) => new Promise<Row | undefined>((res, rej) => {
+    const req = store.get(id)
+    req.onsuccess = () => res(req.result as Row | undefined)
+    req.onerror = () => rej(req.error)
+  })))
+}
+
+/**
+ * spec §4.2 7: 표마다 행 수, 무작위 표본(표마다 samples행)의 정규 JSON 동일(신고서는 바꾼 id로),
+ * 첨부 내용 동일, 원시 IndexedDB(미들웨어 없이)에 평문 칸 밖의 칸이 없고 표본의 이름·글·전화가 보이지 않음.
+ */
+export async function verifyMigration(oldDb: AppDB, newDb: AppDB, samples = 20): Promise<VerifyResult> {
+  const problems: string[] = []
+  const plan = planReports(
+    (await oldDb.absence_reports.toArray()) as AbsenceReportRec[],
+    (await oldDb.report_attendance.toArray()) as ReportAttendanceRec[],
+  )
+  for (const t of COPY_ORDER) {
+    try {
+      const newCount = await newDb.table(t).count()
+      let expected: Row[] = []
+      if (t === 'device_local') {
+        const { keep } = filterDeviceLocal((await oldDb.device_local.toArray()) as DeviceLocalRec[])
+        const want = new Set(keep.map((r) => String(r.id)))
+        const have = (await newDb.device_local.toCollection().primaryKeys()) as string[]
+        const extra = have.filter((id) => !want.has(id) && !DEVICE_LOCAL_EXTRA.has(id))
+        const missing = [...want].filter((id) => !have.includes(id))
+        if (extra.length || missing.length) problems.push(`device_local: 키가 다릅니다(빠짐 ${missing.length}, 더함 ${extra.length})`)
+        expected = pickSample(keep as unknown as Row[], samples)
+      } else if (t === 'absence_reports' || t === 'report_attendance') {
+        const all = (t === 'absence_reports' ? plan.reports : plan.links) as unknown as Row[]
+        if (all.length !== newCount) problems.push(`${t}: 행 수 ${all.length} → ${newCount}`)
+        expected = pickSample(all, samples)
+      } else {
+        const ids = (await oldDb.table(t).toCollection().primaryKeys()) as string[]
+        if (ids.length !== newCount) problems.push(`${t}: 행 수 ${ids.length} → ${newCount}`)
+        const pick = pickSample(ids, samples)
+        expected = ((await oldDb.table(t).bulkGet(pick)) as Row[]).filter(Boolean)
+      }
+      if (!expected.length) continue
+      const ids = expected.map((r) => r.id)
+      const got = (await newDb.table(t).bulkGet(ids)) as (Row | undefined)[]
+      for (let i = 0; i < expected.length; i++) {
+        const want = t === 'note_files' ? stripFile(expected[i] as unknown as NoteFileRec) : expected[i]
+        const g = got[i]
+        const have = g && t === 'note_files' ? stripFile(g as unknown as NoteFileRec) : g
+        if (!have || canonicalJson(have) !== canonicalJson(want)) problems.push(`${t}: 표본 ${ids[i]} 내용이 다릅니다`)
+      }
+      // 첨부 내용
+      if (t === 'note_files') {
+        for (let i = 0; i < expected.length; i++) {
+          const o = expected[i] as unknown as NoteFileRec
+          if (o.deleted) continue
+          const want = b64ToBytes(typeof o.data === 'string' ? o.data : '')
+          let back: Uint8Array | null = null
+          try { back = await openBlobBytes(newDb, got[i] as unknown as NoteFileRec) } catch { back = null }
+          if (!back || back.length !== want.length || back.some((b, j) => b !== want[j])) { problems.push(`note_files: 첨부 ${o.id} 내용이 다릅니다`); continue }
+          if (want.length >= 8) {
+            const blobs = await rawGet(newDb, 'note_blobs', (got[i] as unknown as NoteFileRec).chunks ? [`${o.id}#0`] : [o.id])
+            const needle = latin1(want.subarray(0, 32))
+            if (blobs.some((b) => b && latin1(asU8(b._enc) ?? new Uint8Array()).includes(needle))) problems.push(`note_blobs: 원시 첨부 ${o.id}에 평문이 보입니다`)
+          }
+        }
+      }
+      // 원시 행
+      if (!UNENCRYPTED.has(t)) {
+        const plain = plainFieldsOf(newDb, t)
+        for (const r of await readRaw(newDb, t)) {
+          const bad = Object.keys(r).filter((k) => k !== '_enc' && !plain.has(k))
+          if (bad.length || !asU8(r._enc)) problems.push(`${t}: 원시 행 ${String(r.id)}에 평문 칸(${bad.join(',') || '_enc 없음'})`)
+        }
+        const raws = await rawGet(newDb, t, ids)
+        for (let i = 0; i < expected.length; i++) {
+          const r = raws[i]
+          if (!r) continue
+          const bytes = asU8(r._enc) ?? new Uint8Array()
+          const { _enc: _e, ...rest } = r
+          void _e
+          const plainText = JSON.stringify(Object.fromEntries(Object.entries(rest).filter(([k]) => plain.has(k))))
+          const hay = JSON.stringify(rest) + new TextDecoder().decode(bytes) + latin1(bytes)
+          for (const s of secretsOf(expected[i], plain)) {
+            if (hay.includes(s) && !plainText.includes(s)) { problems.push(`${t}: 원시 행 ${r.id}에 평문이 보입니다`); break }
+          }
+        }
+      }
+    } catch (e) {
+      problems.push(`${t}: 확인하지 못했습니다(${e instanceof Error ? e.message : String(e)})`)
+    }
+  }
+  const result: VerifyResult = { ok: problems.length === 0, problems }
+  if (result.ok) VERIFIED.set(result, newDb)
+  return result
+}
+
+// ---- 새 vault 만들기(옮기기·첫 설치) ----
+export interface SetupOpts {
+  passKey: DerivedPassKey
+  recovery?: { raw: Uint8Array; salt: Uint8Array; iter: number }
+  store: (p: VaultPayload) => Promise<unknown>
+  reset: () => Promise<unknown>
+  /** 있으면 옮기기, 없으면 첫 설치(빈 DB) */
+  migrateFrom?: AppDB
+  onProgress?: (p: Progress) => void
+  samples?: number
+}
+
+export interface SetupResult {
+  db: AppDB
+  dek: Uint8Array
+  keyId: string
+  payload: VaultPayload
+  counts: Record<string, number>
+  verify?: VerifyResult
+}
+
+/**
+ * 새 DEK → 새 DB(완료 행 없음) → vault.store → (옮기기: 복사·확인 / 첫 설치: 백업 열쇠) → 완료 행.
+ * 어느 단계든 실패하면 discardNewVault로 vault와 새 DB를 지우고 오류를 다시 올린다. 옛 DB는 읽기만 한다.
+ */
+export async function setupNewVault(opts: SetupOpts): Promise<SetupResult> {
+  const { dek, keyId } = await pickNewKey()
+  let db: AppDB | null = null
+  try {
+    db = await createNewVaultDb(dek, keyId, { migration: !!opts.migrateFrom, from: opts.migrateFrom?.name })
+    const payload = buildVaultPayload({
+      keyId, dek, passRaw: opts.passKey.raw, passSalt: opts.passKey.salt, passIter: opts.passKey.iter,
+      ...(opts.recovery ? { recoveryRaw: opts.recovery.raw, recoverySalt: opts.recovery.salt, recoveryIter: opts.recovery.iter } : {}),
+    })
+    await opts.store(payload)
+    let counts: Record<string, number> = {}
+    let verify: VerifyResult | undefined
+    if (opts.migrateFrom) {
+      counts = (await migrate({ oldDb: opts.migrateFrom, newDb: db, passKey: opts.passKey, onProgress: opts.onProgress })).counts
+      verify = await verifyMigration(opts.migrateFrom, db, opts.samples)
+      if (!verify.ok) throw new Error(`옮긴 자료를 확인하지 못했습니다: ${verify.problems.slice(0, 3).join(' / ')}`)
+    } else {
+      await storeBackupKey(db, opts.passKey)
+    }
+    await markComplete(db, dek, keyId)
+    return { db, dek, keyId, payload, counts, verify }
+  } catch (e) {
+    const name = dbNameFor(keyId)
+    try { db?.close() } catch { /* ignore */ }
+    await discardNewVault({ dbName: name, reset: opts.reset, oldName: opts.migrateFrom?.name ?? OLD_DB_NAME }).catch(() => false)
+    throw e
+  }
+}
+
+// ---- 지우기·이어 하기 ----
+/** meta·device_local 말고 행이 하나라도 있으면 참(원시로 센다: 열쇠가 필요 없다). */
+async function hasUserRows(db: AppDB): Promise<boolean> {
+  for (const t of db.tables) {
+    if (t.name === 'meta' || t.name === 'device_local') continue
+    if ((await t.count()) > 0) return true
+  }
+  return false
+}
+
+/** 미들웨어 없이 새 DB를 연다(meta는 평문 표, count는 열쇠가 필요 없다). 없으면 null(만들지 않는다). */
+async function probeVaultDb(name: string): Promise<AppDB | null> {
+  if (!(await dbExists(name))) return null
+  const db = new AppDB(name, { vault: true })
+  await db.open()
+  return db
+}
+
+/**
+ * 새 vault를 지워도 되는가(컨트롤러 판정 3): 옛 DB가 아직 있거나, 새 DB에 meta·device_local 말고 행이 없을 때만.
+ */
+async function resetAllowed(dbName: string, oldName: string): Promise<boolean> {
+  if (await dbExists(oldName)) return true
+  const db = await probeVaultDb(dbName)
+  if (!db) return true
+  try { return !(await hasUserRows(db)) } finally { db.close() }
+}
+
+/**
+ * 새 vault를 지운다: 조건을 확인하고 → vault.reset → 그 뒤에만 새 DB 지우기(먼저 DB를 지우고 꺼지면
+ * 다음 실행이 '자료 없음'이 되므로). reset이 실패하면 DB는 남기고 거짓.
+ */
+export async function discardNewVault(opts: { dbName: string; reset: () => Promise<unknown>; oldName?: string }): Promise<boolean> {
+  if (!(await resetAllowed(opts.dbName, opts.oldName ?? OLD_DB_NAME))) return false
+  await opts.reset()
+  if (await dbExists(opts.dbName)) await Dexie.delete(opts.dbName)
+  return true
+}
+
+async function finalizeMeta(db: AppDB, from: string): Promise<void> {
+  await db.transaction('rw', db.meta, async () => {
+    await db.meta.put({ id: MIGRATED_FROM, name: from, at: new Date().toISOString() })
+    await db.meta.delete(MIGRATION_MARKER)
+  })
+}
+
+export type ResumeResult =
+  | { action: 'reset'; restart: 'migrate' | 'first-install' }
+  | { action: 'resumed' }
+  | { action: 'blocked'; reason: string }
+
+/**
+ * vault.json은 있는데 새 DB가 끝나지 않았을 때(VaultGate 'incomplete').
+ * - 옛 DB를 지우던 중 꺼졌으면(완료 행 + 'delete-old' 표시, 옛 DB 없음) migratedFrom을 남기고 마저 끝낸다.
+ * - 옛 DB가 있거나 새 DB가 비었으면 vault와 새 DB를 지우고 처음부터(옛 DB 있으면 옮기기, 없으면 첫 설치).
+ * - 그 밖(옛 DB 없고 새 DB에 자료)에는 아무것도 지우지 않는다.
+ */
+export async function resumeOrReset(opts: { dbName: string; reset: () => Promise<unknown>; oldName?: string }): Promise<ResumeResult> {
+  const oldName = opts.oldName ?? OLD_DB_NAME
+  const oldExists = await dbExists(oldName)
+  if (!oldExists) {
+    const db = await probeVaultDb(opts.dbName)
+    if (db) {
+      try {
+        const marker = await db.meta.get(MIGRATION_MARKER)
+        const row = await db.meta.get('vault')
+        if (marker?.stage === 'delete-old' && row?.complete === true) {
+          await finalizeMeta(db, typeof marker.from === 'string' ? marker.from : oldName)
+          return { action: 'resumed' }
+        }
+        if (await hasUserRows(db)) {
+          return { action: 'blocked', reason: '옛 자료는 이미 없고 새 자료에 기록이 있어 지우지 않았습니다.' }
+        }
+      } finally {
+        db.close()
+      }
+    }
+  }
+  if (!(await discardNewVault({ dbName: opts.dbName, reset: opts.reset, oldName }))) {
+    return { action: 'blocked', reason: '새 자료에 기록이 있어 지우지 않았습니다.' }
+  }
+  return { action: 'reset', restart: oldExists ? 'migrate' : 'first-install' }
+}
+
+// ---- 옛 DB 지우기 ----
+export interface BackupProof { kind: 'folder' | 'download'; name: string }
+
+/**
+ * spec §4.1 옛 DB를 지우는 조건(셋 다): vault에 암호구 길(pass), 새 DB 확인 통과(verifyMigration 결과),
+ * 새 DB 백업 파일 하나(폴더에 썼거나 내려받음). 하나라도 없으면 거절하고 옛 DB를 건드리지 않는다.
+ * 그 뒤: 'delete-old' 표시 → 옛 DB 닫고 지우기 → migratedFrom 남기고 표시 지우기.
+ */
+export async function finishMigration(
+  oldDb: AppDB,
+  newDb: AppDB,
+  opts: { vault: Pick<VaultPayload, 'keyId'> & { pass?: Partial<VaultPayload['pass']> }; verify: VerifyResult; backup: BackupProof },
+): Promise<void> {
+  const p = opts.vault?.pass
+  if (!p || typeof p.ct !== 'string' || !p.ct || typeof p.salt !== 'string' || !p.salt) {
+    throw new Error('백업 암호구로 여는 길이 없어 옛 자료를 지우지 않습니다.')
+  }
+  if (!opts.verify || VERIFIED.get(opts.verify) !== newDb || !opts.verify.ok) {
+    throw new Error('새 자료 확인을 통과하지 않아 옛 자료를 지우지 않습니다.')
+  }
+  const b = opts.backup
+  if (!b || (b.kind !== 'folder' && b.kind !== 'download') || typeof b.name !== 'string' || !b.name) {
+    throw new Error('새 자료의 백업 파일이 없어 옛 자료를 지우지 않습니다.')
+  }
+  const row = await newDb.meta.get('vault')
+  if (row?.complete !== true || row.keyId !== opts.vault.keyId) throw new Error('새 자료가 완료되지 않아 옛 자료를 지우지 않습니다.')
+  if (oldDb.name === newDb.name || oldDb.isVault) throw new Error('지울 옛 자료가 맞지 않습니다.')
+  await newDb.meta.put({ id: MIGRATION_MARKER, from: oldDb.name, stage: 'delete-old', at: new Date().toISOString() })
+  oldDb.close()
+  await Dexie.delete(oldDb.name)
+  await finalizeMeta(newDb, oldDb.name)
+}
