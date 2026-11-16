@@ -85,6 +85,7 @@ function buildManifest(dir) {
   return m
 }
 
+const IO_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'ENOENT'])
 const ENTRY_RE = /^assets\/index-[^/]*\.js$/
 const isAlwaysChecked = (name) => name === 'index.html' || ENTRY_RE.test(name)
 
@@ -97,17 +98,20 @@ function checkManifest(dir, manifest, opts = {}) {
   const quick = !!opts.quick
   const old = (opts.cache && typeof opts.cache === 'object') ? opts.cache : {}
   const bad = []
+  const ioErrors = []
   const cache = {}
   const root = path.resolve(dir)
-  if (!manifest || typeof manifest !== 'object') return { ok: false, bad: ['manifest.json'], cache }
+  if (!manifest || typeof manifest !== 'object') return { ok: false, bad: ['manifest.json'], ioErrors, cache }
   for (const [name, hash] of Object.entries(manifest)) {
     const file = path.resolve(root, ...String(name).split('/'))
     if (!file.startsWith(root + path.sep) || name === 'manifest.json') { bad.push(name); continue }
     let st
     try {
       st = fs.statSync(file)
-    } catch {
-      bad.push(name)
+    } catch (e) {
+      // 목록의 파일이 없으면 bad. 백신 잠금 같은 읽기 오류는 따로(세지 않게).
+      if (IO_CODES.has(e && e.code) && e.code !== 'ENOENT') ioErrors.push({ name, code: e.code })
+      else bad.push(name)
       continue
     }
     if (!st.isFile()) { bad.push(name); continue }
@@ -117,15 +121,68 @@ function checkManifest(dir, manifest, opts = {}) {
       cache[name] = stamp
       continue
     }
-    if (sha256File(file) !== hash) bad.push(name)
+    let h
+    try {
+      h = sha256File(file)
+    } catch (e) {
+      if (IO_CODES.has(e && e.code)) ioErrors.push({ name, code: e.code })
+      else bad.push(name)
+      continue
+    }
+    if (h !== hash) bad.push(name)
     else cache[name] = stamp
   }
   try {
     for (const name of listFiles(dir)) if (!Object.prototype.hasOwnProperty.call(manifest, name)) bad.push(name)
-  } catch {
-    bad.push('.')
+  } catch (e) {
+    if (IO_CODES.has(e && e.code)) ioErrors.push({ name: '.', code: e.code })
+    else bad.push('.')
   }
-  return { ok: bad.length === 0, bad, cache }
+  return { ok: bad.length === 0 && ioErrors.length === 0, bad, ioErrors, cache }
+}
+
+/**
+ * 켤 때 quick 확인. 해시 틀림·빠진 파일·깨진 manifest만 'bad'(실패로 세고 되돌림).
+ * 읽기 오류(백신 잠금 등 EBUSY/EPERM/EACCES/ENOENT)는 retryMs 뒤 한 번 더 보고, 그래도면 'io'(그대로 켜고 세지 않음, 코드만).
+ */
+async function quickStartCheck(dir, opts = {}) {
+  const check = opts.check || checkManifest
+  const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)))
+  const readFile = opts.readFile || ((p) => fs.readFileSync(p, 'utf8'))
+  const retryMs = opts.retryMs ?? 500
+  const once = () => {
+    let manifest
+    try {
+      manifest = JSON.parse(readFile(path.join(dir, 'manifest.json')))
+    } catch (e) {
+      if (IO_CODES.has(e && e.code)) return { ok: false, bad: [], ioErrors: [{ name: 'manifest.json', code: e.code }] }
+      return { ok: false, bad: ['manifest.json'], ioErrors: [] }
+    }
+    return check(dir, manifest, { quick: true, cache: opts.cache })
+  }
+  let r = once()
+  for (let i = 0; ; i++) {
+    if (r.ok) return { verdict: 'ok', cache: r.cache }
+    if (r.bad && r.bad.length) return { verdict: 'bad', bad: r.bad }
+    if (i >= 1) break
+    await sleep(retryMs)
+    r = once()
+  }
+  return { verdict: 'io', codes: [...new Set((r.ioErrors || []).map((x) => x.code))] }
+}
+
+/**
+ * 화면(렌더러)이 죽거나 못 읽었을 때 할 일. reason: render-process-gone의 reason 또는 'did-fail-load'.
+ * - 종료 중(로그오프·before-quit)·killed·clean-exit: 아무것도 안 함.
+ * - alive 전 + 받은 판: 'relaunch'(실패로 세고 다시 켬, 한 실행에 한 번).
+ * - alive 뒤: 앱을 다시 켜지 않는다. 화면이 죽었으면 창을 한 번만 'reload', 그 뒤는 그대로 둔다(OOM 무한 재시작 막기).
+ */
+function onRendererGone(s) {
+  if (!s || s.quitting) return 'none'
+  if (s.reason === 'killed' || s.reason === 'clean-exit') return 'none'
+  if (!s.alive) return s.bundle && !s.relaunchedThisRun ? 'relaunch' : 'none'
+  if (s.reason === 'did-fail-load') return 'none'
+  return s.reloadedThisRun ? 'none' : 'reload'
 }
 
 /** current.json을 새 모양으로 맞춘다(옛 {version, shell, dir} 포함). 모양이 아니면 null. */
@@ -257,6 +314,8 @@ module.exports = {
   verifyInstall,
   buildManifest,
   checkManifest,
+  quickStartCheck,
+  onRendererGone,
   normalizeCurrent,
   readCurrent,
   writeCurrentAtomic,

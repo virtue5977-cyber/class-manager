@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -219,4 +219,83 @@ test('pruneBundles: 0.18.0을 지우고 1.0.0을 남긴다(keep 밖도 지움, p
   expect(C.bundleVersion('current.json')).toBeNull()
   expect(C.versionGte('1.0.0', '1.0.0')).toBe(true)
   expect(C.versionGte('0.18.9', '1.0.0')).toBe(false)
+})
+
+// ---- fix 1: 화면이 죽었을 때 판정, quick 확인의 읽기 오류 ----
+const G = require('../../../electron/updateCore.cjs') as {
+  onRendererGone: (s: { alive: boolean; reason: string; quitting: boolean; relaunchedThisRun: boolean; reloadedThisRun: boolean; bundle: boolean }) => 'relaunch' | 'reload' | 'none'
+  quickStartCheck: (dir: string, o: { cache?: any; sleep?: (ms: number) => Promise<void>; check?: (...a: any[]) => any; readFile?: (p: string) => string }) => Promise<{ verdict: 'ok' | 'bad' | 'io'; bad?: string[]; codes?: string[]; cache?: any }>
+}
+const st = (o: Partial<Parameters<typeof G.onRendererGone>[0]> = {}) => ({ alive: false, reason: 'crashed', quitting: false, relaunchedThisRun: false, reloadedThisRun: false, bundle: true, ...o })
+
+test('onRendererGone: alive 전 받은 판이 죽으면 relaunch(실패로 셈), 한 실행에 한 번만', () => {
+  expect(G.onRendererGone(st())).toBe('relaunch')
+  expect(G.onRendererGone(st({ reason: 'oom' }))).toBe('relaunch')
+  expect(G.onRendererGone(st({ reason: 'did-fail-load' }))).toBe('relaunch')
+  expect(G.onRendererGone(st({ relaunchedThisRun: true }))).toBe('none')
+})
+
+test('onRendererGone: alive 뒤에는 앱을 다시 켜지 않고 창을 한 번만 다시 읽는다(OOM 무한 재시작 막기)', () => {
+  expect(G.onRendererGone(st({ alive: true, reason: 'oom' }))).toBe('reload')
+  expect(G.onRendererGone(st({ alive: true, reason: 'crashed', reloadedThisRun: true }))).toBe('none')
+  expect(G.onRendererGone(st({ alive: true, reason: 'did-fail-load' }))).toBe('none')
+  expect(G.onRendererGone(st({ alive: true, bundle: false, reason: 'crashed' }))).toBe('reload')
+})
+
+test('onRendererGone: killed·clean-exit·종료 중(로그오프·before-quit)은 아무것도 안 함, 내장 판은 alive 전 relaunch 안 함', () => {
+  expect(G.onRendererGone(st({ reason: 'killed' }))).toBe('none')
+  expect(G.onRendererGone(st({ reason: 'clean-exit' }))).toBe('none')
+  expect(G.onRendererGone(st({ alive: true, reason: 'killed' }))).toBe('none')
+  expect(G.onRendererGone(st({ quitting: true }))).toBe('none')
+  expect(G.onRendererGone(st({ quitting: true, alive: true }))).toBe('none')
+  expect(G.onRendererGone(st({ bundle: false }))).toBe('none')
+})
+
+test('checkManifest: 잠긴 파일(EBUSY 등)은 bad가 아니라 ioErrors', () => {
+  mkBundle(dir)
+  const m = C.buildManifest(dir)
+  const real = fs.readFileSync
+  const spy = vi.spyOn(fs, 'readFileSync').mockImplementation(((p: any, ...a: any[]) => {
+    if (String(p).endsWith('index.html')) throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    return (real as any)(p, ...a)
+  }) as any)
+  try {
+    const r = C.checkManifest(dir, m, { quick: true }) as any
+    expect(r.ok).toBe(false)
+    expect(r.bad).toEqual([])
+    expect(r.ioErrors).toEqual([{ name: 'index.html', code: 'EBUSY' }])
+  } finally {
+    spy.mockRestore()
+  }
+  // 목록의 파일이 없으면(ENOENT) 그것은 bad
+  fs.rmSync(path.join(dir, 'assets', 'style.css'))
+  expect(C.checkManifest(dir, m, { quick: true })).toMatchObject({ ok: false, bad: ['assets/style.css'] })
+})
+
+test('quickStartCheck: 읽기 오류는 500ms 뒤 한 번 더, 그래도면 io(세지 않음), 해시 틀림·빠진 파일만 bad', async () => {
+  mkBundle(dir)
+  const m = C.buildManifest(dir)
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(m))
+  const sleeps: number[] = []
+  const sleep = async (ms: number) => { sleeps.push(ms) }
+  expect((await G.quickStartCheck(dir, { sleep })).verdict).toBe('ok')
+  expect(sleeps).toEqual([])
+  // 첫 번은 잠김, 두 번째는 풀림 → ok
+  let n = 0
+  const io = { ok: false, bad: [], ioErrors: [{ name: 'index.html', code: 'EBUSY' }], cache: {} }
+  const flaky = (...a: any[]) => (n++ === 0 ? io : (C.checkManifest as any)(...a))
+  expect((await G.quickStartCheck(dir, { sleep, check: flaky })).verdict).toBe('ok')
+  expect(sleeps).toEqual([500])
+  // 계속 잠김 → io, 코드만
+  const r = await G.quickStartCheck(dir, { sleep, check: () => ({ ...io, ioErrors: [{ name: 'a', code: 'EPERM' }, { name: 'b', code: 'EPERM' }] }) })
+  expect(r).toMatchObject({ verdict: 'io', codes: ['EPERM'] })
+  // 해시 틀림은 다시 하지 않고 bad
+  sleeps.length = 0
+  fs.writeFileSync(path.join(dir, 'index.html'), 'evil')
+  expect(await G.quickStartCheck(dir, { sleep })).toMatchObject({ verdict: 'bad', bad: ['index.html'] })
+  expect(sleeps).toEqual([])
+  // manifest.json 자체가 잠김 → 다시, 그래도면 io / 깨진 JSON → bad
+  const lockedRead = () => { throw Object.assign(new Error('x'), { code: 'EACCES' }) }
+  expect(await G.quickStartCheck(dir, { sleep, readFile: lockedRead })).toMatchObject({ verdict: 'io', codes: ['EACCES'] })
+  expect((await G.quickStartCheck(dir, { sleep, readFile: () => '{bad' })).verdict).toBe('bad')
 })

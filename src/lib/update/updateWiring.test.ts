@@ -13,7 +13,7 @@ test('main: 설치는 verifyInstall·manifest 전체 확인·원자 쓰기·skip
   expect(m).toMatch(/UC\.writeCurrentAtomic\(UPDATES_DIR\(\), \{ version: info\.version/)
   expect(m).toMatch(/skip\.includes\(info\.version\)/)
   expect(m).toMatch(/UC\.decideStart\(cur\)/)
-  expect(m).toMatch(/quick: true/)
+  expect(m).toMatch(/UC\.quickStartCheck\(dir, \{ cache: next\.cache \}\)/)
   expect(m).toMatch(/'render-process-gone'/)
   expect(m).toMatch(/'did-fail-load'/)
   expect(m).toMatch(/handle\('bundle:alive'/)
@@ -23,4 +23,13 @@ test('main: 설치는 verifyInstall·manifest 전체 확인·원자 쓰기·skip
 
 test('preload: desktop.bundle.alive()는 bundle:alive를 부른다', () => {
   expect(read('preload.cjs')).toMatch(/bundle: \{\s*alive: \(\) => ipcRenderer\.invoke\('bundle:alive'\)/)
+})
+
+test('main(fix 1): 화면 죽음 판정은 onRendererGone, 종료 중 표시, quick 확인은 quickStartCheck', () => {
+  const m = read('main.cjs')
+  expect(m).toMatch(/UC\.onRendererGone\(/)
+  expect(m).toMatch(/'query-session-end'/)
+  expect(m).toMatch(/'before-quit'/)
+  expect(m).toMatch(/UC\.quickStartCheck\(/)
+  expect(m).not.toMatch(/d\.reason !== 'clean-exit'\) bundleFailed/)
 })

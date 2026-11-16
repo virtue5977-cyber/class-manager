@@ -34,6 +34,10 @@ let startNotice = null
 let aliveSeen = false
 let failedThisRun = false
 let relaunching = false
+let reloadedThisRun = false
+/** 종료 중(before-quit·윈도우 로그오프/끄기): 화면이 죽어도 아무것도 하지 않는다. */
+let quitting = false
+app.on('before-quit', () => { quitting = true })
 let aliveTimer = null
 /** 받은 판이 쓸 만한가: exe가 받아들이는 shell, exe에 든 화면보다 새 판, index.html 있음(내장 판보다 옛것·같은 것은 고르지 않는다). */
 const usableBundle = (c, dir) => typeof c.shell === 'number' && c.shell <= SHELL && newer(c.version, app.getVersion()) && fsSync.existsSync(path.join(dir, 'index.html'))
@@ -41,7 +45,7 @@ const usableBundle = (c, dir) => typeof c.shell === 'number' && c.shell <= SHELL
  * 켤 때 판 고르기: decideStart(두 번 연속 alive 없음 → prev/내장) + quick manifest 확인(실패면 되돌림).
  * 받은 판이 쓸 만하지 않으면 내장 판. 고른 상태(cleanExit=false: alive를 기다림)를 원자적으로 쓴다.
  */
-function pickDist() {
+async function pickDist() {
   const builtin = { dist: BUILT_DIST, version: app.getVersion() }
   // 두 번째 실행(곧 끝남)은 첫 실행의 판정 상태를 건드리지 않는다.
   if (!GOT_LOCK) return builtin
@@ -53,21 +57,21 @@ function pickDist() {
   for (let i = 0; i < 3 && next && next.dir; i++) {
     const dir = path.join(U, next.dir)
     if (!usableBundle(next, dir)) break
-    let r = { ok: true, cache: next.cache }
-    const mf = path.join(dir, 'manifest.json')
-    if (fsSync.existsSync(mf)) {
-      try {
-        r = UC.checkManifest(dir, JSON.parse(fsSync.readFileSync(mf, 'utf8')), { quick: true, cache: next.cache })
-      } catch {
-        r = { ok: false }
-      }
-    } else if (UC.versionGte(next.version, '1.0.0')) r = { ok: false }
-    if (!r.ok) {
-      // 파일이 바뀐 판: 실패한 실행처럼 되돌린다.
+    let cache = next.cache
+    let badBundle = false
+    if (fsSync.existsSync(path.join(dir, 'manifest.json'))) {
+      const q = await UC.quickStartCheck(dir, { cache: next.cache })
+      if (q.verdict === 'ok') cache = q.cache
+      else if (q.verdict === 'bad') badBundle = true
+      // 'io'(백신 잠금 등): 그대로 켜고 세지 않는다. 코드만 남긴다.
+      else console.warn('[update] manifest read error', (q.codes || []).join(','))
+    } else if (UC.versionGte(next.version, '1.0.0')) badBundle = true
+    if (badBundle) {
+      // 파일이 바뀐 판(해시 틀림·빠진 파일): 실패한 실행처럼 되돌린다.
       next = UC.rollback(next, UC.MANIFEST_NOTICE).next
       continue
     }
-    next = { ...next, cache: r.cache }
+    next = { ...next, cache }
     picked = { name: next.dir, dir, version: next.version, shell: next.shell }
     break
   }
@@ -96,14 +100,23 @@ function updateRunState(fn) {
     /* 상태를 못 써도 앱은 계속 */
   }
 }
-/** render-process-gone·did-fail-load: 실패로 세고 다시 켠다(두 번이면 decideStart가 prev/내장으로). */
-function bundleFailed() {
-  if (!RUN || relaunching) return
-  relaunching = true
-  failedThisRun = true
-  updateRunState(UC.recordFailure)
-  app.relaunch()
-  app.exit(0)
+/**
+ * render-process-gone·did-fail-load 판정은 UC.onRendererGone.
+ * relaunch: alive 전 받은 판 → 실패로 세고 다시 켬(두 번이면 decideStart가 prev/내장으로).
+ * reload: alive 뒤 화면이 죽음 → 창만 한 번 다시 읽음. 그 밖은 아무것도 안 함.
+ */
+function rendererGone(reason) {
+  const act = UC.onRendererGone({ alive: aliveSeen, reason, quitting, relaunchedThisRun: relaunching, reloadedThisRun, bundle: !!RUN })
+  if (act === 'relaunch') {
+    relaunching = true
+    failedThisRun = true
+    updateRunState(UC.recordFailure)
+    app.relaunch()
+    app.exit(0)
+  } else if (act === 'reload') {
+    reloadedThisRun = true
+    if (win && !win.isDestroyed()) win.webContents.reload()
+  }
 }
 let DIST = BUILT_DIST
 let RUNNING_VERSION = app.getVersion()
@@ -128,12 +141,13 @@ function createWindow() {
   })
   win.setMenuBarVisibility(false)
   // 되돌리기 판정: 화면이 죽거나 못 읽으면 실패. 다 읽고도 20초 안에 alive가 없으면 실패로 센다(다시 켜지는 않음).
-  win.webContents.on('render-process-gone', (_e, d) => {
-    if (d && d.reason !== 'clean-exit') bundleFailed()
-  })
+  win.webContents.on('render-process-gone', (_e, d) => rendererGone(d && d.reason))
   win.webContents.on('did-fail-load', (_e, code, _desc, _url, isMainFrame) => {
-    if (isMainFrame && code !== -3) bundleFailed()
+    if (isMainFrame && code !== -3) rendererGone('did-fail-load')
   })
+  // 윈도우 로그오프·끄기: 막지 않고 종료 중으로만 표시한다.
+  win.on('query-session-end', () => { quitting = true })
+  win.on('session-end', () => { quitting = true })
   win.webContents.on('did-finish-load', () => {
     if (!RUN || aliveSeen || aliveTimer) return
     aliveTimer = setTimeout(() => {
@@ -168,8 +182,8 @@ app.on('second-instance', () => {
   }
 })
 
-app.whenReady().then(() => {
-  const picked = pickDist()
+app.whenReady().then(async () => {
+  const picked = await pickDist()
   DIST = picked.dist
   RUNNING_VERSION = picked.version
   // 메뉴를 아예 없애 새로고침(Ctrl+R)·개발자 도구 단축키를 막는다(PIN 우회 방지).
