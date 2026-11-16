@@ -2,6 +2,7 @@ import { openTestVaultDb } from '../vault/testing'
 import { readRaw } from '../vault/middleware'
 import { attachFile, cleanupOrphanFiles, createNote, readFile, MAX_TOTAL } from './notes'
 import { exportSnapshot, importSnapshot } from '../backup/snapshot'
+import { b64ToBytes, b64ToBytesYielding, bytesToB64, bytesToB64Yielding, openBlobRows, blobIds } from './blobs'
 import { blobCrypto } from '../vault/vaultDb'
 import { AppDB } from '../db/schema'
 
@@ -105,3 +106,30 @@ test('평문 백업의 0바이트 파일을 vault로 들여오기', async () => 
   expect((await readFile(v, f.id)).bytes.length).toBe(0)
   await expect(exportSnapshot(v)).resolves.toBeTruthy()
 })
+
+test('조각 base64(양보): 조각 경계 앞뒤 길이에서 한 번에 바꾼 것과 같다', async () => {
+  for (const n of [0, 1, 2, 3, 11, 12, 13, 24, 25, 100]) {
+    const u = bytesOf(n)
+    expect(await bytesToB64Yielding(u, 12)).toBe(bytesToB64(u))
+    const b = bytesToB64(u)
+    expect(await b64ToBytesYielding(b, 12)).toEqual(b64ToBytes(b))
+  }
+  // 표준 base64가 아니면(줄바꿈 등) 한 번에 푼다
+  const wrapped = bytesToB64(bytesOf(60)).replace(/(.{16})/g, '$1\n')
+  expect(await b64ToBytesYielding(wrapped, 12)).toEqual(b64ToBytes(wrapped))
+})
+
+test('openBlobRows: 조각 사이 양보해도 같은 바이트, 행이 빠지면 손상 오류', async () => {
+  const db = openTestVaultDb()
+  const n = await createNote(db)
+  const bytes = bytesOf(8 * 1024 * 1024 + 5)
+  const f = await attachFile(db, n.id, { name: 'big', mime: '', bytes })
+  const rec = (await db.note_files.get(f.id))!
+  const rows = await db.note_blobs.bulkGet(blobIds(rec))
+  expect(Buffer.from(await openBlobRows(db, rec, rows, { yieldBetween: true })).equals(Buffer.from(bytes))).toBe(true)
+  await expect(openBlobRows(db, rec, rows.slice(1), { yieldBetween: true })).rejects.toThrow('첨부가 손상되었습니다')
+  await expect(openBlobRows(db, rec, [undefined, ...rows.slice(1)])).rejects.toThrow('첨부가 손상되었습니다')
+  // 백업: 묶음 안에서 행만 읽고 밖에서 푼다 → 조각 파일도 원본 base64
+  const snap = await exportSnapshot(db)
+  expect((snap.tables.note_files.find((x) => (x as { id: string }).id === f.id) as { data: string }).data).toBe(b64(bytes))
+}, 60000)

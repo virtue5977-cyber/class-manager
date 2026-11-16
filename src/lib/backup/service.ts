@@ -3,7 +3,7 @@ import type { BackupFolder } from '../fs/adapter'
 import { decrypt, deriveKey, encrypt, fromBase64, makeKeyCheck, PBKDF2_ITERATIONS, randomBytes, toBase64 } from './crypto'
 import { passKeyRaw } from '../vault/keys'
 import { decodeBackupFile, encodeBackupFile, encodeHeader, type BackupHeader } from './format'
-import { exportSnapshot, importSnapshot, parseSnapshot, serializeSnapshot, validateSnapshot } from './snapshot'
+import { exportSnapshot, importSnapshot, parseSnapshot, serializeSnapshotYielding, validateSnapshot } from './snapshot'
 import { SYNCED_TABLES } from '../db/schema'
 
 export const BACKUP_KEEP_DEFAULT = 14
@@ -154,7 +154,7 @@ export async function cachedKeyFrom(k: DerivedPassKey): Promise<CachedKey> {
 /** 이 DB 전체를 백업 파일 바이트로(쓰지 않음). 옮기기 마법사의 '내려받기'가 쓴다. */
 export async function buildBackupFile(db: AppDB, cached: CachedKey, now: Date): Promise<Uint8Array> {
   const header: BackupHeader = { formatVersion: 1, iterations: cached.iterations, salt: cached.salt }
-  const data = serializeSnapshot(await exportSnapshot(db, now))
+  const data = await serializeSnapshotYielding(await exportSnapshot(db, now))
   const { iv, ciphertext } = await encrypt(cached.key, data, encodeHeader(header))
   return encodeBackupFile(header, iv, ciphertext)
 }

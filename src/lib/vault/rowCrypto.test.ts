@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sealRow, openRow, encryptBytes, decryptBytes } from './rowCrypto'
+import { sealRow, openRow, encryptBytes, decryptBytes, OpenTextCache } from './rowCrypto'
 import { canonicalJson } from './canon'
 
 const key = () => crypto.getRandomValues(new Uint8Array(32))
@@ -64,5 +64,54 @@ describe('rowCrypto', () => {
   it('id 없는 행은 암호화 불가', () => {
     expect(() => sealRow('t', { name: 'x' }, key(), PLAIN)).toThrow('id 없는 행은 암호화할 수 없습니다')
     expect(() => sealRow('t', { id: null }, key(), PLAIN)).toThrow(TypeError)
+  })
+})
+
+describe('OpenTextCache(푼 글 캐시)', () => {
+  it('같은 암호문이면 캐시에서, 행 객체는 매번 새것이고 내용은 같다', () => {
+    const k = key()
+    const c = new OpenTextCache()
+    const s = sealRow('t', row, k, PLAIN)
+    const a = openRow('t', s, k, PLAIN, c)
+    expect(c.size).toBe(1)
+    const b = openRow('t', { ...s }, k, PLAIN, c)
+    expect(b).not.toBe(a)
+    expect(canonicalJson(b)).toBe(canonicalJson(row))
+    ;(a as Record<string, unknown>).name = '바뀜' // 돌려준 객체를 고쳐도 다음 읽기에 번지지 않는다
+    expect((openRow('t', s, k, PLAIN, c) as Record<string, unknown>).name).toBe('가상학생')
+  })
+  it('캐시가 있어도 변조된 암호문은 _broken(바이트가 다르면 다시 풀어 확인)', () => {
+    const k = key()
+    const c = new OpenTextCache()
+    const s = sealRow('t', row, k, PLAIN)
+    openRow('t', s, k, PLAIN, c)
+    const bad = (s._enc as Uint8Array).slice(); bad[bad.length - 1] ^= 1
+    expect(openRow('t', { ...s, _enc: bad }, k, PLAIN, c)).toEqual({ id: 7, _broken: true })
+    // 캐시는 이전 암호문 바이트를 따로 들고 있어 원본 배열을 고쳐도 속지 않는다
+    const enc = s._enc as Uint8Array
+    enc[enc.length - 1] ^= 1
+    expect(openRow('t', s, k, PLAIN, c)).toEqual({ id: 7, _broken: true })
+  })
+  it('캐시가 있어도 평문 칸 변조·다른 표·다른 id는 _broken', () => {
+    const k = key()
+    const c = new OpenTextCache()
+    const s = sealRow('t', row, k, PLAIN)
+    openRow('t', s, k, PLAIN, c)
+    expect(openRow('t', { ...s, student_id: 4 }, k, PLAIN, c)).toEqual({ id: 7, _broken: true })
+    expect(openRow('other', s, k, PLAIN, c)).toEqual({ id: 7, _broken: true })
+    expect(openRow('t', { ...s, id: 8 }, k, PLAIN, c)).toEqual({ id: 8, _broken: true })
+  })
+  it('바이트 한도를 넘으면 오래된 것부터 버린다', () => {
+    const c = new OpenTextCache(1200)
+    const enc = (n: number) => new Uint8Array(50).fill(n)
+    for (let i = 0; i < 10; i++) c.set('r' + i, enc(i), 'x'.repeat(50)) // 하나에 150바이트
+    expect(c.size).toBe(8)
+    expect(c.get('r0', enc(0))).toBeUndefined()
+    expect(c.get('r1', enc(1))).toBeUndefined()
+    expect(c.get('r2', enc(2))).toBe('x'.repeat(50))
+    expect(c.get('r9', enc(9))).toBe('x'.repeat(50))
+    expect(c.get('r9', enc(8))).toBeUndefined()
+    c.set('big', enc(1), 'y'.repeat(100)) // 한도의 1/8(150)보다 크면 두지 않는다
+    expect(c.get('big', enc(1))).toBeUndefined()
   })
 })

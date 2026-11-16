@@ -117,7 +117,7 @@ export async function attachFile(db: AppDB, noteId: string, file: { name: string
 export async function readFile(db: AppDB, fileId: string): Promise<{ name: string; mime: string; bytes: Uint8Array }> {
   const f = await db.note_files.get(fileId)
   if (!f || f.deleted) throw new Error('첨부 파일을 찾을 수 없습니다.')
-  return { name: f.name, mime: f.mime, bytes: db.isVault ? await openBlobBytes(db, f) : b64ToBytes(f.data ?? '') }
+  return { name: f.name, mime: f.mime, bytes: db.isVault ? await openBlobBytes(db, f, { yieldBetween: true }) : b64ToBytes(f.data ?? '') }
 }
 
 /** 노트 본문 글(검색·내보내기용) */

@@ -3,7 +3,7 @@ import Dexie, {
   type DBCoreQueryResponse, type DBCoreTable, type DBCoreTransaction, type Middleware, type Table, type Transaction,
 } from 'dexie'
 import { UNENCRYPTED_TABLES, type AppDB } from '../db/schema'
-import { openRow, sealRow } from './rowCrypto'
+import { OpenTextCache, openRow, sealRow } from './rowCrypto'
 
 /**
  * 암호화 미들웨어(spec §5.4·§5.5).
@@ -114,7 +114,7 @@ function plainFieldsOfCore(t: DBCoreTable): ReadonlySet<string> {
   return out
 }
 
-function wrapTable(down: DBCoreTable, dbName: string, key: Uint8Array): DBCoreTable {
+function wrapTable(down: DBCoreTable, dbName: string, key: Uint8Array, texts: OpenTextCache): DBCoreTable {
   const name = down.name
   const plain = plainFieldsOfCore(down)
   const stampable = !NO_STAMP.has(name)
@@ -123,7 +123,7 @@ function wrapTable(down: DBCoreTable, dbName: string, key: Uint8Array): DBCoreTa
   /** 풀어서 돌려준다. 손상이면 알리고 undefined. */
   const reveal = (stored: unknown, seen?: Set<string>): Row | undefined => {
     if (stored == null) return undefined
-    const o = openRow(name, stored as Row, key, plain) as Row
+    const o = openRow(name, stored as Row, key, plain, texts) as Row
     if (!isBroken(o)) return o
     if (!seen || !seen.has(keyId(o.id))) {
       seen?.add(keyId(o.id))
@@ -131,7 +131,7 @@ function wrapTable(down: DBCoreTable, dbName: string, key: Uint8Array): DBCoreTa
     }
     return undefined
   }
-  const good = (stored: Row): boolean => !isBroken(openRow(name, stored, key, plain) as Row)
+  const good = (stored: Row): boolean => !isBroken(openRow(name, stored, key, plain, texts) as Row)
 
   function mutate(req: DBCoreMutateRequest): Promise<DBCoreMutateResponse> {
     if (req.type !== 'add' && req.type !== 'put') return down.mutate(req)
@@ -234,7 +234,7 @@ function wrapTable(down: DBCoreTable, dbName: string, key: Uint8Array): DBCoreTa
       const raw = cursor.value
       if (!has || raw !== lastRaw) {
         lastRaw = raw
-        lastOpen = openRow(name, raw as Row, key, plain) as Row
+        lastOpen = openRow(name, raw as Row, key, plain, texts) as Row
         has = true
       }
       return lastOpen!
@@ -309,13 +309,15 @@ export function encryptionMiddleware(dek: Uint8Array): Middleware<DBCore> & { st
     create(down) {
       const dbName = down.schema.name
       const cache = new Map<string, DBCoreTable>()
+      // 같은 암호문을 거듭 풀지 않도록(화면·liveQuery가 같은 행을 다시 읽음). 이 DB 연결의 모든 표가 함께 쓴다.
+      const texts = new OpenTextCache()
       return {
         ...down,
         table(name) {
           const t = down.table(name)
           if (UNENCRYPTED.has(name)) return t
           let w = cache.get(name)
-          if (!w) { w = wrapTable(t, dbName, key); cache.set(name, w) }
+          if (!w) { w = wrapTable(t, dbName, key, texts); cache.set(name, w) }
           return w
         },
       }

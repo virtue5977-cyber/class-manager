@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createDb, SCHEMA_VERSION, SYNCED_TABLES } from '../db/schema'
 import { newRecord, softDelete } from '../db/records'
-import { exportSnapshot, importSnapshot, serializeSnapshot, parseSnapshot, type Snapshot } from './snapshot'
+import { exportSnapshot, importSnapshot, serializeSnapshot, serializeSnapshotYielding, parseSnapshot, type Snapshot } from './snapshot'
 import { BackupFormatError, BackupVersionError } from './errors'
 
 const testDb = () => createDb('test-' + crypto.randomUUID())
@@ -129,4 +129,23 @@ test('vault DB 백업 → 새 vault DB에 복원 → 같음', async () => {
   await importSnapshot(b, snap)
   expect((await b.classes.toArray()).map((c) => c.grade)).toEqual([4])
   expect((await b.classes.toArray())[0].updated_at).toBe((await a.classes.toArray())[0].updated_at)
+})
+
+test('serializeSnapshotYielding은 serializeSnapshot과 같은 바이트(큰 첨부 글·바이트 값·자리표 닮은 글)', async () => {
+  const db = testDb()
+  await db.hwpx_templates.add(newRecord({ name: '양식', version: 1, data: Uint8Array.from([0, 1, 255]), active: true }))
+  const snap = await exportSnapshot(db)
+  const big = Buffer.alloc(200_000, 7).toString('base64')
+  snap.tables.note_files = [
+    { id: 'f1', note_id: 'n', name: 'a', mime: '', size: 1, data: big, created_at: 'x', updated_at: 'x', deleted: false },
+    { id: 'f2', note_id: 'n', name: 'b', mime: '', size: 1, data: 'QUJD', created_at: 'x', updated_at: 'x', deleted: false },
+    // base64가 아닌 큰 글은 그대로 JSON.stringify(이스케이프)
+    { id: 'f3', note_id: 'n', name: 'c"\\', mime: '', size: 1, data: '"따옴표"\n'.repeat(20_000), created_at: 'x', updated_at: 'x', deleted: false },
+    { id: 'f4', note_id: 'n', name: '@@watson-b64-x-0@@', mime: '', size: 1, data: big + 'QUJD', created_at: 'x', updated_at: 'x', deleted: false },
+  ]
+  snap.tables.notes = [{ id: 'n', title: '@@watson-b64-', data: big, blocks: [], pinned: false, created_at: 'x', updated_at: 'x', deleted: false }]
+  const a = serializeSnapshot(snap)
+  const b = await serializeSnapshotYielding(snap)
+  expect(Buffer.from(b).equals(Buffer.from(a))).toBe(true)
+  expect((parseSnapshot(b).tables.note_files[3] as { data: string }).data).toBe(big + 'QUJD')
 })
