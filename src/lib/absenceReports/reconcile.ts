@@ -6,6 +6,7 @@ import { listCalendar } from '../neis/schedule'
 import { SchoolDays } from '../schoolDays'
 import { getSettings } from '../settings'
 import { listStudents } from '../roster/roster'
+import { reportId, linkId } from './ids'
 import { computeDrafts, type ReportDraft, type ReportRules } from './compute'
 
 export const OVERRIDABLE = ['detail', 'evidence_type', 'confirm_methods', 'written_date', 'confirmed_date'] as const
@@ -102,11 +103,18 @@ export async function reconcileStudent(db: AppDB, studentId: string): Promise<{ 
     const { reports, links } = await loadState(db, studentId)
     const plan = planReconcile(reports, links, drafts)
     const now = new Date()
-    const setLinks = async (reportId: string, ids: string[]) => {
-      const cur = (await db.report_attendance.where('report_id').equals(reportId).toArray()).filter((l) => !l.deleted)
+    const setLinks = async (rid: string, ids: string[]) => {
+      const cur = (await db.report_attendance.where('report_id').equals(rid).toArray()).filter((l) => !l.deleted)
       for (const l of cur) if (!ids.includes(l.attendance_id)) await db.report_attendance.put({ ...l, deleted: true, updated_at: now.toISOString() })
       const have = new Set(cur.map((l) => l.attendance_id))
-      for (const id of ids) if (!have.has(id)) await db.report_attendance.add(newRecord({ report_id: reportId, attendance_id: id }, now))
+      for (const id of ids) {
+        if (have.has(id)) continue
+        // 연결 id도 결정적: 지움 표시로 남은 같은 id는 되살린다.
+        const lid = linkId(rid, id)
+        const old = await db.report_attendance.get(lid)
+        if (old) await db.report_attendance.put({ ...old, deleted: false, updated_at: now.toISOString() })
+        else await db.report_attendance.add({ ...newRecord({ report_id: rid, attendance_id: id }, now), id: lid })
+      }
     }
     for (const m of plan.matches) {
       const next: AbsenceReportRec = { ...m.report }
@@ -124,11 +132,13 @@ export async function reconcileStudent(db: AppDB, studentId: string): Promise<{ 
       await setLinks(m.report.id, m.draft.attendance_ids)
     }
     for (const d of plan.creates) {
-      const rec = newRecord(
-        { ...computedFields(d), diagnosis_received: false, submitted: false, submitted_at: null, overrides: [], stale: false },
-        now,
-      ) as AbsenceReportRec
-      await db.absence_reports.add(rec)
+      const rec = newRecord({ ...computedFields(d), diagnosis_received: false, submitted: false, submitted_at: null, overrides: [], stale: false }, now) as AbsenceReportRec
+      const old = await db.absence_reports.get(reportId(d))
+      if (!old) { rec.id = reportId(d); await db.absence_reports.add(rec) }
+      // 같은 id가 지움 표시로 있으면 새로 만들지 않고 되살린다(처음 만든 때는 유지).
+      else if (old.deleted) { rec.id = old.id; await db.absence_reports.put({ ...rec, created_at: old.created_at }) }
+      // 이어받은 신고서(기간이 줄어든 옛 신고서)가 그 id를 쓰고 있으면 겹치지 않게 무작위 id를 그대로 쓴다.
+      else await db.absence_reports.add(rec)
       await setLinks(rec.id, d.attendance_ids)
       out.created++
     }

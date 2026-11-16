@@ -1,6 +1,7 @@
 import type { AppDB } from '../db/schema'
 import type { ReflectionPhraseRec, ReflectionRec, BaseRecord } from '../db/types'
 import { newRecord, save, scrubDelete, softDelete } from '../db/records'
+import { mergeWrite } from '../vault/middleware'
 
 /** 반성문 양식 기본 16문장(보내 주신 생성기 그대로) */
 export const DEFAULT_LINES: string[] = [
@@ -49,14 +50,17 @@ export async function listReflections(db: AppDB, studentId?: string): Promise<Re
 
 export const deleteReflection = (db: AppDB, id: string) => scrubDelete(db.reflections, id, { reason: '', lines: [] }).then(() => undefined)
 
+const DEFAULT_STAMP = new Date(0)
+
 /** 좋은 문장 모음. 기본 16문장은 id를 정해(phrase-default-<n>) 넣어 기기·복원과 상관없이 한 번만. 뺀 기본 문장은 되살리지 않는다. */
 export async function listPhrases(db: AppDB): Promise<ReflectionPhraseRec[]> {
-  await db.transaction('rw', db.reflection_phrases, async () => {
+  // 병합 쓰기: 1970 도장 그대로 들어가 어떤 실제 고침·지움도 기본값을 이긴다(spec §7.3).
+  await mergeWrite(db, [db.reflection_phrases], async () => {
     const now = Date.now()
     for (const [i, text] of DEFAULT_LINES.entries()) {
       const id = `phrase-default-${i}`
       if (await db.reflection_phrases.get(id)) continue
-      await db.reflection_phrases.add({ ...newRecord({ text, starred_at: new Date(now - (16 - i) * 1000).toISOString() }), id } as ReflectionPhraseRec)
+      await db.reflection_phrases.add({ ...newRecord({ text, starred_at: new Date(now - (16 - i) * 1000).toISOString() }, DEFAULT_STAMP), id } as ReflectionPhraseRec)
     }
   })
   return readPhrases(db)

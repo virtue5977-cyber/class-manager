@@ -1,5 +1,6 @@
 import { createDb } from '../db/schema'
-import { listPhrases, listReflections, saveReflection, starPhrase, DEFAULT_LINES } from './store'
+import { listPhrases, listReflections, saveReflection, starPhrase, unstarPhrase, DEFAULT_LINES } from './store'
+import { newerWins } from '../vault/merge'
 
 test('모음은 처음에 기본 16문장, 별표 추가; 반성문 저장', async () => {
   const db = createDb('test-' + crypto.randomUUID())
@@ -36,4 +37,25 @@ test('좋은 글 모음: 16줄 전체를 이름과 저장·불러오기·이름 
   await deleteGoodText(db, g.id)
   expect((await readGoodTexts(db)).map((x) => x.title)).toEqual(['기본 반성문(1)'])
   expect((await readGoodTexts(db)).every((x) => x.lines?.length === 16)).toBe(true)
+})
+
+test('기본 글은 1970 도장, 사용자가 고친 updated_at은 유지', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  const ps = await listPhrases(db)
+  expect(ps.length).toBe(16)
+  expect(ps.every((p) => p.created_at === '1970-01-01T00:00:00.000Z' && p.updated_at === '1970-01-01T00:00:00.000Z')).toBe(true)
+  const edited = { ...(await db.reflection_phrases.get('phrase-default-3'))!, text: '고침', updated_at: '2026-11-01T00:00:00.000Z' }
+  await db.reflection_phrases.put(edited)
+  await listPhrases(db)
+  expect((await db.reflection_phrases.get('phrase-default-3'))!.text).toBe('고침')
+})
+
+test('지운 기본 글 vs 다른 DB의 1970 기본 글 → 지운 쪽 이김', async () => {
+  const db = createDb('test-' + crypto.randomUUID())
+  await listPhrases(db)
+  await unstarPhrase(db, 'phrase-default-2')
+  const mine = (await db.reflection_phrases.get('phrase-default-2'))!
+  const other = { ...mine, deleted: false, updated_at: '1970-01-01T00:00:00.000Z' }
+  expect(newerWins(other, mine)).toBe(mine)
+  expect(newerWins(mine, other).deleted).toBe(true)
 })
