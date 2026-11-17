@@ -614,22 +614,20 @@ handle('pdf:save', async (name, opts) => {
 
 // ---- 경로 통로: 대화상자로 고른 폴더(루트, 다시 켜도 기억)·고르거나 끌어 놓은 파일(이번 실행만)만 연다 ----
 const ROOTS_FILE = () => path.join(app.getPath('userData'), 'path-roots.json')
-let pathRootsInst = null
-const pathRoots = () => {
-  if (pathRootsInst) return pathRootsInst
-  let saved = []
-  try {
-    saved = JSON.parse(fsSync.readFileSync(ROOTS_FILE(), 'utf8')).roots || []
-  } catch {
-    /* 처음 */
-  }
-  return (pathRootsInst = secLib.createPathRoots({ roots: saved }))
-}
-function saveRoots() {
-  const roots = pathRoots().roots().slice(-200)
-  const tmp = ROOTS_FILE() + '.tmp'
-  fsSync.writeFileSync(tmp, JSON.stringify({ roots }))
-  fsSync.renameSync(tmp, ROOTS_FILE())
+// 고른 폴더 경로에는 학생 이름이 들어 있을 수 있어 safeStorage로 감싸 저장한다(못 쓰면 평문, 로그는 코드만). 본체는 security.cjs(시험됨).
+let rootsStoreInst = null
+const rootsStore = () => (rootsStoreInst ??= secLib.createRootsStore({ file: ROOTS_FILE(), safe: safeStorage }))
+let pathRootsP = null
+const pathRoots = () => (pathRootsP ??= rootsStore().load()
+  .then((r) => {
+    if (r.roots.length && !r.encrypted) log.info('roots.plaintext')
+    return secLib.createPathRoots({ roots: r.roots })
+  })
+  .catch(() => secLib.createPathRoots({ roots: [] })))
+async function saveRoots() {
+  const roots = (await pathRoots()).roots().slice(-200)
+  const r = await rootsStore().save(roots)
+  if (!r.encrypted) log.info('roots.plaintext')
 }
 /** 대화상자로 폴더를 골라 루트로 등록. defaultPath는 대화상자가 처음 보여 줄 곳일 뿐(허용 아님). */
 async function pickFolder(defaultPath) {
@@ -638,9 +636,9 @@ async function pickFolder(defaultPath) {
   const r = await dialog.showOpenDialog(win, opts)
   if (r.canceled || !r.filePaths[0]) return null
   const dir = r.filePaths[0]
-  if (!pathRoots().addRoot(dir)) throw new Error('이 폴더는 연결할 수 없습니다.')
+  if (!(await pathRoots()).addRoot(dir)) throw new Error('이 폴더는 연결할 수 없습니다.')
   try {
-    saveRoots()
+    await saveRoots()
   } catch {
     /* 이번 실행 동안은 허용 */
   }
@@ -652,31 +650,33 @@ handle('folder:pick', async () => {
   return dir ? { path: dir } : null
 })
 // preload가 놓은(고른) File에서 얻은 경로만 온다(네트워크 공유도 사용자가 놓은 것이면 받음). 실제로 있는 보통 파일이어야 한다(동기로 등록해 다음 stt:run보다 먼저 끝남).
-handle('paths:register-drop', (p) => {
+handle('paths:register-drop', async (p) => {
+  const roots = await pathRoots()
   let st = null
   try {
     st = secLib.isUserAbsPath(p) ? fsSync.statSync(p) : null
   } catch {
     st = null
   }
-  if (!st || !st.isFile() || !pathRoots().addFile(p)) throw new Error('파일을 읽을 수 없습니다.')
+  if (!st || !st.isFile() || !roots.addFile(p)) throw new Error('파일을 읽을 수 없습니다.')
   return p
 })
 // 화면 src/lib/notes/folders.ts NOT_ALLOWED와 같은 글
 const FOLDER_NOT_ALLOWED = '이 폴더를 열려면 먼저 허용해야 합니다.'
 /** 고른 루트 안(실제 경로 비교)만. 글자로 루트 밖이면 디스크·네트워크에 닿기 전에 거절한다. */
-function allowedDir(p) {
-  if (pathRoots().allowDir(p)) return p
+async function allowedDir(p) {
+  const roots = await pathRoots()
+  if (roots.allowDir(p)) return p
   // 글자로는 고른 폴더 안인데 실제 경로를 못 구함 = 지워졌거나 옮겨짐
-  if (pathRoots().knownDir(p)) throw new Error('폴더를 찾지 못했습니다.')
+  if (roots.knownDir(p)) throw new Error('폴더를 찾지 못했습니다.')
   throw new Error(FOLDER_NOT_ALLOWED)
 }
 handle('folder:open', async (p) => {
-  const dir = await foldersLib.assertDir(allowedDir(p), { network: true })
+  const dir = await foldersLib.assertDir(await allowedDir(p), { network: true })
   const err = await shell.openPath(dir)
   if (err) throw new Error('폴더를 열지 못했습니다.')
 })
-handle('folder:list', async (p) => foldersLib.listDir(allowedDir(p), { network: true }))
+handle('folder:list', async (p) => foldersLib.listDir(await allowedDir(p), { network: true }))
 
 // ---- 음성 받아쓰기: 고른 사람만 받아 두고, 녹음은 이 컴퓨터 안에서만 글로 바꾼다 ----
 const sttLib = require('./stt.cjs')
@@ -760,7 +760,7 @@ handle('stt:run', async ({ path: input, wav, model } = {}) => {
       await fs.writeFile(file, Buffer.from(wav))
     } else {
       const ext = typeof input === 'string' ? path.extname(input).toLowerCase() : ''
-      if (!pathRoots().allowFile(input) || !['.mp3', '.wav', '.ogg', '.flac'].includes(ext)) throw new Error('녹음 파일을 읽을 수 없습니다.')
+      if (!(await pathRoots()).allowFile(input) || !['.mp3', '.wav', '.ogg', '.flac'].includes(ext)) throw new Error('녹음 파일을 읽을 수 없습니다.')
       const stIn = await fs.stat(input).catch(() => null)
       if (!stIn || !stIn.isFile()) throw new Error('녹음 파일을 읽을 수 없습니다.')
       file = path.join(work, 'in' + ext)

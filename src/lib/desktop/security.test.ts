@@ -329,3 +329,58 @@ describe('preload 경로 등록', () => {
     expect(src).toContain("'paths:pick-folder'")
   })
 })
+
+describe('path-roots.json: safeStorage로 감싸 저장(createRootsStore)', () => {
+  const S = require('../../../electron/security.cjs') as {
+    createRootsStore: (o: { file: string; safe: unknown }) => {
+      load(): Promise<{ roots: string[]; encrypted: boolean }>
+      save(roots: string[]): Promise<{ encrypted: boolean }>
+    }
+  }
+  const ROOT = 'C:\\학교\\3학년 5반 가상학생'
+  let dir: string
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'roots-')) })
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }) })
+  const fakeSafe = (available = true) => ({
+    isAsyncEncryptionAvailable: async () => available,
+    encryptStringAsync: async (s: string) => Buffer.from('ENC:' + Buffer.from(s, 'utf8').toString('base64')),
+    decryptStringAsync: async (b: Buffer) => {
+      const t = b.toString('utf8')
+      if (!t.startsWith('ENC:')) throw new Error('bad')
+      return { result: Buffer.from(t.slice(4), 'base64').toString('utf8'), shouldReEncrypt: false }
+    },
+  })
+
+  test('암호화할 수 있으면 파일에 폴더 이름이 평문으로 남지 않고, 다시 읽으면 같다', async () => {
+    const file = path.join(dir, 'path-roots.json')
+    const st = S.createRootsStore({ file, safe: fakeSafe() })
+    expect(await st.save([ROOT])).toEqual({ encrypted: true })
+    const raw = fs.readFileSync(file)
+    expect(raw.includes(Buffer.from('가상학생'))).toBe(false)
+    expect(raw.includes(Buffer.from(ROOT))).toBe(false)
+    expect(await S.createRootsStore({ file, safe: fakeSafe() }).load()).toEqual({ roots: [ROOT], encrypted: true })
+  })
+
+  test('옛 평문 파일은 읽고 곧바로 암호화해 다시 쓴다', async () => {
+    const file = path.join(dir, 'path-roots.json')
+    fs.writeFileSync(file, JSON.stringify({ roots: [ROOT] }))
+    expect(await S.createRootsStore({ file, safe: fakeSafe() }).load()).toEqual({ roots: [ROOT], encrypted: true })
+    expect(fs.readFileSync(file).includes(Buffer.from('가상학생'))).toBe(false)
+    expect((await S.createRootsStore({ file, safe: fakeSafe() }).load()).roots).toEqual([ROOT])
+  })
+
+  test('safeStorage를 쓸 수 없으면 평문으로 두고 encrypted: false로 알린다', async () => {
+    const file = path.join(dir, 'path-roots.json')
+    const st = S.createRootsStore({ file, safe: fakeSafe(false) })
+    expect(await st.save([ROOT])).toEqual({ encrypted: false })
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).roots).toEqual([ROOT])
+    expect(await S.createRootsStore({ file, safe: fakeSafe(false) }).load()).toEqual({ roots: [ROOT], encrypted: false })
+  })
+
+  test('없거나 풀 수 없는 파일 → 빈 목록(던지지 않음)', async () => {
+    const file = path.join(dir, 'path-roots.json')
+    expect(await S.createRootsStore({ file, safe: fakeSafe() }).load()).toEqual({ roots: [], encrypted: false })
+    fs.writeFileSync(file, Buffer.concat([Buffer.from('WATSON-ROOTS-DPAPI1\n'), Buffer.from('망가진')]))
+    expect((await S.createRootsStore({ file, safe: fakeSafe() }).load()).roots).toEqual([])
+  })
+})

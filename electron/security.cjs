@@ -115,4 +115,65 @@ function createPathRoots({ platform = process.platform, roots = [], realpath = (
   return { addRoot, addFile, allowDir, allowFile, knownDir, roots: () => [...given.values()] }
 }
 
-module.exports = { CSP, permissionAllowed, createPathRoots, isUserAbsPath }
+const ROOTS_MAGIC = Buffer.from('WATSON-ROOTS-DPAPI1\n', 'utf8')
+
+/**
+ * path-roots.json(고른 폴더 경로 = 학생 이름이 들어 있을 수 있음) 저장소. safeStorage 비동기 암호화를 쓸 수 있으면
+ * 머리표 + 암호문으로 쓰고, 쓸 수 없으면 평문 {roots}로 두고 encrypted: false로 알린다(메인이 코드만 로그).
+ * 옛 평문 파일은 읽은 뒤 (암호화할 수 있으면) 곧바로 암호화해 다시 쓴다. 풀 수 없으면 빈 목록(폴더를 다시 고르면 된다).
+ */
+function createRootsStore({ file, safe, fsp = fs.promises }) {
+  let chain = Promise.resolve()
+  const queue = (fn) => {
+    const next = chain.then(fn, fn)
+    chain = next.catch(() => {})
+    return next
+  }
+  const avail = async () => {
+    try { return !!(safe && (await safe.isAsyncEncryptionAvailable())) } catch { return false }
+  }
+  const clean = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
+  async function writeAtomic(buf) {
+    const tmp = file + '.tmp'
+    await fsp.writeFile(tmp, buf)
+    await fsp.rename(tmp, file)
+  }
+  async function persist(roots) {
+    const json = JSON.stringify({ roots: clean(roots) })
+    if (await avail()) {
+      try {
+        const enc = await safe.encryptStringAsync(json)
+        await writeAtomic(Buffer.concat([ROOTS_MAGIC, Buffer.from(enc)]))
+        return { encrypted: true }
+      } catch { /* 아래: 평문으로 */ }
+    }
+    await writeAtomic(Buffer.from(json, 'utf8'))
+    return { encrypted: false }
+  }
+  async function load() {
+    return queue(async () => {
+      let buf
+      try { buf = await fsp.readFile(file) } catch { return { roots: [], encrypted: false } }
+      if (buf.length >= ROOTS_MAGIC.length && buf.subarray(0, ROOTS_MAGIC.length).equals(ROOTS_MAGIC)) {
+        try {
+          if (!(await avail())) return { roots: [], encrypted: false }
+          const r = await safe.decryptStringAsync(buf.subarray(ROOTS_MAGIC.length))
+          const roots = clean(JSON.parse(r && r.result).roots)
+          if (r && r.shouldReEncrypt) await persist(roots).catch(() => {})
+          return { roots, encrypted: true }
+        } catch {
+          return { roots: [], encrypted: false }
+        }
+      }
+      let roots
+      try { roots = clean(JSON.parse(buf.toString('utf8')).roots) } catch { return { roots: [], encrypted: false } }
+      // 옛 평문 파일: 암호화할 수 있으면 곧바로 바꿔 쓴다
+      let encrypted = false
+      try { encrypted = (await persist(roots)).encrypted } catch { encrypted = false }
+      return { roots, encrypted }
+    })
+  }
+  return { load, save: (roots) => queue(() => persist(roots)) }
+}
+
+module.exports = { CSP, permissionAllowed, createPathRoots, isUserAbsPath, createRootsStore }
