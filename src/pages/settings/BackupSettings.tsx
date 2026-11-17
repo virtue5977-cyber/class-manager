@@ -121,12 +121,12 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
     e.preventDefault()
     if (!restoreFile) return
     run(async () => {
-      await restoreFromBytes(db, restoreFile.bytes, restorePass, { safety: await safetyTarget() })
+      const r = await restoreFromBytes(db, restoreFile.bytes, restorePass, { safety: await safetyTarget() })
       setRestoreFile(null)
       setRestorePass('')
       // 학급·명단·노트가 모두 바뀌었으니 화면을 새로 불러온다
       setTimeout(() => reload.reloadApp(), 1200)
-      return '복원했습니다. 화면을 새로 불러옵니다.'
+      return r.warning ? `복원했습니다(${r.warning}). 화면을 새로 불러옵니다.` : '복원했습니다. 화면을 새로 불러옵니다.'
     })
   }
 

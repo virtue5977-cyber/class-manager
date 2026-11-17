@@ -171,3 +171,23 @@ test('runBackupReport: 손상된 첨부가 있어도 백업하고 안내 문구�
   expect(r.warning).toBe('첨부 1개가 손상되어 백업에서 빠졌습니다')
   expect(folder.files.has(r.name)).toBe(true)
 })
+
+test('복원 직전 안전 백업에서 손상된 첨부를 뺐으면 복원 결과에 그 수와 문구가 실린다', async () => {
+  const { restoreFromBytes, runBackup } = await import('../backup/service')
+  const PASS = '가상시험암호구2026'
+  const src = openTestVaultDb()
+  await setupPassphrase(src, PASS, { iterations: 1000 })
+  const folder = createMemoryFolder()
+  const bytes = await folder.readFile(await runBackup(src, folder))
+  const db = openTestVaultDb()
+  await setupPassphrase(db, PASS, { iterations: 1000 })
+  const n = await createNote(db)
+  const bad = await attachFile(db, n.id, { name: 'b.bin', mime: 'x/y', bytes: bytesOf(200) })
+  await db.note_blobs.put({ id: bad.id, _enc: new Uint8Array([9, 9, 9]) })
+  const safe = createMemoryFolder()
+  const r = await restoreFromBytes(db, bytes, PASS, { safety: { folder: safe } })
+  expect(r).toEqual({ safetySkipped: 1, warning: '복원 전 안전 백업에서 첨부 1개가 손상되어 빠졌습니다' })
+  expect(safe.files.size).toBe(1)
+  const ok = await restoreFromBytes(db, bytes, PASS, { safety: { folder: safe } })
+  expect(ok).toEqual({ safetySkipped: 0 })
+})

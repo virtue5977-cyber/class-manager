@@ -204,21 +204,28 @@ async function hasAnyData(db: AppDB): Promise<boolean> {
   return false
 }
 
-/** 복원 직전 현재 상태를 복원전_ 파일로 남긴다. 보관 정리하지 않는다. */
-async function writeSafetyBackup(db: AppDB, target: SafetyTarget | undefined, now: Date): Promise<void> {
-  if (!(await hasAnyData(db))) return
+/** 복원 직전 현재 상태를 복원전_ 파일로 남긴다. 보관 정리하지 않는다. 손상되어 뺀 첨부 수를 돌려준다. */
+async function writeSafetyBackup(db: AppDB, target: SafetyTarget | undefined, now: Date): Promise<number> {
+  if (!(await hasAnyData(db))) return 0
   const cached = await getCachedKey(db)
   if (!cached) throw new Error('현재 데이터를 보호하는 백업을 만들 수 없습니다. 먼저 이 기기에서 백업 암호구를 설정하세요.')
   if (!target?.folder && !target?.download) {
     throw new Error('복원 전에 현재 데이터를 백업할 곳이 없습니다. 백업 폴더를 지정하거나 내려받기를 허용하세요.')
   }
-  const file = await buildBackupFile(db, cached, now)
+  const { bytes: file, skipped } = await buildBackupFileReport(db, cached, now)
   if (target.folder) {
     const name = backupFileName(now, new Set(await target.folder.listFiles()), SAFETY_FILE_PREFIX)
     await target.folder.writeFile(name, file)
   } else {
     target.download!(backupFileName(now, new Set(), SAFETY_FILE_PREFIX), file)
   }
+  return skipped
+}
+
+export interface RestoreResult {
+  /** 복원 직전 안전 백업에서 손상되어 뺀 첨부 수 */
+  safetySkipped: number
+  warning?: string
 }
 
 /**
@@ -230,12 +237,13 @@ export async function restoreFromBytes(
   bytes: Uint8Array,
   passphrase: string,
   opts: { safety?: SafetyTarget; now?: Date } = {},
-): Promise<void> {
+): Promise<RestoreResult> {
   const { header, headerBytes, iv, ciphertext } = decodeBackupFile(bytes)
   const key = await deriveKey(passphrase, header.salt, header.iterations)
   const snapshot = validateSnapshot(parseSnapshot(await decrypt(key, iv, ciphertext, headerBytes)))
-  await writeSafetyBackup(db, opts.safety, opts.now ?? new Date())
+  const safetySkipped = await writeSafetyBackup(db, opts.safety, opts.now ?? new Date())
   await importSnapshot(db, snapshot)
+  return safetySkipped > 0 ? { safetySkipped, warning: `복원 전 안전 백업에서 첨부 ${safetySkipped}개가 손상되어 빠졌습니다` } : { safetySkipped }
 }
 
 export function needsAutoBackup(lastBackupAt: string | undefined, now: Date): boolean {
