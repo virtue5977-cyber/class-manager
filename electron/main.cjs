@@ -210,6 +210,8 @@ function createWindow() {
 }
 
 ipcMain.on('app:before-close-ready', (e) => { if (win && e.sender === win.webContents && closeFlow) closeFlow.setReady(true) })
+// 화면이 before-close 답을 해제함(복원 뒤 다시 그리기 등): 다시 걸 때까지 닫기를 기다리지 않는다.
+ipcMain.on('app:before-close-unready', (e) => { if (win && e.sender === win.webContents && closeFlow) closeFlow.setReady(false) })
 ipcMain.on('app:close-ok', (e) => { if (win && e.sender === win.webContents && closeFlow) closeFlow.onCloseOk() })
 
 app.on('second-instance', () => {

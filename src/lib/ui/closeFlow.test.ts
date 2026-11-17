@@ -89,3 +89,14 @@ test('재시작 경로: 시간 초과에도 풀리고, 준비 안 된 화면은 
   await (u.f as unknown as { beforeRestart(): Promise<void> }).beforeRestart()
   expect(u.send).not.toHaveBeenCalled()
 })
+
+test('준비 → 준비 아님(복원 뒤 해제) → close는 기다리지 않고, 다시 준비면 다시 막는다', () => {
+  const t = make()
+  t.f.setReady(false)
+  const e = t.ev(); t.f.onClose(e)
+  expect(e.preventDefault).not.toHaveBeenCalled()
+  expect(t.setTimer).not.toHaveBeenCalled()
+  t.f.setReady(true)
+  const e2 = t.ev(); t.f.onClose(e2)
+  expect(e2.preventDefault).toHaveBeenCalled()
+})
