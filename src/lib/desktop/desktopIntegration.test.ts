@@ -64,3 +64,51 @@ test('shortcutTarget은 바탕화면의 Watson.lnk, asBool은 불리언만 받�
   expect(D.asBool(true)).toBe(true)
   expect(() => D.asBool('yes')).toThrow()
 })
+
+describe('fixOldShortcuts(0.13 바로가기를 지금 exe로)', () => {
+  const F = require('../../../electron/desktopIntegration.cjs') as {
+    fixOldShortcuts: (o: { read: (p: string) => { target?: string }; write: (p: string, op: string, d: { target: string; cwd: string }) => boolean; exists: (p: string) => boolean; exe: string; paths: string[] }) => { fixed: number; failed: number }
+    oldShortcutPaths: (o: { appData: string; desktop: string }) => string[]
+  }
+  const exe = 'D:\\새폴더\\Watson.exe'
+  function env(links: Record<string, string>) {
+    const writes: { p: string; op: string; d: unknown }[] = []
+    return {
+      writes,
+      read: (p: string) => { if (!(p in links)) throw new Error('없음'); return { target: links[p] } },
+      write: (p: string, op: string, d: { target: string; cwd: string }) => { writes.push({ p, op, d }); return true },
+      exists: (p: string) => p in links,
+    }
+  }
+
+  test('경로: 시작프로그램 폴더와 바탕화면의 Watson.lnk', () => {
+    expect(F.oldShortcutPaths({ appData: 'C:\\Users\\가상\\AppData\\Roaming', desktop: 'C:\\Users\\가상\\Desktop' })).toEqual([
+      'C:\\Users\\가상\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Watson.lnk',
+      'C:\\Users\\가상\\Desktop\\Watson.lnk',
+    ])
+  })
+
+  test('옛 Watson exe를 가리키면 지금 exe로 바꿔 쓴다(replace, cwd = exe 폴더)', () => {
+    const paths = ['S\\Watson.lnk', 'D\\Watson.lnk']
+    const e = env({ 'S\\Watson.lnk': 'C:\\옛폴더\\Watson-0.13.0.exe', 'D\\Watson.lnk': 'C:\\옛폴더\\watson.EXE' })
+    expect(F.fixOldShortcuts({ ...e, exe, paths })).toEqual({ fixed: 2, failed: 0 })
+    expect(e.writes).toEqual([
+      { p: 'S\\Watson.lnk', op: 'replace', d: { target: exe, cwd: 'D:\\새폴더' } },
+      { p: 'D\\Watson.lnk', op: 'replace', d: { target: exe, cwd: 'D:\\새폴더' } },
+    ])
+  })
+
+  test('이미 지금 exe(대소문자 무시)·Watson exe가 아닌 대상·없는 파일·읽기 실패는 건드리지 않는다', () => {
+    const paths = ['a.lnk', 'b.lnk', 'c.lnk', 'd.lnk', 'e.lnk']
+    const e = env({ 'a.lnk': 'd:\\새폴더\\watson.exe', 'b.lnk': 'C:\\Windows\\notepad.exe', 'c.lnk': 'C:\\x\\Watson.txt', 'e.lnk': '' })
+    expect(F.fixOldShortcuts({ ...e, exe, paths })).toEqual({ fixed: 0, failed: 0 })
+    expect(e.writes).toEqual([])
+  })
+
+  test('쓰기 실패는 세고 계속한다(던지지 않음)', () => {
+    const e = env({ 'a.lnk': 'C:\\old\\Watson.exe', 'b.lnk': 'C:\\old2\\Watson.exe' })
+    let n = 0
+    const write = () => { n++; if (n === 1) throw new Error('잠김'); return true }
+    expect(F.fixOldShortcuts({ ...e, write, exe, paths: ['a.lnk', 'b.lnk'] })).toEqual({ fixed: 1, failed: 1 })
+  })
+})

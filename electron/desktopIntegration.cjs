@@ -54,4 +54,40 @@ function asBool(v) {
   return v
 }
 
-module.exports = { exePath, syncAutostart, usable, DEV_MSG, shortcutTarget, asBool }
+/** 0.13 때 만든 바로가기 자리: 시작프로그램 폴더와 바탕화면의 Watson.lnk(Windows 경로). */
+function oldShortcutPaths({ appData, desktop }) {
+  const W = path.win32
+  return [W.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Watson.lnk'), W.join(desktop, 'Watson.lnk')]
+}
+
+/**
+ * 옛 바로가기(0.13 시절 exe 경로)를 지금 exe로 고친다. 대상이 Watson*.exe일 때만(다른 프로그램을 가리키는 바로가기는 건드리지 않음).
+ * read(p) = shell.readShortcutLink(p)({ target }), write(p, 'replace', { target, cwd }) = shell.writeShortcutLink.
+ * 던지지 않는다. 고친 수와 실패 수만 돌려준다(로그에는 수만).
+ */
+function fixOldShortcuts({ read, write, exists, exe, paths }) {
+  const W = path.win32
+  let fixed = 0
+  let failed = 0
+  for (const p of paths || []) {
+    let target
+    try {
+      if (!exists(p)) continue
+      const d = read(p)
+      target = d && d.target
+    } catch {
+      continue
+    }
+    if (typeof target !== 'string' || !target || samePath(target, exe)) continue
+    if (!/^watson.*\.exe$/i.test(W.basename(target))) continue
+    try {
+      if (write(p, 'replace', { target: exe, cwd: W.dirname(exe) })) fixed++
+      else failed++
+    } catch {
+      failed++
+    }
+  }
+  return { fixed, failed }
+}
+
+module.exports = { exePath, syncAutostart, usable, DEV_MSG, shortcutTarget, asBool, oldShortcutPaths, fixOldShortcuts }

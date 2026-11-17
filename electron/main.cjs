@@ -395,6 +395,22 @@ app.whenReady().then(() => {
     DI.syncAutostart({ get: (p) => app.getLoginItemSettings({ path: p }), set: (st) => app.setLoginItemSettings(st), exe: exeNow(), last: readLast(), save: saveLast })
   } catch {}
 })
+// 0.13 시절 시작프로그램·바탕화면 Watson.lnk가 옛 exe를 가리키면 지금 exe로 고친다(패키지 실행만, 로그는 수만).
+app.whenReady().then(() => {
+  try {
+    if (!app.isPackaged || process.platform !== 'win32') return
+    const r = DI.fixOldShortcuts({
+      read: (p) => shell.readShortcutLink(p),
+      write: (p, op, d) => shell.writeShortcutLink(p, op, d),
+      exists: (p) => fsSync.existsSync(p),
+      exe: exeNow(),
+      paths: DI.oldShortcutPaths({ appData: app.getPath('appData'), desktop: app.getPath('desktop') }),
+    })
+    if (r.fixed || r.failed) log.info('shortcut.fixed', { fixed: r.fixed, failed: r.failed })
+  } catch {
+    log.error('shortcut.fix_failed')
+  }
+})
 // 다른 이름으로 저장(옮기기 마법사의 새 백업 파일): 본체는 saveFile.cjs(시험됨). 실제로 쓰고 크기를 확인했을 때만 ok.
 const saveAs = require('./saveFile.cjs').createSaveAs({
   showSaveDialog: ({ defaultName }) => dialog.showSaveDialog(win, {
