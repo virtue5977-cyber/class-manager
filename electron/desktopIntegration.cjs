@@ -62,12 +62,14 @@ function oldShortcutPaths({ appData, desktop }) {
 
 /**
  * 옛 바로가기(0.13 시절 exe 경로)를 지금 exe로 고친다. 대상이 Watson*.exe일 때만(다른 프로그램을 가리키는 바로가기는 건드리지 않음).
- * read(p) = shell.readShortcutLink(p)({ target }), write(p, 'replace', { target, cwd }) = shell.writeShortcutLink.
- * 던지지 않는다. 고친 수와 실패 수만 돌려준다(로그에는 수만).
+ * read(p) = shell.readShortcutLink(p)({ target }), write(p, 'replace', { target, cwd }) = shell.writeShortcutLink, remove(p) = 파일 지우기.
+ * startup = 시작프로그램 폴더의 Watson.lnk. 자동 실행(로그인 항목)이 켜져 있으면(autostartOn) 그 .lnk는 고치지 않고 지운다
+ * (둘 다 남으면 로그인 때 두 번 켜진다). 던지지 않는다. 수만 돌려준다(로그에는 수만).
  */
-function fixOldShortcuts({ read, write, exists, exe, paths }) {
+function fixOldShortcuts({ read, write, exists, remove, exe, paths, startup, autostartOn }) {
   const W = path.win32
   let fixed = 0
+  let removed = 0
   let failed = 0
   for (const p of paths || []) {
     let target
@@ -78,8 +80,13 @@ function fixOldShortcuts({ read, write, exists, exe, paths }) {
     } catch {
       continue
     }
-    if (typeof target !== 'string' || !target || samePath(target, exe)) continue
-    if (!/^watson.*\.exe$/i.test(W.basename(target))) continue
+    if (typeof target !== 'string' || !target || !/^watson.*\.exe$/i.test(W.basename(target))) continue
+    const isStartup = !!startup && samePath(p, startup)
+    if (isStartup && autostartOn && typeof remove === 'function') {
+      try { remove(p); removed++ } catch { failed++ }
+      continue
+    }
+    if (samePath(target, exe)) continue
     try {
       if (write(p, 'replace', { target: exe, cwd: W.dirname(exe) })) fixed++
       else failed++
@@ -87,7 +94,7 @@ function fixOldShortcuts({ read, write, exists, exe, paths }) {
       failed++
     }
   }
-  return { fixed, failed }
+  return { fixed, removed, failed }
 }
 
 module.exports = { exePath, syncAutostart, usable, DEV_MSG, shortcutTarget, asBool, oldShortcutPaths, fixOldShortcuts }

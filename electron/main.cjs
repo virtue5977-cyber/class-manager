@@ -399,14 +399,20 @@ app.whenReady().then(() => {
 app.whenReady().then(() => {
   try {
     if (!app.isPackaged || process.platform !== 'win32') return
+    const paths = DI.oldShortcutPaths({ appData: app.getPath('appData'), desktop: app.getPath('desktop') })
+    let autostartOn = false
+    try { autostartOn = isOn() } catch { autostartOn = false }
     const r = DI.fixOldShortcuts({
       read: (p) => shell.readShortcutLink(p),
       write: (p, op, d) => shell.writeShortcutLink(p, op, d),
       exists: (p) => fsSync.existsSync(p),
+      remove: (p) => fsSync.unlinkSync(p),
       exe: exeNow(),
-      paths: DI.oldShortcutPaths({ appData: app.getPath('appData'), desktop: app.getPath('desktop') }),
+      paths,
+      startup: paths[0], // 자동 실행(로그인 항목)이 켜져 있으면 옛 시작프로그램 .lnk는 지운다(두 번 켜짐 방지)
+      autostartOn,
     })
-    if (r.fixed || r.failed) log.info('shortcut.fixed', { fixed: r.fixed, failed: r.failed })
+    if (r.fixed || r.removed || r.failed) log.info('shortcut.fixed', { fixed: r.fixed, removed: r.removed, failed: r.failed })
   } catch {
     log.error('shortcut.fix_failed')
   }

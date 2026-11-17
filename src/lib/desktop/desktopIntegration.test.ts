@@ -67,7 +67,7 @@ test('shortcutTarget은 바탕화면의 Watson.lnk, asBool은 불리언만 받�
 
 describe('fixOldShortcuts(0.13 바로가기를 지금 exe로)', () => {
   const F = require('../../../electron/desktopIntegration.cjs') as {
-    fixOldShortcuts: (o: { read: (p: string) => { target?: string }; write: (p: string, op: string, d: { target: string; cwd: string }) => boolean; exists: (p: string) => boolean; exe: string; paths: string[] }) => { fixed: number; failed: number }
+    fixOldShortcuts: (o: { read: (p: string) => { target?: string }; write: (p: string, op: string, d: { target: string; cwd: string }) => boolean; exists: (p: string) => boolean; remove?: (p: string) => void; exe: string; paths: string[]; startup?: string; autostartOn?: boolean }) => { fixed: number; removed: number; failed: number }
     oldShortcutPaths: (o: { appData: string; desktop: string }) => string[]
   }
   const exe = 'D:\\새폴더\\Watson.exe'
@@ -91,7 +91,7 @@ describe('fixOldShortcuts(0.13 바로가기를 지금 exe로)', () => {
   test('옛 Watson exe를 가리키면 지금 exe로 바꿔 쓴다(replace, cwd = exe 폴더)', () => {
     const paths = ['S\\Watson.lnk', 'D\\Watson.lnk']
     const e = env({ 'S\\Watson.lnk': 'C:\\옛폴더\\Watson-0.13.0.exe', 'D\\Watson.lnk': 'C:\\옛폴더\\watson.EXE' })
-    expect(F.fixOldShortcuts({ ...e, exe, paths })).toEqual({ fixed: 2, failed: 0 })
+    expect(F.fixOldShortcuts({ ...e, exe, paths })).toEqual({ fixed: 2, removed: 0, failed: 0 })
     expect(e.writes).toEqual([
       { p: 'S\\Watson.lnk', op: 'replace', d: { target: exe, cwd: 'D:\\새폴더' } },
       { p: 'D\\Watson.lnk', op: 'replace', d: { target: exe, cwd: 'D:\\새폴더' } },
@@ -101,14 +101,47 @@ describe('fixOldShortcuts(0.13 바로가기를 지금 exe로)', () => {
   test('이미 지금 exe(대소문자 무시)·Watson exe가 아닌 대상·없는 파일·읽기 실패는 건드리지 않는다', () => {
     const paths = ['a.lnk', 'b.lnk', 'c.lnk', 'd.lnk', 'e.lnk']
     const e = env({ 'a.lnk': 'd:\\새폴더\\watson.exe', 'b.lnk': 'C:\\Windows\\notepad.exe', 'c.lnk': 'C:\\x\\Watson.txt', 'e.lnk': '' })
-    expect(F.fixOldShortcuts({ ...e, exe, paths })).toEqual({ fixed: 0, failed: 0 })
+    expect(F.fixOldShortcuts({ ...e, exe, paths })).toEqual({ fixed: 0, removed: 0, failed: 0 })
     expect(e.writes).toEqual([])
+  })
+
+  test('자동 실행이 켜져 있으면 옛 시작프로그램 .lnk는 고치지 않고 지운다(두 번 켜짐 방지), 바탕화면은 고친다', () => {
+    const S = 'S\\Watson.lnk', D = 'D\\Watson.lnk'
+    const e = env({ [S]: 'C:\\옛폴더\\Watson.exe', [D]: 'C:\\옛폴더\\Watson.exe' })
+    const removed: string[] = []
+    expect(F.fixOldShortcuts({ ...e, remove: (p) => { removed.push(p) }, exe, paths: [S, D], startup: S, autostartOn: true })).toEqual({ fixed: 1, removed: 1, failed: 0 })
+    expect(removed).toEqual([S])
+    expect(e.writes.map((w) => w.p)).toEqual([D])
+  })
+
+  test('자동 실행이 켜져 있으면 지금 exe를 가리키는 시작프로그램 .lnk도 지운다(로그인 항목과 겹침)', () => {
+    const S = 'S\\Watson.lnk'
+    const removed: string[] = []
+    expect(F.fixOldShortcuts({ ...env({ [S]: exe }), remove: (p) => { removed.push(p) }, exe, paths: [S], startup: S, autostartOn: true })).toEqual({ fixed: 0, removed: 1, failed: 0 })
+    expect(removed).toEqual([S])
+  })
+
+  test('자동 실행이 꺼져 있으면 시작프로그램 .lnk도 지금 exe로 고친다(지우지 않음)', () => {
+    const S = 'S\\Watson.lnk'
+    const e = env({ [S]: 'C:\\옛폴더\\Watson.exe' })
+    const remove = vi.fn()
+    expect(F.fixOldShortcuts({ ...e, remove, exe, paths: [S], startup: S, autostartOn: false })).toEqual({ fixed: 1, removed: 0, failed: 0 })
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  test('자동 실행이 켜져 있어도 Watson exe가 아닌 시작프로그램 .lnk는 지우지 않는다, 지우기 실패는 센다', () => {
+    const S = 'S\\Watson.lnk'
+    const remove = vi.fn()
+    expect(F.fixOldShortcuts({ ...env({ [S]: 'C:\\x\\notepad.exe' }), remove, exe, paths: [S], startup: S, autostartOn: true })).toEqual({ fixed: 0, removed: 0, failed: 0 })
+    expect(remove).not.toHaveBeenCalled()
+    const boom = () => { throw new Error('잠김') }
+    expect(F.fixOldShortcuts({ ...env({ [S]: 'C:\\old\\Watson.exe' }), remove: boom, exe, paths: [S], startup: S, autostartOn: true })).toEqual({ fixed: 0, removed: 0, failed: 1 })
   })
 
   test('쓰기 실패는 세고 계속한다(던지지 않음)', () => {
     const e = env({ 'a.lnk': 'C:\\old\\Watson.exe', 'b.lnk': 'C:\\old2\\Watson.exe' })
     let n = 0
     const write = () => { n++; if (n === 1) throw new Error('잠김'); return true }
-    expect(F.fixOldShortcuts({ ...e, write, exe, paths: ['a.lnk', 'b.lnk'] })).toEqual({ fixed: 1, failed: 1 })
+    expect(F.fixOldShortcuts({ ...e, write, exe, paths: ['a.lnk', 'b.lnk'] })).toEqual({ fixed: 1, removed: 0, failed: 1 })
   })
 })
