@@ -413,3 +413,57 @@ test('설정만 있는 옛 DB + 완료 뒤 꺼짐, 백업 폴더 없음 → 저�
   expect(await screen.findByText(/BitLocker/)).toBeInTheDocument()
   expect(await Dexie.exists(OLD)).toBe(false)
 })
+
+describe('새 DB 첨부가 백업에서 빠지면 옛 DB를 지우지 않는다', () => {
+  const ATT = '가상 첨부 내용 0123456789'
+  async function seedWithFile() {
+    await seed()
+    const db = new AppDB(OLD)
+    await db.open()
+    await db.notes.add({ id: 'n1', title: '가상 노트', blocks: [], folder_id: null, created_at: T, updated_at: T, deleted: false } as never)
+    await db.note_files.add({ id: 'f1', note_id: 'n1', name: 'a.txt', mime: 'text/plain', size: new TextEncoder().encode(ATT).length, data: btoa(unescape(encodeURIComponent(ATT))), created_at: T, updated_at: T, deleted: false } as never)
+    db.close()
+  }
+  /** 복사·확인이 끝난 뒤 새 DB의 첨부 암호문을 망가뜨리는 fs(백업 단계가 restoreFolder를 처음 부를 때). */
+  function corruptingFs(base: ReturnType<typeof createMemoryFsAdapter>) {
+    return (db: AppDB) => (db.isVault ? {
+      ...base,
+      restoreFolder: async () => { await db.note_blobs.put({ id: 'f1', _enc: new Uint8Array([9, 9, 9]) }); return base.restoreFolder() },
+    } : base)
+  }
+
+  test('백업 폴더: skipped=1 → 끝내지 않고 안내 + 다시 시도, 옛 DB 그대로', async () => {
+    await seedWithFile()
+    const folder = createMemoryFolder()
+    const { api } = fakeApi()
+    const user = userEvent.setup()
+    render(<MigrationWizard reason="migrate" done={vi.fn()} deps={{ ...deps(api), fsFor: corruptingFs(createMemoryFsAdapter(folder)) }} />)
+    await toPassStep(user)
+    await user.type(await screen.findByLabelText('백업 암호구'), PASS)
+    await user.click(screen.getByRole('button', { name: '확인' }))
+    await user.click(await screen.findByRole('button', { name: '건너뛰기(권장하지 않음)' }))
+    expect(await screen.findByText('첨부 1개가 새 자료에서 손상되어 옛 자료를 지우지 않았습니다. 다시 시도하세요.', undefined, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.queryByText(/BitLocker/)).toBeNull()
+    expect(await Dexie.exists(OLD)).toBe(true)
+    const old = new AppDB(OLD)
+    expect((await old.note_files.get('f1'))?.data).toBe(btoa(unescape(encodeURIComponent(ATT))))
+    old.close()
+    expect(await watsonDbs()).toEqual([]) // 새 DB는 지웠다(다시 시도 = 처음부터 복사)
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(await screen.findByRole('button', { name: '시작' })).toBeInTheDocument()
+  })
+
+  test('저장 대화 상자: skipped=1 → 저장해도 계속할 수 없고 옛 DB 그대로', async () => {
+    await seedWithFile()
+    const saveAs = vi.fn(async () => ({ ok: true as const, name: '고른이름.enc' }))
+    const { api } = fakeApi()
+    const user = userEvent.setup()
+    render(<MigrationWizard reason="migrate" done={vi.fn()} deps={{ ...deps(api, undefined, { saveAs }), fsFor: corruptingFs(createMemoryFsAdapter()) }} />)
+    await toDownloadStep(user)
+    await user.click(screen.getByRole('button', { name: '내려받기' }))
+    expect(await screen.findByText('첨부 1개가 새 자료에서 손상되어 옛 자료를 지우지 않았습니다. 다시 시도하세요.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '계속' })).toBeNull()
+    expect(await Dexie.exists(OLD)).toBe(true)
+  })
+})

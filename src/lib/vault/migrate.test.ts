@@ -234,7 +234,7 @@ describe('finishMigration 조건', () => {
   test('pass 없음 → 거절, 옛 DB 남음', async () => {
     const { old, db, payload, verify } = await ready()
     const { pass: _p, ...noPass } = payload
-    await expect(finishMigration(old, db, { vault: noPass as never, verify, backup: { kind: 'folder', name: '백업_x.enc' } })).rejects.toThrow()
+    await expect(finishMigration(old, db, { vault: noPass as never, verify, backup: { kind: 'folder', name: '백업_x.enc', skipped: 0 } })).rejects.toThrow()
     expect(await Dexie.exists(oldName)).toBe(true)
     db.close()
   })
@@ -242,21 +242,30 @@ describe('finishMigration 조건', () => {
   test('새 백업 없음 → 거절', async () => {
     const { old, db, payload, verify } = await ready()
     await expect(finishMigration(old, db, { vault: payload, verify, backup: undefined as never })).rejects.toThrow()
-    await expect(finishMigration(old, db, { vault: payload, verify, backup: { kind: 'folder', name: '' } })).rejects.toThrow()
+    await expect(finishMigration(old, db, { vault: payload, verify, backup: { kind: 'folder', name: '', skipped: 0 } })).rejects.toThrow()
     expect(await Dexie.exists(oldName)).toBe(true)
     db.close()
   })
 
   test('검증 결과를 흉내 낸 객체 → 거절', async () => {
     const { old, db, payload } = await ready()
-    await expect(finishMigration(old, db, { vault: payload, verify: { ok: true, problems: [] }, backup: { kind: 'download', name: 'a.enc' } })).rejects.toThrow()
+    await expect(finishMigration(old, db, { vault: payload, verify: { ok: true, problems: [] }, backup: { kind: 'download', name: 'a.enc', skipped: 0 } })).rejects.toThrow()
     expect(await Dexie.exists(oldName)).toBe(true)
+    db.close()
+  })
+
+  test('백업에서 빠진 첨부가 있으면(skipped > 0) 또는 skipped를 모르면 → 거절, 옛 DB 남음', async () => {
+    const { old, db, payload, verify } = await ready()
+    await expect(finishMigration(old, db, { vault: payload, verify, backup: { kind: 'folder', name: '백업_x.enc', skipped: 1 } })).rejects.toThrow(/첨부 1개/)
+    await expect(finishMigration(old, db, { vault: payload, verify, backup: { kind: 'folder', name: '백업_x.enc' } as never })).rejects.toThrow()
+    expect(await Dexie.exists(oldName)).toBe(true)
+    expect((await old.note_files.get('f1'))?.data).toBe(enc(ATTACH))
     db.close()
   })
 
   test('모두 갖추면 옛 DB를 지우고 migratedFrom을 남긴다', async () => {
     const { old, db, payload, verify } = await ready()
-    await finishMigration(old, db, { vault: payload, verify, backup: { kind: 'download', name: '백업_x.enc' } })
+    await finishMigration(old, db, { vault: payload, verify, backup: { kind: 'download', name: '백업_x.enc', skipped: 0 } })
     expect(await Dexie.exists(oldName)).toBe(false)
     expect((await db.meta.get('migratedFrom'))?.name).toBe(oldName)
     expect(await db.meta.get('migration')).toBeUndefined()
@@ -568,7 +577,7 @@ describe('resumeOrReset: 설정만 있는 옛 DB', () => {
     if (r.action !== 'backup') return
     await expect(finishMigration(r.oldDb, r.db, { vault: payload, verify: r.verify, backup: undefined as never })).rejects.toThrow()
     expect(await Dexie.exists(oldName)).toBe(true)
-    await finishMigration(r.oldDb, r.db, { vault: payload, verify: r.verify, backup: { kind: 'download', name: '백업_x.enc' } })
+    await finishMigration(r.oldDb, r.db, { vault: payload, verify: r.verify, backup: { kind: 'download', name: '백업_x.enc', skipped: 0 } })
     expect(await Dexie.exists(oldName)).toBe(false)
     expect((await r.db.app_settings.get('app')) as unknown).toMatchObject({ neis_key: '가상나이스열쇠' })
     r.db.close()

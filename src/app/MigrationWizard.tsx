@@ -6,12 +6,12 @@ import { createDesktopFsAdapter } from '../lib/fs/desktop'
 import { getDesktop, type DesktopVaultApi, type SaveAsResult } from '../lib/desktop/bridge'
 import { deriveKey, toBase64, verifyKeyCheck } from '../lib/backup/crypto'
 import {
-  backupFileName, buildBackupFile, cachedKeyFrom, deviceTag, getCachedKey, runBackup, type CachedKey, type DerivedPassKey,
+  backupFileName, buildBackupFile, buildBackupFileReport, cachedKeyFrom, deviceTag, getCachedKey, runBackupReport, type CachedKey, type DerivedPassKey,
 } from '../lib/backup/service'
 import { newRecoveryCode, passKeyRaw, recoveryKeyRaw, PASS_ITER, RECOVERY_ITER } from '../lib/vault/keys'
 import {
   BITLOCKER_NOTICE_KEY, cleanupOrphans, dbExists, discardNewVault, type DiscardStatus, finishMigration, OLD_DB_NAME, openOldDb, planStorage, resumeOrReset,
-  setupNewVault, type BackupProof, type Progress, type SetupResult,
+  setupNewVault, skippedRefusal, type BackupProof, type Progress, type SetupResult,
 } from '../lib/vault/migrate'
 import { RestoreScreen, saveCodeFile, type SetupKey, type SetupReason } from './VaultGate'
 
@@ -250,12 +250,17 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
       let st: Awaited<ReturnType<FsAdapter['restoreFolder']>> = { status: 'none' }
       try { st = await fsFor(r.db).restoreFolder() } catch { st = { status: 'none' } }
       if (st.status === 'ready') {
+        let rep: Awaited<ReturnType<typeof runBackupReport>> | null = null
         try {
-          const name = await runBackup(r.db, st.folder, { now: now() })
-          await finish({ kind: 'folder', name })
-          return
+          rep = await runBackupReport(r.db, st.folder, { now: now() })
         } catch (e) {
           setNote(`백업 폴더에 쓰지 못했습니다(${msgOf(e, '알 수 없는 오류')}). 대신 백업 파일을 내려받으세요.`)
+        }
+        if (rep) {
+          // 새 DB에서 첨부가 풀리지 않아 백업에서 빠졌다: 그 첨부는 옛 DB에만 성하다. 끝내지 않고(옛 DB 유지) 새 DB를 버린다.
+          if (rep.skipped > 0) { await fail(new Error(skippedRefusal(rep.skipped))); return }
+          await finish({ kind: 'folder', name: rep.name, skipped: 0 })
+          return
         }
       }
       setProof(null)
@@ -276,11 +281,12 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
       if (!cached) throw new Error('백업 열쇠가 없습니다.')
       const t = now()
       const name = backupFileName(t, new Set(), '백업_', await deviceTag(r.db))
-      const bytes = await buildBackupFile(r.db, cached, t)
+      const { bytes, skipped } = await buildBackupFileReport(r.db, cached, t)
+      if (skipped > 0) { await fail(new Error(skippedRefusal(skipped))); return }
       setNote(undefined)
       if (saveMode === 'dialog') {
         const res = await saveAs!(name, bytes)
-        if (res.ok) setProof({ kind: 'download', name: res.name })
+        if (res.ok) setProof({ kind: 'download', name: res.name, skipped: 0 })
         else setNote("저장하지 않았습니다. 백업 파일을 저장해야 옛 자료를 지울 수 있습니다. 다시 '내려받기'를 눌러 저장할 곳을 고르세요.")
       } else if (saveMode === 'web') {
         fsFor(r.db).downloadFile(name, bytes)
@@ -457,7 +463,7 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
             </label>
           )}
           {(() => {
-            const p: BackupProof | null = proof ?? (webSaved && webAck ? { kind: 'download', name: webSaved } : null)
+            const p: BackupProof | null = proof ?? (webSaved && webAck ? { kind: 'download', name: webSaved, skipped: 0 } : null)
             return <button type="button" className="primary" disabled={!p || busy} onClick={() => p && void finish(p)}>계속</button>
           })()}
         </Card>

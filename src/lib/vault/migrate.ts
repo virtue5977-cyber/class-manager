@@ -736,7 +736,10 @@ export async function resumeOrReset(opts: {
 }
 
 // ---- 옛 DB 지우기 ----
-export interface BackupProof { kind: 'folder' | 'download'; name: string }
+/** skipped: 그 백업 파일에서 손상되어 빠진 첨부 수. 0일 때만 옛 DB를 지울 수 있다(빠진 첨부는 옛 DB에만 성하게 남아 있다). */
+export interface BackupProof { kind: 'folder' | 'download'; name: string; skipped: number }
+
+export const skippedRefusal = (n: number) => `첨부 ${n}개가 새 자료에서 손상되어 옛 자료를 지우지 않았습니다. 다시 시도하세요.`
 
 /**
  * spec §4.1 옛 DB를 지우는 조건(셋 다): vault에 암호구 길(pass), 새 DB 확인 통과(verifyMigration 결과),
@@ -758,6 +761,10 @@ export async function finishMigration(
   const b = opts.backup
   if (!b || (b.kind !== 'folder' && b.kind !== 'download') || typeof b.name !== 'string' || !b.name) {
     throw new Error('새 자료의 백업 파일이 없어 옛 자료를 지우지 않습니다.')
+  }
+  if (b.skipped !== 0) {
+    if (typeof b.skipped === 'number' && b.skipped > 0) throw new Error(skippedRefusal(b.skipped))
+    throw new Error('새 백업 파일에 모든 첨부가 들어갔는지 알 수 없어 옛 자료를 지우지 않습니다.')
   }
   const row = await newDb.meta.get('vault')
   if (row?.complete !== true || row.keyId !== opts.vault.keyId) throw new Error('새 자료가 완료되지 않아 옛 자료를 지우지 않습니다.')
