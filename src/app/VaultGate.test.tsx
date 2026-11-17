@@ -458,3 +458,63 @@ test('incomplete면 renderSetup에 열쇠(dek·keyId·dbName)를 넘긴다(이�
   expect(got?.dbName).toBe(v.payload.dbName)
   expect(got?.dek).toEqual(v.dek)
 })
+
+describe("열기 화면 '처음부터 다시'(끝나지 않은 옮기기·첫 설치)", () => {
+  afterEach(async () => { for (const n of await Dexie.getDatabaseNames()) await Dexie.delete(n) })
+
+  async function setupState(v: Awaited<ReturnType<typeof makeVault>>) {
+    let wiped = false
+    const reset = vi.fn(async () => { wiped = true; return true })
+    const { vault } = fakeDesktop(async () => (wiped ? { state: 'none' } : { state: 'needs-pass', vault: v.vault }), { reset })
+    return { vault, reset }
+  }
+
+  test('완료 행 없음 + 옛 DB 있음 → 보이고, 누르면 새 DB·vault 지우고 옮기기 마법사로', async () => {
+    const old = new AppDB('class-manager'); await old.open(); old.close()
+    const v = await makeVault({ complete: false })
+    const nd = openVaultDb(v.payload.dbName, v.dek)
+    await nd.students.add(kid() as never) // 행 수와 상관없이(옛 DB가 있으므로)
+    nd.close()
+    const { reset } = await setupState(v)
+    const user = userEvent.setup()
+    render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+    await user.click(await screen.findByRole('button', { name: '처음부터 다시' }))
+    expect(await screen.findByText('준비 중입니다. 잠시 뒤 다시 켜 주세요.')).toBeInTheDocument()
+    expect(document.querySelector('[data-reason="migrate"]')).toBeTruthy()
+    expect(reset).toHaveBeenCalledTimes(1)
+    expect(await Dexie.exists(v.payload.dbName)).toBe(false)
+    expect(await Dexie.exists('class-manager')).toBe(true)
+  })
+
+  test('완료 행 없음 + 옛 DB 없음 + 새 DB에 자료 없음 → 보이고, 누르면 첫 설치로', async () => {
+    const v = await makeVault({ complete: false })
+    const { reset } = await setupState(v)
+    const user = userEvent.setup()
+    render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+    await user.click(await screen.findByRole('button', { name: '처음부터 다시' }))
+    await waitFor(() => expect(document.querySelector('[data-reason="first-install"]')).toBeTruthy())
+    expect(reset).toHaveBeenCalledTimes(1)
+    expect(await Dexie.exists(v.payload.dbName)).toBe(false)
+  })
+
+  test('완료 행이 있으면(옛 DB가 있어도) 보이지 않는다', async () => {
+    const old = new AppDB('class-manager'); await old.open(); old.close()
+    const v = await makeVault()
+    const { reset } = await setupState(v)
+    render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+    expect(await screen.findByRole('heading', { name: '자료 열기' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '처음부터 다시' })).toBeNull()
+    expect(reset).not.toHaveBeenCalled()
+  })
+
+  test('완료 행 없음 + 옛 DB 없음 + 새 DB에 자료 있음 → 보이지 않는다', async () => {
+    const v = await makeVault({ complete: false })
+    const nd = openVaultDb(v.payload.dbName, v.dek)
+    await nd.students.add(kid() as never)
+    nd.close()
+    await setupState(v)
+    render(<VaultGate>{(db) => <Probe db={db} />}</VaultGate>)
+    expect(await screen.findByRole('heading', { name: '자료 열기' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '처음부터 다시' })).toBeNull()
+  })
+})

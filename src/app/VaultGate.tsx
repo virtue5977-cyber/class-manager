@@ -10,7 +10,7 @@ import { normalizeRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, verifyMet
 import { fromBase64, toBase64 } from '../lib/backup/crypto'
 import { restoreIntoNewVault } from '../lib/backup/restoreVault'
 import type { DerivedPassKey } from '../lib/backup/service'
-import { MIGRATION_MARKER } from '../lib/vault/migrate'
+import { canStartOver, MIGRATION_MARKER, startOver } from '../lib/vault/migrate'
 
 export type SetupReason = 'migrate' | 'first-install' | 'incomplete'
 /** incomplete일 때 key: 이 열쇠의 DEK·keyId·DB 이름(마법사가 완료 행을 확인해 이어 할지 정한다). */
@@ -25,7 +25,7 @@ type Phase =
   | { k: 'loading' }
   | { k: 'setup'; reason: SetupReason; key?: SetupKey }
   | { k: 'open'; db: AppDB; notice?: string }
-  | { k: 'unlock'; vault: PublicVault; dpapi?: boolean }
+  | { k: 'unlock'; vault: PublicVault; dpapi?: boolean; startOver?: boolean }
   | { k: 'broken' }
   /** 열쇠는 있는데 그 DB가 이 PC(이 계정)에 없다. 아무것도 만들거나 쓰지 않는다. */
   | { k: 'missing' }
@@ -141,7 +141,10 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
           return
         }
       }
-      set({ k: 'unlock', vault: st.vault, dpapi: st.dpapiAvailable })
+      // 완료 행 없는 새 DB(끝나지 않은 옮기기·첫 설치)면 '처음부터 다시'를 보인다(완료 행이 있으면 절대 아님).
+      let over = false
+      if (api.reset) { try { over = await canStartOver(st.vault.dbName, OLD_DB) } catch { over = false } }
+      set({ k: 'unlock', vault: st.vault, dpapi: st.dpapiAvailable, startOver: over })
     } catch (e) {
       set({ k: 'error', message: e instanceof Error && e.message ? e.message : '열쇠를 읽지 못했습니다.' })
     }
@@ -200,6 +203,13 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
           api={api}
           onUnlocked={(dek) => unlocked(dek, phase.vault)}
           onRestored={run}
+          onStartOver={phase.startOver && api.reset ? async () => {
+            const st = await startOver({ dbName: phase.vault.dbName, reset: () => api.reset!(), oldName: OLD_DB })
+            if (st === 'done') { void run(); return null }
+            return st === 'refused' ? '새 자료에 기록이 있어 지우지 않았습니다.'
+              : st === 'db-failed' ? '새로 만들던 자료를 지우지 못했습니다. 다시 시도하세요.'
+                : '새로 만들던 자료는 지웠지만 열쇠 파일을 지우지 못했습니다. 다시 시도하세요.'
+          } : undefined}
         />
       )
     case 'broken':
@@ -237,12 +247,14 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
 
 type Tab = 'pass' | 'recovery'
 
-function UnlockScreen({ vault, dpapi, api, onUnlocked, onRestored }: {
+function UnlockScreen({ vault, dpapi, api, onUnlocked, onRestored, onStartOver }: {
   vault: PublicVault
   dpapi?: boolean
   api: DesktopVaultApi
   onUnlocked: (dek: Uint8Array) => Promise<void>
   onRestored: () => void
+  /** 끝나지 않은 옮기기·첫 설치일 때만: 새 DB·vault를 지우고 처음부터. 실패하면 이유 문구. */
+  onStartOver?: () => Promise<string | null>
 }) {
   const [tab, setTab] = useState<Tab>('pass')
   const [value, setValue] = useState('')
@@ -332,6 +344,19 @@ function UnlockScreen({ vault, dpapi, api, onUnlocked, onRestored }: {
         </div>
         <button type="submit" className="primary" disabled={busy || !value}>{busy ? '여는 중…' : '열기'}</button>
         {error && <p className="error" role="alert">{error}</p>}
+        {onStartOver && (
+          <div className="stack">
+            <p className="muted">지난번 시작(자료 옮기기·처음 설정)이 끝나지 않았습니다. 암호구가 생각나지 않으면 처음부터 다시 할 수 있습니다. 옛 자료가 있으면 그대로 두고 다시 옮깁니다.</p>
+            <button type="button" disabled={busy} onClick={async () => {
+              setBusy(true)
+              setError(undefined)
+              try {
+                const why = await onStartOver()
+                if (why) setError(why)
+              } catch { setError('처음부터 다시 하지 못했습니다.') } finally { setBusy(false) }
+            }}>처음부터 다시</button>
+          </div>
+        )}
         {fails >= RESTORE_HINT_AFTER && (
           <div className="stack">
             <p className="notice">{fails}번 틀렸습니다. 암호구와 복구 코드를 모두 잊었다면 백업 파일(과 그 파일을 만든 때의 암호구)로 자료를 되살릴 수 있습니다. 계속 다시 시도해도 됩니다.</p>
