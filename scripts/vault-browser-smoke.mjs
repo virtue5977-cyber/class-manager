@@ -22,6 +22,7 @@ import { openVaultDb } from ${vault('vaultDb.ts')}
 import { setupNewVault, finishMigration } from ${vault('migrate.ts')}
 import { passKeyRaw } from ${vault('keys.ts')}
 import { fromBase64 } from ${JSON.stringify(path.join(root, 'src/lib/backup/crypto.ts'))}
+import { exportSnapshotReport } from ${JSON.stringify(path.join(root, 'src/lib/backup/snapshot.ts'))}
 
 const T0 = '2020-01-01T00:00:00.000Z'
 const st = (id, n, over = {}) => ({ id, class_id: 'c1', number: n, name: '가상학생', address: '', birth_date: '',
@@ -135,7 +136,9 @@ window.run = async () => {
     const passKey = { salt, iter: 1000, raw: await passKeyRaw('가상시험암호구', salt, 1000) }
     let payload
     const r = await setupNewVault({ passKey, migrateFrom: old, store: async (p) => { payload = p }, reset: async () => true })
-    await finishMigration(old, r.db, { vault: payload, verify: r.verify, backup: { kind: 'download', name: 'smoke.enc' } })
+    // 새 백업이 모든 첨부를 담는지(빠진 수) 실제 브라우저에서 센다: 0일 때만 옛 DB를 지울 수 있다
+    const { skipped } = await exportSnapshotReport(r.db)
+    await finishMigration(old, r.db, { vault: payload, verify: r.verify, backup: { kind: 'download', name: 'smoke.enc', skipped } })
     r.db.close()
     const v = openVaultDb(payload.dbName, fromBase64(payload.dekB64))
     const after = { students: await v.students.toArray(), attendance: await v.attendance.toArray(), notes: await v.notes.toArray() }
