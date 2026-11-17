@@ -8,7 +8,8 @@ import { decodeBackupFile } from '../lib/backup/format'
 import { decrypt, deriveKey } from '../lib/backup/crypto'
 import { parseSnapshot } from '../lib/backup/snapshot'
 import { createMemoryFolder, createMemoryFsAdapter } from '../lib/fs/memory'
-import { createNewVaultDb } from '../lib/vault/migrate'
+import { createNewVaultDb, markComplete, setupNewVault } from '../lib/vault/migrate'
+import { passKeyRaw } from '../lib/vault/keys'
 import { newDek, type VaultPayload } from '../lib/vault/keys'
 import type { DesktopVaultApi } from '../lib/desktop/bridge'
 
@@ -325,6 +326,7 @@ test('끝나지 않은 옮기기(옛 DB 있음) → 새 DB·vault를 지우고 �
   render(<MigrationWizard reason="incomplete" done={vi.fn()} deps={deps(api)} />)
   expect(await screen.findByText(/끝까지 창을 닫지 마세요/)).toBeInTheDocument()
   expect(screen.getByText(/처음부터 다시/)).toBeInTheDocument()
+  expect(screen.getByText(/지난번에 받은 복구 코드는 쓸 수 없습니다\. 새 복구 코드를 다시 받으세요\./)).toBeInTheDocument()
   expect(api.reset).toHaveBeenCalledTimes(1)
   expect(await Dexie.exists(nd.name)).toBe(false)
   expect(await Dexie.exists(OLD)).toBe(true)
@@ -343,4 +345,71 @@ test('끝나지 않은 옮기기(옛 DB 없음, 새 DB에 자료) → 지우지 
   expect(api.reset).not.toHaveBeenCalled()
   expect(await Dexie.exists(nd.name)).toBe(true)
   void within
+})
+
+test('끝나지 않은 옮기기(옛 DB 지우던 중) → 마저 끝내고 BitLocker 안내를 한 번 보인다', async () => {
+  await seed()
+  const { dek, keyId } = newDek()
+  const nd = await createNewVaultDb(dek, keyId, { migration: true })
+  await markComplete(nd, dek, keyId)
+  await nd.meta.put({ id: 'migration', from: OLD, stage: 'delete-old' })
+  nd.close()
+  const { api } = fakeApi({ status: vi.fn(async () => ({ state: 'ok' as const, vault: { dbName: nd.name, keyId } as never })) })
+  const done = vi.fn()
+  const user = userEvent.setup()
+  render(<MigrationWizard reason="incomplete" done={done} setupKey={{ dek, keyId, dbName: nd.name }} deps={deps(api)} />)
+  expect(await screen.findByText(/BitLocker/)).toBeInTheDocument()
+  expect(done).not.toHaveBeenCalled()
+  expect(await Dexie.exists(OLD)).toBe(false)
+  await user.click(screen.getByRole('button', { name: '시작하기' }))
+  expect(done).toHaveBeenCalledTimes(1)
+})
+
+test('설정만 있는 옛 DB + 완료 뒤 백업 전에 꺼짐 → 옛 DB를 지우기 전에 새 백업을 받는다', async () => {
+  const old = new AppDB(OLD)
+  await old.open()
+  await old.app_settings.put({ id: 'app', teacher_name: '가상교사', created_at: T, updated_at: T, deleted: false } as never)
+  await old.device_local.put({ id: 'aiApiKey', value: 'sk-가상' })
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  let payload: VaultPayload | undefined
+  const r = await setupNewVault({
+    passKey: { salt, iter: ITER, raw: await passKeyRaw(PASS, salt, ITER) }, migrateFrom: old,
+    store: async (p) => { payload = p }, reset: async () => true,
+  })
+  r.db.close()
+  old.close()
+  const folder = createMemoryFolder()
+  const { api } = fakeApi({ status: vi.fn(async () => ({ state: 'ok' as const, vault: payload as never })) })
+  render(<MigrationWizard reason="incomplete" done={vi.fn()} setupKey={{ dek: r.dek, keyId: r.keyId, dbName: r.db.name }} deps={deps(api, createMemoryFsAdapter(folder))} />)
+  expect(await screen.findByText(/BitLocker/, undefined, { timeout: 5000 })).toBeInTheDocument()
+  expect(folder.files.size).toBe(1) // 새 DB 백업
+  expect(api.reset).not.toHaveBeenCalled()
+  expect(await Dexie.exists(OLD)).toBe(false)
+  expect(await Dexie.exists(r.db.name)).toBe(true)
+})
+
+test('설정만 있는 옛 DB + 완료 뒤 꺼짐, 백업 폴더 없음 → 저장해야 계속(옛 DB 그대로)', async () => {
+  const old = new AppDB(OLD)
+  await old.open()
+  await old.app_settings.put({ id: 'app', teacher_name: '가상교사', created_at: T, updated_at: T, deleted: false } as never)
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  let payload: VaultPayload | undefined
+  const r = await setupNewVault({
+    passKey: { salt, iter: ITER, raw: await passKeyRaw(PASS, salt, ITER) }, migrateFrom: old,
+    store: async (p) => { payload = p }, reset: async () => true,
+  })
+  r.db.close()
+  old.close()
+  const saveAs = vi.fn(async () => ({ ok: true as const, name: '고른이름.enc' }))
+  const { api } = fakeApi({ status: vi.fn(async () => ({ state: 'ok' as const, vault: payload as never })) })
+  const user = userEvent.setup()
+  render(<MigrationWizard reason="incomplete" done={vi.fn()} setupKey={{ dek: r.dek, keyId: r.keyId, dbName: r.db.name }} deps={deps(api, createMemoryFsAdapter(), { saveAs })} />)
+  const go = await screen.findByRole('button', { name: '계속' }, { timeout: 5000 })
+  expect(go).toBeDisabled()
+  expect(await Dexie.exists(OLD)).toBe(true)
+  await user.click(screen.getByRole('button', { name: '내려받기' }))
+  await waitFor(() => expect(go).toBeEnabled())
+  await user.click(go)
+  expect(await screen.findByText(/BitLocker/)).toBeInTheDocument()
+  expect(await Dexie.exists(OLD)).toBe(false)
 })

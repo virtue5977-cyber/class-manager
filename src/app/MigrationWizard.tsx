@@ -4,7 +4,7 @@ import type { FsAdapter } from '../lib/fs/adapter'
 import { createWebFsAdapter } from '../lib/fs/web'
 import { createDesktopFsAdapter } from '../lib/fs/desktop'
 import { getDesktop, type DesktopVaultApi, type SaveAsResult } from '../lib/desktop/bridge'
-import { deriveKey, verifyKeyCheck } from '../lib/backup/crypto'
+import { deriveKey, toBase64, verifyKeyCheck } from '../lib/backup/crypto'
 import {
   backupFileName, buildBackupFile, cachedKeyFrom, deviceTag, getCachedKey, runBackup, type CachedKey, type DerivedPassKey,
 } from '../lib/backup/service'
@@ -137,8 +137,26 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
           return
         }
         const r = await resumeOrReset({ dbName, reset: resetFn, oldName, key: setupKey })
-        if (r.action === 'resumed') return done()
+        if (r.action === 'resumed') return r.bitlocker ? setStep({ k: 'bitlocker' }) : done()
         if (r.action === 'blocked') return setStep({ k: 'blocked', reason: r.reason })
+        if (r.action === 'backup') {
+          // 완료된 새 DB(다시 확인함)와 옛 DB: 새 백업을 받은 뒤에만 옛 DB를 지운다.
+          const vault = (await api.status()).vault
+          if (!vault || !setupKey) {
+            r.db.close(); r.oldDb.close()
+            return setStep({ k: 'blocked', reason: '열쇠 파일을 읽지 못했습니다. 아무것도 지우지 않았습니다.' })
+          }
+          oldDb.current = r.oldDb
+          setup.current = {
+            db: r.db, dek: setupKey.dek, keyId: setupKey.keyId, counts: {}, verify: r.verify,
+            payload: { v: 1, keyId: vault.keyId, dbName: vault.dbName, pass: vault.pass, ...(vault.recovery ? { recovery: vault.recovery } : {}), dekB64: toBase64(setupKey.dek) },
+          }
+          setMode('migrate')
+          setNote('지난번에 옮긴 자료를 확인했습니다. 새 백업 파일을 받은 뒤 옛 자료를 지웁니다.')
+          setStep({ k: 'progress' })
+          await backupNew(setup.current)
+          return
+        }
         setMode(r.restart)
         setRestarted(true)
         setStep({ k: 'intro' })
@@ -219,6 +237,15 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
         done()
         return
       }
+      await backupNew(r)
+    } catch (e) {
+      await fail(e)
+    }
+  }
+
+  /** 새 DB로 백업 하나: 백업 폴더가 있으면 거기에 쓰고 끝내기, 없으면 내려받기 단계. */
+  async function backupNew(r: SetupResult) {
+    try {
       setPhase('새 자료로 백업을 만드는 중')
       let st: Awaited<ReturnType<FsAdapter['restoreFolder']>> = { status: 'none' }
       try { st = await fsFor(r.db).restoreFolder() } catch { st = { status: 'none' } }
@@ -362,7 +389,7 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
     case 'intro':
       return (
         <Card title={mode === 'migrate' ? '자료 잠그기' : 'Watson 시작하기'}>
-          {restarted && <p className="notice">지난번 작업이 끝나지 않아 처음부터 다시 합니다. 옛 자료는 그대로입니다.</p>}
+          {restarted && <p className="notice">지난번 작업이 끝나지 않아 처음부터 다시 합니다. 옛 자료는 그대로입니다. 지난번에 받은 복구 코드는 쓸 수 없습니다. 새 복구 코드를 다시 받으세요.</p>}
           <p>{INTRO}</p>
           {mode === 'first-install' && <p className="muted">먼저 백업 암호구를 정합니다. 이 암호구로 백업 파일을 열고, 다른 PC에서도 자료를 엽니다.</p>}
           <button type="button" className="primary" onClick={() => void begin()} disabled={busy}>{busy ? '확인하는 중…' : '시작'}</button>

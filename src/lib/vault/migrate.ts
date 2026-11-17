@@ -502,17 +502,22 @@ async function probeVaultDb(name: string): Promise<AppDB | null> {
  */
 const OLD_SEEDED = new Set(['app_settings', 'reflection_phrases', 'ai_prompts', 'neis_cache', 'school_calendar'])
 
+/** 학생 자료 표(SYNCED 중 OLD_SEEDED 아닌 것)에 행이 있는가. */
+async function hasStudentData(d: Dexie): Promise<boolean> {
+  for (const t of d.tables) {
+    if (!(SYNCED_TABLES as readonly string[]).includes(t.name) || OLD_SEEDED.has(t.name)) continue
+    if ((await t.count()) > 0) return true
+  }
+  return false
+}
+
 /** 옛 DB가 있고 학생 자료 표에 행이 있는가. 열지 못하면 참(모르면 있다고 본다: 옛 DB를 지우지 않는 쪽). */
 export async function oldHasUserRows(name: string): Promise<boolean> {
   if (!(await dbExists(name))) return false
   const d = new Dexie(name) // 스키마 없이 지금 판 그대로 연다(판을 올리지 않음)
   try {
     await d.open()
-    for (const t of d.tables) {
-      if (!(SYNCED_TABLES as readonly string[]).includes(t.name) || OLD_SEEDED.has(t.name)) continue
-      if ((await t.count()) > 0) return true
-    }
-    return false
+    return await hasStudentData(d)
   } catch {
     return true
   } finally {
@@ -520,17 +525,66 @@ export async function oldHasUserRows(name: string): Promise<boolean> {
   }
 }
 
+/** 옛 DB에 device_local 말고는 아무 행도 없는가(정말 빈 옛 DB). 열지 못하면 거짓(지우지 않는 쪽). */
+async function oldOnlyDeviceLocal(name: string): Promise<boolean> {
+  const d = new Dexie(name)
+  try {
+    await d.open()
+    for (const t of d.tables) {
+      if (t.name === 'device_local') continue
+      if ((await t.count()) > 0) return false
+    }
+    return true
+  } catch {
+    return false
+  } finally {
+    d.close()
+  }
+}
+
+/** 완료 행(complete: true)이 있는가(확인값과 상관없이). */
+async function hasCompleteRow(db: AppDB): Promise<boolean> {
+  return (await db.meta.get('vault'))?.complete === true
+}
+
 /**
- * 새 vault를 지워도 되는가(컨트롤러 판정 3): 옛 DB에 자료가 있거나, 새 DB에 meta·device_local 말고 행이 없을 때만.
+ * 새 vault를 지워도 되는가(컨트롤러 판정 3 + 최종 수정): 옛 DB에 자료가 있거나,
+ * 새 DB에 완료 행이 없는데 옛 DB가 있거나(그러면 새 DB는 덜 만든 사본일 뿐), 새 DB에 meta·device_local 말고 행이 없을 때만.
  */
 async function resetAllowed(dbName: string, oldName: string): Promise<boolean> {
   if (await oldHasUserRows(oldName)) return true
   const db = await probeVaultDb(dbName)
   if (!db) return true
-  try { return !(await hasUserRows(db)) } finally { db.close() }
+  try {
+    if (!(await hasCompleteRow(db)) && (await dbExists(oldName))) return true
+    return !(await hasUserRows(db))
+  } finally { db.close() }
+}
+
+/**
+ * 잠금 화면·이어 하기의 '처음부터 다시'를 보여도 되는가: 새 DB가 이 PC에 있고 완료 행이 없으며,
+ * 옛 DB가 있거나(새 DB는 덜 만든 사본) 새 DB에 meta·device_local 말고 행이 없을 때만. 완료 행이 있으면 언제나 거짓.
+ */
+export async function canStartOver(dbName: string, oldName = OLD_DB_NAME): Promise<boolean> {
+  const db = await probeVaultDb(dbName)
+  if (!db) return false
+  try {
+    if (await hasCompleteRow(db)) return false
+    if (await dbExists(oldName)) return true
+    return !(await hasUserRows(db))
+  } finally { db.close() }
 }
 
 export type DiscardStatus = 'done' | 'refused' | 'db-failed' | 'reset-failed'
+
+/** 새 DB 지우기 → vault.reset. 조건은 부르는 쪽이 확인했다. */
+async function wipeNewVault(dbName: string, reset: () => Promise<unknown>): Promise<DiscardStatus> {
+  try {
+    if (await dbExists(dbName)) await Dexie.delete(dbName)
+  } catch { return 'db-failed' }
+  try { await reset() } catch { return 'reset-failed' }
+  return 'done'
+}
 
 /**
  * 새 vault를 지운다: 조건 확인 → 새 DB 지우기 → vault.reset. 무엇이 실패했는지 그대로 돌려준다
@@ -540,11 +594,15 @@ export async function discardNewVault(opts: { dbName: string; reset: () => Promi
   try {
     if (!(await resetAllowed(opts.dbName, opts.oldName ?? OLD_DB_NAME))) return 'refused'
   } catch { return 'refused' }
+  return wipeNewVault(opts.dbName, opts.reset)
+}
+
+/** '처음부터 다시'(잠금 화면): canStartOver일 때만 새 DB와 vault를 지운다. */
+export async function startOver(opts: { dbName: string; reset: () => Promise<unknown>; oldName?: string }): Promise<DiscardStatus> {
   try {
-    if (await dbExists(opts.dbName)) await Dexie.delete(opts.dbName)
-  } catch { return 'db-failed' }
-  try { await opts.reset() } catch { return 'reset-failed' }
-  return 'done'
+    if (!(await canStartOver(opts.dbName, opts.oldName ?? OLD_DB_NAME))) return 'refused'
+  } catch { return 'refused' }
+  return wipeNewVault(opts.dbName, opts.reset)
 }
 
 /** 옮기기·첫 설치를 시작하기 전(vault 없음): 완료 행이 없는 watson-* DB(지난 실패·중단)를 지운다. 완료 행이 있는 것은 건드리지 않는다. */
@@ -578,49 +636,103 @@ async function finalizeMeta(db: AppDB, from: string): Promise<void> {
   })
 }
 
+/** 이어 끝낸 새 DB에 BitLocker 안내 표시가 없으면 남기고 참(화면이 한 번 보인다, spec §4.2 10). */
+async function noteBitlocker(dbName: string, dek: Uint8Array): Promise<boolean> {
+  const db = openVaultDb(dbName, dek)
+  try {
+    await db.open()
+    if (await db.device_local.get(BITLOCKER_NOTICE_KEY)) return false
+    await db.device_local.put({ id: BITLOCKER_NOTICE_KEY, value: new Date().toISOString() })
+    return true
+  } catch {
+    return false
+  } finally {
+    db.close()
+  }
+}
+
 export type ResumeResult =
   | { action: 'reset'; restart: 'migrate' | 'first-install' }
-  | { action: 'resumed' }
+  | { action: 'resumed'; bitlocker: boolean }
+  /** 완료된 새 DB(확인됨)와 옛 DB 둘 다 열어 돌려준다. 새 백업을 만든 뒤 finishMigration(oldDb, db, { verify })로 끝낸다. */
+  | { action: 'backup'; db: AppDB; oldDb: AppDB; verify: VerifyResult }
   | { action: 'blocked'; reason: string }
+
+const restartBy = (oldExists: boolean): 'migrate' | 'first-install' => (oldExists ? 'migrate' : 'first-install')
+
+function wipeResult(st: DiscardStatus, restart: 'migrate' | 'first-install'): ResumeResult {
+  if (st === 'refused') return { action: 'blocked', reason: '새 자료에 기록이 있어 지우지 않았습니다.' }
+  if (st === 'db-failed') return { action: 'blocked', reason: '새로 만들던 자료를 지우지 못했습니다(열쇠 파일은 그대로). 다시 켜서 시도하세요.' }
+  if (st === 'reset-failed') return { action: 'blocked', reason: '새로 만들던 자료는 지웠지만 열쇠 파일을 지우지 못했습니다. 다시 켜서 시도하세요.' }
+  return { action: 'reset', restart }
+}
 
 /**
  * vault.json은 있는데 새 DB가 끝나지 않았을 때(VaultGate 'incomplete').
- * - 완료 행이 이 열쇠로 확인되고 ('delete-old' 표시이거나 옛 DB에 자료가 없으면): 옛 DB를 (있으면) 마저 지우고
- *   migratedFrom을 남겨 이어 한다. 완료된 새 DB는 버리지 않는다.
- * - 옛 DB에 자료가 있거나 새 DB가 비었으면 새 DB와 vault를 지우고 처음부터(옛 자료 있으면 옮기기, 없으면 첫 설치).
- * - 그 밖(옛 자료 없고 새 DB에 자료)에는 아무것도 지우지 않는다.
+ * - 완료 행이 이 열쇠로 확인되면 새 DB는 버리지 않는다:
+ *   'delete-old' 표시(새 백업 증거를 받은 뒤)이거나 옛 DB가 없거나 device_local 말고 비었으면 → 옛 DB를 (있으면) 마저 지우고 이어 한다.
+ *   그 밖(옛 DB에 행이 있음) → 옛 DB를 지우지 않고 다시 확인해 새 백업 단계로('backup'). 옛 DB가 그 뒤 바뀌었으면
+ *   (확인 실패, 옛 DB가 학생 자료를 가졌거나 새 DB에 학생 자료가 없을 때) 새 DB를 버리고 옮기기부터.
+ * - 완료 행이 있는데 확인할 수 없으면 아무것도 지우지 않는다.
+ * - 완료 행이 없으면: 옛 DB가 있으면(행 수와 상관없이) 새 DB는 덜 만든 사본 → 지우고 옮기기부터.
+ *   옛 DB가 없으면 새 DB에 meta·device_local 말고 행이 없을 때만 지우고 첫 설치.
  */
 export async function resumeOrReset(opts: {
   dbName: string
   reset: () => Promise<unknown>
   oldName?: string
   key?: { dek: Uint8Array; keyId: string }
+  samples?: number
 }): Promise<ResumeResult> {
   const oldName = opts.oldName ?? OLD_DB_NAME
-  const oldHas = await oldHasUserRows(oldName)
-  let newRows = false
+  const oldExists = await dbExists(oldName)
   const db = await probeVaultDb(opts.dbName)
-  if (db) {
-    try {
-      const marker = await db.meta.get(MIGRATION_MARKER)
-      const row = await db.meta.get('vault')
-      const verified = !!opts.key && row?.complete === true && verifyMetaCheck(opts.key.dek, opts.key.keyId, row)
-      if (verified && (marker?.stage === 'delete-old' || !oldHas)) {
-        if (await dbExists(oldName)) await Dexie.delete(oldName)
-        await finalizeMeta(db, typeof marker?.from === 'string' ? marker.from : oldName)
-        return { action: 'resumed' }
-      }
-      newRows = await hasUserRows(db)
-    } finally {
+  if (!db) return wipeResult(await wipeNewVault(opts.dbName, opts.reset), restartBy(oldExists))
+  let complete = false
+  let verified = false
+  try {
+    const marker = await db.meta.get(MIGRATION_MARKER)
+    const row = await db.meta.get('vault')
+    complete = row?.complete === true
+    verified = !!opts.key && complete && verifyMetaCheck(opts.key.dek, opts.key.keyId, row)
+    if (verified && (marker?.stage === 'delete-old' || !oldExists || (await oldOnlyDeviceLocal(oldName)))) {
+      if (oldExists) await Dexie.delete(oldName)
+      await finalizeMeta(db, typeof marker?.from === 'string' ? marker.from : oldName)
       db.close()
+      return { action: 'resumed', bitlocker: await noteBitlocker(opts.dbName, opts.key!.dek) }
     }
+  } finally {
+    db.close()
   }
-  if (!oldHas && newRows) return { action: 'blocked', reason: '옛 자료는 이미 없고 새 자료에 기록이 있어 지우지 않았습니다.' }
-  const st = await discardNewVault({ dbName: opts.dbName, reset: opts.reset, oldName })
-  if (st === 'refused') return { action: 'blocked', reason: '새 자료에 기록이 있어 지우지 않았습니다.' }
-  if (st === 'db-failed') return { action: 'blocked', reason: '새로 만들던 자료를 지우지 못했습니다(열쇠 파일은 그대로). 다시 켜서 시도하세요.' }
-  if (st === 'reset-failed') return { action: 'blocked', reason: '새로 만들던 자료는 지웠지만 열쇠 파일을 지우지 못했습니다. 다시 켜서 시도하세요.' }
-  return { action: 'reset', restart: oldHas ? 'migrate' : 'first-install' }
+  if (verified) {
+    // 옛 DB에 행이 있다: 백업 증거 없이는 지우지 않는다. 다시 확인해 새 백업 단계로.
+    const oldDb = openOldDb(oldName)
+    const newDb = openVaultDb(opts.dbName, opts.key!.dek)
+    let keep = false
+    try {
+      await oldDb.open()
+      await newDb.open()
+      const verify = await verifyMigration(oldDb, newDb, opts.samples)
+      if (verify.ok) { keep = true; return { action: 'backup', db: newDb, oldDb, verify } }
+      // 옛 DB에 학생 자료가 없는데 새 DB에는 있다 → 옛 DB는 다시 만들어진 빈 것. 새 DB가 자료다(완료 행 = 만들 때 확인 통과).
+      if (!(await oldHasUserRows(oldName)) && (await hasStudentData(newDb))) {
+        const trusted: VerifyResult = { ok: true, problems: [] }
+        VERIFIED.set(trusted, newDb)
+        keep = true
+        return { action: 'backup', db: newDb, oldDb, verify: trusted }
+      }
+    } finally {
+      if (!keep) { oldDb.close(); newDb.close() }
+    }
+    // 옛 DB가 그 뒤 바뀌었다(옛 exe): 옛 DB가 더 새 자료. 새 DB는 지난 사본일 뿐이라 버리고 옮기기부터.
+    return wipeResult(await wipeNewVault(opts.dbName, opts.reset), 'migrate')
+  }
+  if (complete) return { action: 'blocked', reason: '새 자료가 이미 완료되어 있지만 이 열쇠로 확인하지 못해 지우지 않았습니다.' }
+  // 완료 행 없음: 옛 DB가 있으면 새 DB는 덜 만든 사본이다(행 수와 상관없이).
+  if (oldExists) return wipeResult(await wipeNewVault(opts.dbName, opts.reset), 'migrate')
+  const st = await startOver({ dbName: opts.dbName, reset: opts.reset, oldName })
+  if (st === 'refused') return { action: 'blocked', reason: '옛 자료는 이미 없고 새 자료에 기록이 있어 지우지 않았습니다.' }
+  return wipeResult(st, 'first-install')
 }
 
 // ---- 옛 DB 지우기 ----

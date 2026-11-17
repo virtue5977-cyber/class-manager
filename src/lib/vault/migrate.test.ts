@@ -210,7 +210,7 @@ test('resumeOrReset: 옛 DB 지우는 중 꺼졌으면(완료 행 + delete-old �
   await db.meta.put({ id: 'migration', from: oldName, stage: 'delete-old' })
   db.close()
   const reset = vi.fn(async () => true)
-  expect(await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed' })
+  expect(await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed', bitlocker: true })
   expect(reset).not.toHaveBeenCalled()
   const again = openVaultDb(db.name, dek)
   expect(await again.meta.get('migration')).toBeUndefined()
@@ -406,7 +406,7 @@ describe('resumeOrReset: 완료된 새 DB는 버리지 않는다', () => {
     old.close()
     const { db, dek, keyId } = await completeNew('delete-old')
     const reset = vi.fn(async () => true)
-    expect(await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed' })
+    expect(await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed', bitlocker: true })
     expect(reset).not.toHaveBeenCalled()
     expect(await Dexie.exists(oldName)).toBe(false)
     const again = openVaultDb(db.name, dek)
@@ -425,7 +425,7 @@ describe('resumeOrReset: 완료된 새 DB는 버리지 않는다', () => {
     expect(await Dexie.exists(oldName)).toBe(true)
   })
 
-  test('비어 있는 다시 만든 옛 DB + 완료된 새 DB → vault 유지(이어 하기)', async () => {
+  test('비어 있는 다시 만든 옛 DB(기본 설정만) + 완료된 새 DB → vault 유지, 옛 DB는 새 백업 뒤에만(백업 단계)', async () => {
     const empty = new AppDB(oldName)
     await empty.open()
     await empty.device_local.put({ id: 'x', value: 1 })
@@ -433,9 +433,12 @@ describe('resumeOrReset: 완료된 새 DB는 버리지 않는다', () => {
     empty.close()
     const { db, dek, keyId } = await completeNew('copy')
     const reset = vi.fn(async () => true)
-    expect(await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed' })
+    const r = await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })
+    expect(r.action).toBe('backup')
     expect(reset).not.toHaveBeenCalled()
     expect(await Dexie.exists(db.name)).toBe(true)
+    expect(await Dexie.exists(oldName)).toBe(true)
+    if (r.action === 'backup') { r.db.close(); r.oldDb.close() }
   })
 
   test('비어 있는 옛 DB + 열쇠 없이(확인 불가) 자료 있는 새 DB → 지우지 않음', async () => {
@@ -515,4 +518,111 @@ test('note_files는 바이트 예산으로 나눠 읽는다(한 쪽에 적어도
   expect(steps).toEqual([0, 1, 2, 3])
   expect(new TextDecoder().decode((await readFile(db, 'f3')).bytes)).toBe('def')
   db.close()
+})
+
+// ---- final fix wave ----
+/** 학생 자료 없이 설정·기본값만 있는 옛 DB(나이스 열쇠만 넣은 선생님, 가상 자료) */
+async function seedSeededOnly(name = oldName): Promise<AppDB> {
+  const db = new AppDB(name)
+  await db.open()
+  await db.app_settings.put(base('app', { neis_key: '가상나이스열쇠' }) as never)
+  await db.reflection_phrases.put(base('rp1', { text: '가상 반성문 문장' }) as never)
+  await db.device_local.put({ id: 'aiApiKey', value: 'sk-가상키' })
+  return db
+}
+
+describe('resumeOrReset: 설정만 있는 옛 DB', () => {
+  test('복사 중 꺼짐(완료 행 없음) → 새 DB·vault 지우고 옮기기부터, 옛 DB 그대로', async () => {
+    const old = await seedSeededOnly()
+    const { dek, keyId } = newDek()
+    const db = await createNewVaultDb(dek, keyId, { migration: true, from: oldName })
+    await expect(migrate({
+      oldDb: old, newDb: db, passKey: await derived(),
+      onProgress: (p) => { if (p.table === 'reflection_phrases') throw new Error('가상 중단') },
+    })).rejects.toThrow('가상 중단')
+    db.close()
+    old.close()
+    expect(await new AppDB(db.name, { vault: true }).app_settings.count()).toBe(1) // 설정은 이미 옮겨진 채 꺼짐
+    const reset = vi.fn(async () => true)
+    const r = await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })
+    expect(r).toEqual({ action: 'reset', restart: 'migrate' })
+    expect(reset).toHaveBeenCalledTimes(1)
+    expect(await Dexie.exists(db.name)).toBe(false)
+    const again = new AppDB(oldName)
+    expect((await again.app_settings.get('app')) as unknown).toMatchObject({ neis_key: '가상나이스열쇠' })
+    expect(await again.reflection_phrases.count()).toBe(1)
+    expect((await again.device_local.get('aiApiKey'))?.value).toBe('sk-가상키')
+    again.close()
+  })
+
+  test('완료 행 뒤 백업 전에 꺼짐 → 옛 DB를 지우지 않고 새 백업 단계로(증거 없이는 finishMigration 거절)', async () => {
+    const old = await seedSeededOnly()
+    const { db, dek, keyId, payload } = await fullSetup(old)
+    db.close()
+    old.close()
+    const reset = vi.fn(async () => true)
+    const r = await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })
+    expect(r.action).toBe('backup')
+    expect(reset).not.toHaveBeenCalled()
+    expect(await Dexie.exists(oldName)).toBe(true)
+    if (r.action !== 'backup') return
+    await expect(finishMigration(r.oldDb, r.db, { vault: payload, verify: r.verify, backup: undefined as never })).rejects.toThrow()
+    expect(await Dexie.exists(oldName)).toBe(true)
+    await finishMigration(r.oldDb, r.db, { vault: payload, verify: r.verify, backup: { kind: 'download', name: '백업_x.enc' } })
+    expect(await Dexie.exists(oldName)).toBe(false)
+    expect((await r.db.app_settings.get('app')) as unknown).toMatchObject({ neis_key: '가상나이스열쇠' })
+    r.db.close()
+  })
+
+  test('옛 DB가 device_local 말고 비었으면 → 옛 DB를 지우고 이어 한다', async () => {
+    const empty = new AppDB(oldName)
+    await empty.open()
+    await empty.device_local.put({ id: 'x', value: 1 })
+    empty.close()
+    const { dek, keyId } = newDek()
+    const db = await createNewVaultDb(dek, keyId, { migration: true, from: oldName })
+    await db.students.add(base('s1', { class_id: 'c1', number: 1, name: '가상학생' }) as never)
+    await markComplete(db, dek, keyId)
+    db.close()
+    const reset = vi.fn(async () => true)
+    expect(await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })).toMatchObject({ action: 'resumed' })
+    expect(await Dexie.exists(oldName)).toBe(false)
+    expect(reset).not.toHaveBeenCalled()
+  })
+
+  test('옛 DB에 자료가 있고 그 뒤 바뀌었으면(옛 exe) → 새 DB 버리고 옮기기부터', async () => {
+    const old = await seedOld()
+    const { db, dek, keyId } = await fullSetup(old)
+    db.close()
+    await old.students.update('s1', { memo: '옛 exe에서 고침' })
+    old.close()
+    const reset = vi.fn(async () => true)
+    expect(await resumeOrReset({ dbName: db.name, reset, oldName, key: { dek, keyId } })).toEqual({ action: 'reset', restart: 'migrate' })
+    expect(await Dexie.exists(db.name)).toBe(false)
+    expect(await Dexie.exists(oldName)).toBe(true)
+  })
+})
+
+describe('resumeOrReset: 이어 끝낼 때 BitLocker 안내', () => {
+  async function deleteOldState() {
+    const { dek, keyId } = newDek()
+    const db = await createNewVaultDb(dek, keyId, { migration: true })
+    await markComplete(db, dek, keyId)
+    await db.meta.put({ id: 'migration', from: oldName, stage: 'delete-old' })
+    return { db, dek, keyId }
+  }
+  test('안내 표시가 없으면 bitlocker: true, 표시를 남긴다', async () => {
+    const { db, dek, keyId } = await deleteOldState()
+    db.close()
+    expect(await resumeOrReset({ dbName: db.name, reset: async () => true, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed', bitlocker: true })
+    const again = openVaultDb(db.name, dek)
+    expect(await again.device_local.get('bitlockerNoticeShown')).toBeTruthy()
+    again.close()
+  })
+  test('이미 보였으면 bitlocker: false', async () => {
+    const { db, dek, keyId } = await deleteOldState()
+    await db.device_local.put({ id: 'bitlockerNoticeShown', value: T })
+    db.close()
+    expect(await resumeOrReset({ dbName: db.name, reset: async () => true, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed', bitlocker: false })
+  })
 })
