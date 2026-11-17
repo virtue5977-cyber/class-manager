@@ -1,7 +1,9 @@
 import { openTestVaultDb } from '../vault/testing'
 import { readRaw } from '../vault/middleware'
 import { attachFile, cleanupOrphanFiles, createNote, readFile, MAX_TOTAL } from './notes'
-import { exportSnapshot, importSnapshot } from '../backup/snapshot'
+import { exportSnapshot, exportSnapshotReport, importSnapshot } from '../backup/snapshot'
+import { runBackupReport, setupPassphrase } from '../backup/service'
+import { createMemoryFolder } from '../fs/memory'
 import { b64ToBytes, b64ToBytesYielding, bytesToB64, bytesToB64Yielding, openBlobRows, blobIds } from './blobs'
 import { blobCrypto } from '../vault/vaultDb'
 import { AppDB } from '../db/schema'
@@ -71,7 +73,10 @@ test('9MB 파일 → note_blobs 9행, 같음, 원본 앞 64바이트가 어디�
   const bad = (r3._enc as Uint8Array).slice(); bad[bad.length - 1] ^= 1
   await db.note_blobs.put({ id: r3.id as string, _enc: bad })
   await expect(readFile(db, f.id)).rejects.toThrow('첨부가 손상되었습니다')
-  await expect(exportSnapshot(db)).rejects.toThrow(/big/)
+  // spec §5.4: 내보내기는 손상된 첨부(조각 하나라도)를 행째 빼고 계속한다
+  const rep = await exportSnapshotReport(db)
+  expect(rep.skipped).toBe(1)
+  expect((rep.snapshot.tables.note_files as { id: string }[]).map((x) => x.id)).not.toContain(f.id)
   await db.note_blobs.delete(`${f.id}#5`)
   await expect(readFile(db, f.id)).rejects.toThrow('첨부가 손상되었습니다')
 }, 60000)
@@ -133,3 +138,36 @@ test('openBlobRows: 조각 사이 양보해도 같은 바이트, 행이 빠지�
   const snap = await exportSnapshot(db)
   expect((snap.tables.note_files.find((x) => (x as { id: string }).id === f.id) as { data: string }).data).toBe(b64(bytes))
 }, 60000)
+
+test('exportSnapshot: 손상된 첨부 하나는 빼고(행째) 나머지는 그대로, 뺀 수를 알린다', async () => {
+  const db = openTestVaultDb()
+  const n = await createNote(db)
+  const good1 = await attachFile(db, n.id, { name: 'a.bin', mime: 'x/y', bytes: bytesOf(100) })
+  const bad = await attachFile(db, n.id, { name: 'b.bin', mime: 'x/y', bytes: bytesOf(200) })
+  const good2 = await attachFile(db, n.id, { name: 'c.bin', mime: 'x/y', bytes: bytesOf(300) })
+  const raw = (await readRaw(db, 'note_blobs')).find((r) => r.id === bad.id)!
+  const broken = (raw._enc as Uint8Array).slice(); broken[broken.length - 1] ^= 1
+  await db.note_blobs.put({ id: bad.id, _enc: broken })
+  const { snapshot, skipped } = await exportSnapshotReport(db)
+  expect(skipped).toBe(1)
+  const files = snapshot.tables.note_files as { id: string; data: string }[]
+  expect(files.map((f) => f.id).sort()).toEqual([good1.id, good2.id].sort())
+  expect(files.find((f) => f.id === good1.id)!.data).toBe(b64(bytesOf(100)))
+  expect(files.find((f) => f.id === good2.id)!.data).toBe(b64(bytesOf(300)))
+  expect(Object.keys(files[0]).sort()).not.toContain('broken') // 백업 형식 2에 새 칸 없음
+  await expect(exportSnapshot(db)).resolves.toBeTruthy() // 예전처럼 통째로 멈추지 않는다
+})
+
+test('runBackupReport: 손상된 첨부가 있어도 백업하고 안내 문구를 돌려준다', async () => {
+  const db = openTestVaultDb()
+  await setupPassphrase(db, '가상시험암호구2026', { iterations: 1000 })
+  const n = await createNote(db)
+  const bad = await attachFile(db, n.id, { name: 'b.bin', mime: 'x/y', bytes: bytesOf(200) })
+  const raw = (await readRaw(db, 'note_blobs')).find((r) => r.id === bad.id)!
+  await db.note_blobs.put({ id: bad.id, _enc: (raw._enc as Uint8Array).slice(0, 10) })
+  const folder = createMemoryFolder()
+  const r = await runBackupReport(db, folder)
+  expect(r.skipped).toBe(1)
+  expect(r.warning).toBe('첨부 1개가 손상되어 백업에서 빠졌습니다')
+  expect(folder.files.has(r.name)).toBe(true)
+})

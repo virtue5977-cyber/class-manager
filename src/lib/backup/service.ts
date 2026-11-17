@@ -3,7 +3,7 @@ import type { BackupFolder } from '../fs/adapter'
 import { decrypt, deriveKey, encrypt, fromBase64, makeKeyCheck, PBKDF2_ITERATIONS, randomBytes, toBase64 } from './crypto'
 import { passKeyRaw } from '../vault/keys'
 import { decodeBackupFile, encodeBackupFile, encodeHeader, type BackupHeader } from './format'
-import { exportSnapshot, importSnapshot, parseSnapshot, serializeSnapshotYielding, validateSnapshot } from './snapshot'
+import { exportSnapshotReport, importSnapshot, parseSnapshot, serializeSnapshotYielding, validateSnapshot } from './snapshot'
 import { SYNCED_TABLES } from '../db/schema'
 
 export const BACKUP_KEEP_DEFAULT = 14
@@ -153,24 +153,45 @@ export async function cachedKeyFrom(k: DerivedPassKey): Promise<CachedKey> {
 
 /** 이 DB 전체를 백업 파일 바이트로(쓰지 않음). 옮기기 마법사의 '내려받기'가 쓴다. */
 export async function buildBackupFile(db: AppDB, cached: CachedKey, now: Date): Promise<Uint8Array> {
+  return (await buildBackupFileReport(db, cached, now)).bytes
+}
+
+/** 백업 파일 + 손상되어 뺀 첨부 수. */
+export async function buildBackupFileReport(db: AppDB, cached: CachedKey, now: Date): Promise<{ bytes: Uint8Array; skipped: number }> {
   const header: BackupHeader = { formatVersion: 1, iterations: cached.iterations, salt: cached.salt }
-  const data = await serializeSnapshotYielding(await exportSnapshot(db, now))
+  const { snapshot, skipped } = await exportSnapshotReport(db, now)
+  const data = await serializeSnapshotYielding(snapshot)
   const { iv, ciphertext } = await encrypt(cached.key, data, encodeHeader(header))
-  return encodeBackupFile(header, iv, ciphertext)
+  return { bytes: encodeBackupFile(header, iv, ciphertext), skipped }
+}
+
+export const skippedWarning = (n: number) => `첨부 ${n}개가 손상되어 백업에서 빠졌습니다`
+
+export interface BackupReport {
+  name: string
+  /** 손상되어 백업에서 뺀 첨부 수 */
+  skipped: number
+  /** skipped > 0이면 화면에 보일 문구(백업은 성공) */
+  warning?: string
 }
 
 export async function runBackup(db: AppDB, folder: BackupFolder, opts: { now?: Date; keep?: number } = {}): Promise<string> {
+  return (await runBackupReport(db, folder, opts)).name
+}
+
+/** runBackup과 같되, 손상되어 뺀 첨부가 있으면 그 수와 안내 문구를 함께 돌려준다(실패로 치지 않는다). */
+export async function runBackupReport(db: AppDB, folder: BackupFolder, opts: { now?: Date; keep?: number } = {}): Promise<BackupReport> {
   const cached = await getCachedKey(db)
   if (!cached) throw new Error('백업 암호구가 설정되지 않았습니다.')
   const now = opts.now ?? new Date()
   const tag = await deviceTag(db)
-  const file = await buildBackupFile(db, cached, now)
+  const { bytes: file, skipped } = await buildBackupFileReport(db, cached, now)
   const name = backupFileName(now, new Set(await folder.listFiles()), '백업_', tag)
   await folder.writeFile(name, file)
   const keep = opts.keep ?? (await db.app_settings.get(APP_SETTINGS_ID))?.backup_keep_count ?? BACKUP_KEEP_DEFAULT
   await rotateBackups(folder, keep, tag)
   await db.device_local.put({ id: 'lastBackupAt', value: now.toISOString() })
-  return name
+  return { name, skipped, ...(skipped > 0 ? { warning: skippedWarning(skipped) } : {}) }
 }
 
 export interface SafetyTarget {

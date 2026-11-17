@@ -3,7 +3,7 @@ import { useBackupEvents, useDb, useFs } from '../../app/context'
 import type { BackupFolder } from '../../lib/fs/adapter'
 import type { SafetyTarget } from '../../lib/backup/service'
 import { PBKDF2_ITERATIONS } from '../../lib/backup/crypto'
-import { getCachedKey, getLastBackupAt, changePassphrase, restoreFromBytes, runBackup } from '../../lib/backup/service'
+import { getCachedKey, getLastBackupAt, changePassphrase, restoreFromBytes, runBackupReport } from '../../lib/backup/service'
 import { VaultRewrapContext } from '../../lib/vault/rewrapContext'
 import * as reload from '../../lib/ui/reload'
 import { edition } from '../../lib/update/update'
@@ -84,8 +84,8 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
         if (st.status === 'needs-permission') target = await fs.requestPermission()
       }
       if (!target) throw new Error('먼저 백업 폴더를 지정하세요.')
-      const name = await runBackup(db, target)
-      return `백업했습니다: ${name}`
+      const r = await runBackupReport(db, target)
+      return `백업했습니다: ${r.name}${r.warning ? ` (${r.warning})` : ''}`
     })
 
   const downloadBackup = () =>
@@ -98,9 +98,9 @@ export default function BackupSettings({ iterations = PBKDF2_ITERATIONS }: { ite
         listFiles: async () => [...files.keys()],
         deleteFile: async (n) => void files.delete(n),
       }
-      const name = await runBackup(db, memory)
-      fs.downloadFile(name, files.get(name)!)
-      return `백업 파일을 내려받았습니다: ${name}`
+      const r = await runBackupReport(db, memory)
+      fs.downloadFile(r.name, files.get(r.name)!)
+      return `백업 파일을 내려받았습니다: ${r.name}${r.warning ? ` (${r.warning})` : ''}`
     })
 
   const chooseRestore = () =>

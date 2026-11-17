@@ -1,6 +1,6 @@
 import type { AppDB } from '../lib/db/schema'
 import type { FsAdapter } from '../lib/fs/adapter'
-import { getCachedKey, getLastBackupAt, needsAutoBackup, runBackup } from '../lib/backup/service'
+import { getCachedKey, getLastBackupAt, needsAutoBackup, runBackupReport } from '../lib/backup/service'
 
 export type StartupStatus = 'done' | 'not-due' | 'needs-setup' | 'needs-folder' | 'needs-permission' | 'failed'
 
@@ -17,7 +17,7 @@ export async function runStartup(
   db: AppDB,
   fs: FsAdapter,
   now: Date = new Date(),
-): Promise<{ backup: StartupStatus; error?: string; persisted: boolean }> {
+): Promise<{ backup: StartupStatus; error?: string; warning?: string; persisted: boolean }> {
   const persisted = await requestPersistence()
   return { ...(await runAutoBackup(db, fs, now)), persisted }
 }
@@ -25,16 +25,17 @@ export async function runStartup(
 let queue: Promise<unknown> = Promise.resolve()
 
 /** 기한이 지났으면 자동 백업(켤 때·켜 둔 동안 1시간마다·창이 다시 보일 때). 한 번에 하나씩만 돈다. */
-export function runAutoBackup(db: AppDB, fs: FsAdapter, now: Date = new Date()): Promise<{ backup: StartupStatus; error?: string }> {
-  const run = queue.then(async (): Promise<{ backup: StartupStatus; error?: string }> => {
+export function runAutoBackup(db: AppDB, fs: FsAdapter, now: Date = new Date()): Promise<{ backup: StartupStatus; error?: string; warning?: string }> {
+  const run = queue.then(async (): Promise<{ backup: StartupStatus; error?: string; warning?: string }> => {
     try {
       if (!(await getCachedKey(db))) return { backup: 'needs-setup' }
       if (!needsAutoBackup(await getLastBackupAt(db), now)) return { backup: 'not-due' }
       const state = await fs.restoreFolder()
       if (state.status === 'none') return { backup: 'needs-folder' }
       if (state.status === 'needs-permission') return { backup: 'needs-permission' }
-      await runBackup(db, state.folder, { now })
-      return { backup: 'done' }
+      // 손상된 첨부는 빼고 백업한다(spec §5.4). 뺀 것이 있으면 안내 문구(실패 아님).
+      const r = await runBackupReport(db, state.folder, { now })
+      return r.warning ? { backup: 'done', warning: r.warning } : { backup: 'done' }
     } catch (e) {
       return { backup: 'failed', error: e instanceof Error ? e.message : String(e) }
     }

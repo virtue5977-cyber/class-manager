@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useBackupEvents, useDb, useFs } from '../app/context'
 import { checkBackupStatus, runAutoBackup, runStartup, type StartupStatus } from '../app/startup'
-import { runBackup } from '../lib/backup/service'
+import { runBackupReport } from '../lib/backup/service'
 import { toYmd } from '../lib/schoolDays'
 
 const MESSAGES: Partial<Record<StartupStatus, string>> = {
@@ -28,6 +28,8 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
   const started = useRef(false)
   const [status, setStatus] = useState<StartupStatus | null>(null)
   const [error, setError] = useState<string>()
+  /** 백업은 됐지만 손상된 첨부를 뺐다는 안내 */
+  const [warning, setWarning] = useState<string>()
   // vault DB는 암호구가 필수라 '암호구 없음'이 뜰 수 없다: 열쇠 행이 있으면 그 띠는 거른다.
   const settle = async (st: StartupStatus): Promise<StartupStatus> =>
     st === 'needs-setup' && db.isVault && (await db.device_local.get('backupKeyRaw')) ? 'not-due' : st
@@ -38,6 +40,7 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
     runStartup(db, fs).then(async (r) => {
       setStatus(await settle(r.backup))
       setError(r.error)
+      setWarning(r.warning)
     })
   }, [db, fs])
 
@@ -49,6 +52,7 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
         if (r.backup === 'not-due') return
         setStatus(await settle(r.backup))
         setError(r.error)
+        setWarning(r.warning)
       })
     }
     const every = setInterval(check, 3600_000)
@@ -72,8 +76,9 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
     try {
       const folder = await fs.requestPermission()
       if (!folder) return
-      await runBackup(db, folder)
+      const r = await runBackupReport(db, folder)
       setStatus('done')
+      setWarning(r.warning)
     } catch (e) {
       setStatus('failed')
       setError(e instanceof Error ? e.message : String(e))
@@ -82,12 +87,12 @@ export default function BackupBanner({ today = toYmd(new Date()) }: { today?: st
 
   // 설정 화면에서는 '설정으로 이동'이 필요 없다
   const onSettings = loc.pathname.startsWith('/settings')
-  if (hidden !== false || !status || status === 'done' || status === 'not-due') return null
-  const text = status === 'failed' ? `자동 백업에 실패했습니다: ${error ?? ''}` : MESSAGES[status]
+  if (hidden !== false || !status || status === 'not-due' || (status === 'done' && !warning)) return null
+  const text = status === 'done' ? warning : status === 'failed' ? `자동 백업에 실패했습니다: ${error ?? ''}` : MESSAGES[status]
   return (
     <div className="banner" role="status">
       <span>{text}</span>
-      {status === 'needs-permission' ? (
+      {status === 'done' ? null : status === 'needs-permission' ? (
         <button type="button" onClick={allow}>
           허용
         </button>

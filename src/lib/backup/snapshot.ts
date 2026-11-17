@@ -19,9 +19,18 @@ export const MIGRATIONS: Record<number, (s: Snapshot) => Snapshot> = {
 }
 
 export async function exportSnapshot(db: AppDB, now: Date = new Date()): Promise<Snapshot> {
+  return (await exportSnapshotReport(db, now)).snapshot
+}
+
+/**
+ * 스냅샷 + 손상되어 뺀 첨부 수(spec §5.4: 내보내기는 깨진 행을 건너뛴다). 풀 수 없는 첨부는 그 note_files 행째 뺀다
+ * (백업 형식 2에 새 칸을 두지 않는다). 하나 때문에 자동 백업 전체가 멈추지 않게.
+ */
+export async function exportSnapshotReport(db: AppDB, now: Date = new Date()): Promise<{ snapshot: Snapshot; skipped: number }> {
   const tables = {} as Record<SyncedTable, unknown[]>
   // 암호화 DB: 묶음 안에서는 첨부의 암호문 행만 함께 읽고(같은 시점), 풀기·base64는 묶음 밖에서 조각마다 양보하며 한다.
   const sealed = new Map<string, (NoteBlobRec | undefined)[]>()
+  let skipped = 0
   await db.transaction('r', [...SYNCED_TABLES.map((t) => db.syncedTable(t)), db.note_blobs], async () => {
     for (const t of SYNCED_TABLES) tables[t] = await db.syncedTable(t).toArray()
     if (db.isVault) {
@@ -31,20 +40,23 @@ export async function exportSnapshot(db: AppDB, now: Date = new Date()): Promise
   // 암호화 DB: 첨부 내용(note_blobs)을 풀어 백업 형식대로 note_files.data(base64)에 채운다
   if (db.isVault) {
     const files = tables.note_files as NoteFileRec[]
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i]
-      if (f.deleted) { files[i] = { ...f, data: '' }; continue }
+    const out: NoteFileRec[] = []
+    for (const f of files) {
+      if (f.deleted) { out.push({ ...f, data: '' }); continue }
       let bytes: Uint8Array
       try {
         bytes = await openBlobRows(db, f, sealed.get(f.id) ?? [], { yieldBetween: true })
       } catch {
-        throw new Error(`첨부 '${f.name}'이(가) 손상되어 백업할 수 없습니다. 노트에서 이 첨부를 지우고 다시 시도하세요.`)
+        sealed.delete(f.id)
+        skipped++
+        continue
       }
       sealed.delete(f.id)
-      files[i] = { ...f, data: await bytesToB64Yielding(bytes) }
+      out.push({ ...f, data: await bytesToB64Yielding(bytes) })
     }
+    tables.note_files = out
   }
-  return { app: 'class-manager', schemaVersion: SCHEMA_VERSION, exportedAt: now.toISOString(), tables }
+  return { snapshot: { app: 'class-manager', schemaVersion: SCHEMA_VERSION, exportedAt: now.toISOString(), tables }, skipped }
 }
 
 /** 형식·버전·레코드를 검사하고 현재 버전으로 마이그레이션한다. DB는 건드리지 않는다. */
