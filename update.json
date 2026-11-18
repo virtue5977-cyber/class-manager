@@ -1,11 +1,11 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "shell": 7,
-  "bundle": "bundle-1.0.0.zip",
-  "sha256": "8ee42abcc562a295e9da25790a566ff77c39cbc25338af753a665d7bb38e0f81",
-  "note": "Watson 1.0: 학생 자료 전체 암호화, 구글로 시작, 업데이트·보안 강화. 새 exe가 필요합니다.",
+  "bundle": "bundle-1.0.1.zip",
+  "sha256": "6c0c1a5deccab2e9e651401f99d2d5c8fb329ca36b4bd13aac2dda7e6edefbd4",
+  "note": "Watson 1.0.1: 새 exe에서 화면이 브라우저판으로 열리던 문제를 고쳤습니다. 새 exe가 필요합니다.",
   "date": "2026-11-18",
   "expires": "2027-03-18",
-  "sig": "V30hswS1Zg+B/h8t2PYl5bOOxkDB7NOJwtzFdo8v6fMi+TXgDiDPcOsaXG1AL85edYKmgcN4v4isgVPXMKnpAw==",
-  "sig2": "hBiHJb+rtYo3Qj73rb6sANzEGoWCUmRif/nJUJdSdBF4ewJ7ZVJNp8xp51ykNr3GqtU4mM+CIzrUnz/p+kT+BA=="
+  "sig": "oJuHQzh9tGND+bvEkaYx3wntW0/9YX3VaZcfoZIlSTZRY94Y8TApAwcR8xXWMa0KeHEGQMOm2/mwDqOLKDJWBA==",
+  "sig2": "QgAAAe8/H5nBUCO2IBvMiSt+BKhE+POwBzC6Zc8qV8BoKwnXjb3BstVNomYJ6iU/1Ep2h7iOup5sLLbQz7yuAA=="
 }
