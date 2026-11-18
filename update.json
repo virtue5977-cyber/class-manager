@@ -1,9 +1,11 @@
 {
-  "version": "0.18.1",
-  "shell": 1,
-  "bundle": "bundle-0.18.1.zip",
-  "sha256": "5c7429c7d730c42ffc73eb8e8b29370db4ac3bfc3777d7528cf24e3d3973f6b5",
-  "sig": "v9M5p8ZjeX457odxQDY0e+bOCrBACOImMJSa1izGlKQE936FcBY1D1JFrNuQBzA3vbGxTUEC6Yay9J2EFs41DQ==",
-  "note": "옛 exe 지킴이: 새 Watson(1.0) 자료가 있는 PC에서 옛 exe가 옛 자료를 열지 않게 함",
-  "date": "2026-11-13"
+  "version": "1.0.0",
+  "shell": 7,
+  "bundle": "bundle-1.0.0.zip",
+  "sha256": "8ee42abcc562a295e9da25790a566ff77c39cbc25338af753a665d7bb38e0f81",
+  "note": "Watson 1.0: 학생 자료 전체 암호화, 구글로 시작, 업데이트·보안 강화. 새 exe가 필요합니다.",
+  "date": "2026-11-18",
+  "expires": "2027-03-18",
+  "sig": "V30hswS1Zg+B/h8t2PYl5bOOxkDB7NOJwtzFdo8v6fMi+TXgDiDPcOsaXG1AL85edYKmgcN4v4isgVPXMKnpAw==",
+  "sig2": "hBiHJb+rtYo3Qj73rb6sANzEGoWCUmRif/nJUJdSdBF4ewJ7ZVJNp8xp51ykNr3GqtU4mM+CIzrUnz/p+kT+BA=="
 }
