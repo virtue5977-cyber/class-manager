@@ -1,7 +1,8 @@
 import { expect, test } from 'vitest'
-import { createRequire } from 'node:module'
-const require = createRequire(import.meta.url)
-const { makeOnBeforeClose } = require('../../../electron/beforeClose.cjs') as { makeOnBeforeClose: (ipc: unknown) => (cb: () => Promise<void>) => () => void }
+import { loadPreload } from '../../test/loadPreload'
+// preload 안의 onBeforeClose를, sandbox와 같은 조건으로 preload를 돌려 꺼내 시험한다.
+const makeOnBeforeClose = (ipc: unknown) =>
+  ((loadPreload(ipc).desktop as { app: { onBeforeClose: (cb: () => Promise<void>) => () => void } }).app.onBeforeClose)
 
 function fakeIpc() {
   const handlers = new Map<string, (...a: unknown[]) => void>()

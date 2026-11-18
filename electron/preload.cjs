@@ -1,6 +1,23 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
-const { makeOnBeforeClose } = require('./beforeClose.cjs')
+// 주의: 이 파일은 sandbox:true로 돈다. require('electron') 말고 다른 파일·모듈은 불러올 수 없다(불러오면 preload 전체가 실패해 화면이 브라우저판으로 열린다).
+// preload의 onBeforeClose: 메인의 'app:before-close'에 콜백이 끝난 뒤(오류 무시) 'app:close-ok'로 답한다.
+// 걸면 'app:before-close-ready', 해제하면(복원 뒤 화면을 다시 그릴 때 등) 'app:before-close-unready'를 보내
+// 메인이 답할 화면이 없는 동안 닫기를 3초씩 붙잡지 않게 한다.
+function makeOnBeforeClose(ipc) {
+  let off = null
+  return (cb) => {
+    if (off) off()
+    const h = async () => {
+      try { await cb() } catch { /* 저장이 실패해도 닫기는 진행 */ }
+      ipc.send('app:close-ok')
+    }
+    ipc.on('app:before-close', h)
+    ipc.send('app:before-close-ready')
+    off = () => { ipc.removeListener('app:before-close', h); off = null; ipc.send('app:before-close-unready') }
+    return off
+  }
+}
 
 // 경로 통로: 화면은 경로 글자를 등록할 수 없다. 놓은(고른) File 객체에서 preload가 얻은 경로만 메인에 등록한다.
 const registerDrop = (file) => ipcRenderer.invoke('paths:register-drop', webUtils.getPathForFile(file))
