@@ -85,7 +85,7 @@ function Card({ title, label, children }: { title: string; label?: string; child
  */
 export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
   reason: SetupReason
-  done: () => void
+  done: (opened?: SetupKey) => void
   setupKey?: SetupKey
   deps?: WizardDeps
 }) {
@@ -117,6 +117,8 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
   const passKey = useRef<DerivedPassKey | null>(null)
   const setup = useRef<SetupResult | null>(null)
   const started = useRef(false)
+  /** 방금 옮긴 새 DB의 열쇠(시작하기에서 VaultGate가 암호구 없이 바로 열도록 넘긴다) */
+  const openedKey = useRef<SetupKey | null>(null)
   /** 정리하지 못한 새 DB 이름(다시 시도 때 먼저 정리한다) */
   const pending = useRef<string | null>(null)
 
@@ -137,7 +139,7 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
           return
         }
         const r = await resumeOrReset({ dbName, reset: resetFn, oldName, key: setupKey })
-        if (r.action === 'resumed') return r.bitlocker ? setStep({ k: 'bitlocker' }) : done()
+        if (r.action === 'resumed') return r.bitlocker ? setStep({ k: 'bitlocker' }) : done(setupKey)
         if (r.action === 'blocked') return setStep({ k: 'blocked', reason: r.reason })
         if (r.action === 'backup') {
           // 완료된 새 DB(다시 확인함)와 옛 DB: 새 백업을 받은 뒤에만 옛 DB를 지운다.
@@ -234,7 +236,7 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
       if (mode === 'first-install') {
         r.db.close()
         setup.current = null
-        done()
+        done({ dek: r.dek, keyId: r.keyId, dbName: r.db.name })
         return
       }
       await backupNew(r)
@@ -309,8 +311,10 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
       await finishMigration(oldDb.current!, r.db, { vault: r.payload, verify: r.verify!, backup: p })
       oldDb.current = null
       try { await r.db.device_local.put({ id: BITLOCKER_NOTICE_KEY, value: now().toISOString() }) } catch { /* 안내 표시는 막지 않는다 */ }
+      const opened: SetupKey = { dek: r.dek, keyId: r.keyId, dbName: r.db.name }
       r.db.close()
       setup.current = null
+      openedKey.current = opened
       setStep({ k: 'bitlocker' })
     } catch (e) {
       await fail(e)
@@ -473,7 +477,7 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
         <Card title="다 됐습니다">
           <p>학생 자료를 잠갔습니다. 이제 이 PC의 윈도우 계정과 백업 암호구로 엽니다.</p>
           <p className="notice">{BITLOCKER}</p>
-          <button type="button" className="primary" autoFocus onClick={done}>시작하기</button>
+          <button type="button" className="primary" autoFocus onClick={() => done(openedKey.current ?? setupKey)}>시작하기</button>
         </Card>
       )
     case 'failed':

@@ -518,3 +518,31 @@ describe("열기 화면 '처음부터 다시'(끝나지 않은 옮기기·첫 �
     expect(screen.queryByRole('button', { name: '처음부터 다시' })).toBeNull()
   })
 })
+
+describe('done(opened): 옮기기·첫 설치 직후 암호구를 다시 묻지 않는다', () => {
+  test('dpapiAvailable 거짓 PC: 마법사가 넘긴 열쇠로 열기 화면 없이 앱이 열린다', async () => {
+    const v = await makeVault()
+    let st: VaultStatus = { state: 'none' }
+    const { vault } = fakeDesktop(async () => st)
+    let done: ((o?: { dek: Uint8Array; keyId: string; dbName: string }) => void) | undefined
+    render(<VaultGate renderSetup={(p) => { done = p.done; return <p>마법사 {p.reason}</p> }}>{(db) => <Probe db={db} />}</VaultGate>)
+    await screen.findByText(/^마법사/)
+    st = { state: 'needs-pass', vault: v.vault, dpapiAvailable: false }
+    act(() => done!({ dek: v.dek, keyId: v.vault.keyId, dbName: v.vault.dbName }))
+    expect(await screen.findByText(new RegExp(`열린 DB ${v.vault.dbName}`))).toBeInTheDocument()
+    expect(screen.queryByText('자료 열기')).not.toBeInTheDocument()
+    expect(vault.unlockDpapi).not.toHaveBeenCalled()
+  })
+
+  test('열쇠가 DB와 맞지 않으면 그래도 열지 않는다(wrong-key)', async () => {
+    const v = await makeVault({ meta: 'bad-check' })
+    let st: VaultStatus = { state: 'none' }
+    fakeDesktop(async () => st)
+    let done: ((o?: { dek: Uint8Array; keyId: string; dbName: string }) => void) | undefined
+    render(<VaultGate renderSetup={(p) => { done = p.done; return <p>마법사 {p.reason}</p> }}>{(db) => <Probe db={db} />}</VaultGate>)
+    await screen.findByText(/^마법사/)
+    st = { state: 'needs-pass', vault: v.vault, dpapiAvailable: false }
+    act(() => done!({ dek: v.dek, keyId: v.vault.keyId, dbName: v.vault.dbName }))
+    expect(await screen.findByText(/열쇠와 자료가 서로 맞지 않습니다/)).toBeInTheDocument()
+  })
+})

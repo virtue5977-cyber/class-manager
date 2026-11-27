@@ -159,6 +159,7 @@ test('옮기기 전체(백업 폴더 있음): 옛 백업 → 암호구 → 복�
   expect(await Dexie.exists(OLD)).toBe(false)
   await user.click(screen.getByRole('button', { name: '시작하기' }))
   expect(done).toHaveBeenCalledTimes(1)
+  expect(done).toHaveBeenCalledWith(expect.objectContaining({ dek: expect.any(Uint8Array), keyId: expect.any(String), dbName: expect.stringMatching(/^watson-/) }))
   expect(await watsonDbs()).toEqual([stored[0].dbName])
 })
 
@@ -308,6 +309,7 @@ test('첫 설치: 암호구 → 복구 코드 건너뛰기 → 빈 새 DB, done'
   await user.click(screen.getByRole('button', { name: '정하기' }))
   await user.click(await screen.findByRole('button', { name: '건너뛰기(권장하지 않음)' }))
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1))
+  expect(done).toHaveBeenCalledWith(expect.objectContaining({ dek: expect.any(Uint8Array), dbName: expect.stringMatching(/^watson-/) }))
   expect(stored).toHaveLength(1)
   expect(stored[0].recovery).toBeUndefined()
   const db = new AppDB(stored[0].dbName, { vault: true })

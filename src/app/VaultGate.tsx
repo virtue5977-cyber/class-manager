@@ -15,7 +15,8 @@ import { canStartOver, MIGRATION_MARKER, startOver } from '../lib/vault/migrate'
 export type SetupReason = 'migrate' | 'first-install' | 'incomplete'
 /** incomplete일 때 key: 이 열쇠의 DEK·keyId·DB 이름(마법사가 완료 행을 확인해 이어 할지 정한다). */
 export interface SetupKey { dek: Uint8Array; keyId: string; dbName: string }
-export type RenderSetup = (p: { reason: SetupReason; done: () => void; key?: SetupKey }) => ReactNode
+/** done(opened): 마법사가 방금 만든·확인한 열쇠. 주면 그 열쇠로 바로 연다(checkOpen 확인은 그대로). 없으면 상태를 다시 읽는다. */
+export type RenderSetup = (p: { reason: SetupReason; done: (opened?: SetupKey) => void; key?: SetupKey }) => ReactNode
 
 /** 이만큼 틀리면 백업 파일에서 복원하는 길을 보인다(다시 시도는 계속 된다). */
 export const RESTORE_HINT_AFTER = 5
@@ -150,6 +151,24 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
     }
   }, [api, checkOpen])
 
+  /** 마법사가 넘긴 열쇠로 곧바로 연다. 열쇠 파일(공개 부분)이 그 열쇠와 맞지 않거나 읽지 못하면 상태를 다시 읽는다. */
+  const openWith = useCallback(async (opened: SetupKey) => {
+    if (!api) return
+    const id = ++runId.current
+    dekRef.current = null
+    vaultRef.current = null
+    try {
+      const st = await api.status()
+      if (!current(id)) return
+      if (st.vault && st.vault.keyId === opened.keyId && st.vault.dbName === opened.dbName) {
+        const p = await checkOpen(opened.dek, st.vault, id)
+        if (p) commitOpen(p, opened.dek, st.vault)
+        return
+      }
+    } catch { /* 아래에서 상태를 다시 읽는다 */ }
+    if (current(id)) void run()
+  }, [api, checkOpen, run])
+
   /** 암호구·복구 코드로 푼 DEK: DB를 먼저 확인하고, 열 수 있을 때만 DPAPI로 다시 감싸 저장한다. */
   const unlocked = useCallback(async (dek: Uint8Array, vault: PublicVault) => {
     if (!api) return
@@ -192,7 +211,7 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
         </VaultRewrapContext.Provider>
       )
     case 'setup': {
-      const done = () => { void run() }
+      const done = (opened?: SetupKey) => { void (opened ? openWith(opened) : run()) }
       return <>{renderSetup ? renderSetup({ reason: phase.reason, done, key: phase.key }) : <SetupPending reason={phase.reason} />}</>
     }
     case 'unlock':
