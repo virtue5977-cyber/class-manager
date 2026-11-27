@@ -1,6 +1,6 @@
 // 구글 드라이브 'Watson' 폴더(스펙 §7.4). 1.0.1 exe가 허용하는 주소만 쓴다.
 //   GET/POST /drive/v3/files, GET/PATCH?/DELETE /drive/v3/files/<id>, (이어 올리기·받기는 uploadResumable/download)
-import { callJson, googleDownload, googleUpload, type GoogleBridge } from '../google/google'
+import { callJson, GoogleApiError, googleDownload, googleUpload, type GoogleBridge } from '../google/google'
 import type { Wrapped } from '../vault/keys'
 
 export interface KeyFile extends Wrapped { v: 1; keyId: string; check: string; updatedAt: string }
@@ -16,19 +16,41 @@ const props = (k: Kind, extra: Record<string, string> = {}) => ({ watson: k, ...
 const has = (k: string, v: string) => `appProperties has { key='${k}' and value='${v}' }`
 const byAge = (a: Item, b: Item) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1)
 
-export function createDriveStore(g: GoogleBridge, opts: { pageSize?: number } = {}) {
+const MAX_PAGES = 100
+const sleep = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve())
+
+/** 열쇠 파일 모양 검사. 아는 칸만 새 객체에 복사한다. */
+function parseKeyFile(text: string): KeyFile {
+  let j: unknown
+  try { j = JSON.parse(text) } catch { throw new Error('BAD_KEY_FILE') }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('BAD_KEY_FILE')
+  const o = j as Record<string, unknown>
+  const str = (k: string) => { const v = Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined; if (typeof v !== 'string') throw new Error('BAD_KEY_FILE'); return v }
+  const iter = Object.prototype.hasOwnProperty.call(o, 'iter') ? o.iter : undefined
+  if (o.v !== 1 || typeof iter !== 'number' || !Number.isInteger(iter) || iter < 100_000 || iter > 10_000_000) throw new Error('BAD_KEY_FILE')
+  return { v: 1, keyId: str('keyId'), salt: str('salt'), iter, iv: str('iv'), ct: str('ct'), check: str('check'), updatedAt: str('updatedAt') }
+}
+const ignore404 = async (p: Promise<unknown>) => { try { await p } catch (e) { if (!(e instanceof GoogleApiError && e.status === 404)) throw e } }
+
+export function createDriveStore(g: GoogleBridge, opts: { pageSize?: number; recheckDelayMs?: number } = {}) {
   const pageSize = opts.pageSize ?? 100
+  const recheckDelayMs = opts.recheckDelayMs ?? 3000
 
   async function list(q: string, fields = FIELDS): Promise<Item[]> {
     const out: Item[] = []
     let token: string | undefined
-    do {
+    const seen = new Set<string>()
+    for (let page = 0; ; page++) {
+      if (page >= MAX_PAGES) throw new Error('PAGING_LOOP')
       const qs = new URLSearchParams({ q, fields: fields.replace('files(', 'nextPageToken,files('), orderBy: 'createdTime', pageSize: String(pageSize) })
       if (token) qs.set('pageToken', token)
       const j = await callJson<{ files?: Item[]; nextPageToken?: string }>(g, 'GET', `/drive/v3/files?${qs}`)
       out.push(...(j?.files ?? []))
       token = j?.nextPageToken
-    } while (token)
+      if (!token) break
+      if (seen.has(token)) throw new Error('PAGING_LOOP')
+      seen.add(token)
+    }
     return out.sort(byAge)
   }
   const inRoot = (root: string, kind: Kind, extra?: [string, string]) =>
@@ -38,14 +60,28 @@ export function createDriveStore(g: GoogleBridge, opts: { pageSize?: number } = 
     const r = (await list(`${has('watson', 'root')} and trashed=false`))[0]
     return r ? { id: r.id, createdTime: r.createdTime } : null
   }
-  async function createRoot(): Promise<string> {
+  async function deleteRoot(id: string): Promise<void> {
+    await ignore404(callJson(g, 'DELETE', `/drive/v3/files/${id}`))
+  }
+  /** 만든 뒤 바로, 잠깐 있다가 한 번 더 목록을 본다. 더 오래된 루트가 있으면 내 것을 지우고 그것을 쓴다. */
+  async function createRoot(): Promise<{ id: string; created: boolean }> {
     const mine = await callJson<{ id: string; createdTime: string }>(g, 'POST', '/drive/v3/files?fields=id,createdTime', { name: 'Watson', mimeType: FOLDER, appProperties: props('root') })
-    const oldest = await findRoot()
-    if (oldest && oldest.id !== mine.id) {
-      await callJson(g, 'DELETE', `/drive/v3/files/${mine.id}`)
-      return oldest.id
+    for (let i = 0; i < 2; i++) {
+      if (i === 1) await sleep(recheckDelayMs)
+      const oldest = await findRoot()
+      if (oldest && oldest.id !== mine.id) {
+        await deleteRoot(mine.id)
+        return { id: oldest.id, created: false }
+      }
     }
-    return mine.id
+    return { id: mine.id, created: true }
+  }
+  /** 매 동기화 처음에 부른다. 가장 오래된 루트로 옮겨 가야 하면 switched. losers는 그 밖의 루트(부르는 쪽이 지운다). */
+  async function resolveRoot(myRootId: string): Promise<{ rootId: string; switched: boolean; losers: string[] }> {
+    const roots = await list(`${has('watson', 'root')} and trashed=false`, 'files(id,createdTime)')
+    if (!roots.length) return { rootId: myRootId, switched: false, losers: [] }
+    const oldest = roots[0].id
+    return { rootId: oldest, switched: oldest !== myRootId, losers: roots.slice(1).map((r) => r.id) }
   }
 
   async function findOne(root: string, kind: Kind, extra?: [string, string]) {
@@ -56,16 +92,26 @@ export function createDriveStore(g: GoogleBridge, opts: { pageSize?: number } = 
     return googleUpload(g, { name, parents: [root], appProperties: props(kind, extra), mimeType: 'application/octet-stream' }, bytes)
   }
 
+  async function readKeyFile(root: string): Promise<KeyFile | null> {
+    const it = await findOne(root, 'key')
+    if (!it) return null
+    return parseKeyFile(new TextDecoder().decode(await googleDownload(g, it.id)))
+  }
+
   return {
     findRoot,
     createRoot,
-    async readKeyFile(root: string): Promise<KeyFile | null> {
+    resolveRoot,
+    deleteRoot,
+    readKeyFile,
+    /** 열쇠 파일이 이미 있고 keyId가 expectKeyId와 다르면 KEY_EXISTS(force가 아닌 한). */
+    async writeKeyFile(root: string, kf: KeyFile, o: { expectKeyId?: string | null; force?: boolean } = {}): Promise<void> {
       const it = await findOne(root, 'key')
-      if (!it) return null
-      return JSON.parse(new TextDecoder().decode(await googleDownload(g, it.id))) as KeyFile
-    },
-    async writeKeyFile(root: string, kf: KeyFile): Promise<void> {
-      const it = await findOne(root, 'key')
+      if (it && !o.force) {
+        let cur: string | null = null
+        try { cur = (await readKeyFile(root))?.keyId ?? null } catch { cur = null }
+        if (cur === null || cur !== (o.expectKeyId ?? null)) throw new Error('KEY_EXISTS')
+      }
       await put(root, 'watson-key.json', 'key', {}, new TextEncoder().encode(JSON.stringify(kf)), it?.id)
     },
     async listDevices(root: string): Promise<DeviceEntry[]> {
@@ -78,7 +124,12 @@ export function createDriveStore(g: GoogleBridge, opts: { pageSize?: number } = 
       return put(root, `${deviceId}.wsync`, 'device', { deviceId }, bytes, id)
     },
     async deleteDevice(fileId: string): Promise<void> {
-      await callJson(g, 'DELETE', `/drive/v3/files/${fileId}`)
+      await ignore404(callJson(g, 'DELETE', `/drive/v3/files/${fileId}`))
+    },
+    async listFileIds(root: string): Promise<Set<string>> {
+      const out = new Set<string>()
+      for (const i of await list(inRoot(root, 'file'))) if (i.appProperties?.blobId) out.add(i.appProperties.blobId)
+      return out
     },
     async hasFile(root: string, blobId: string): Promise<boolean> {
       return !!(await findOne(root, 'file', ['blobId', safe(blobId, '첨부 id')]))

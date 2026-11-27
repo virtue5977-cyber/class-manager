@@ -10,12 +10,16 @@ export interface FakeFile {
   createdTime: string
   modifiedTime: string
   trashed: boolean
+  /** 목록에 아직 안 보이는 남은 목록 호출 수(늦게 반영되는 목록 흉내) */
+  hiddenLists?: number
   bytes?: Uint8Array
 }
 export interface FakeFail { status: number; reason?: string }
 export interface FakeDrive extends GoogleBridge {
   /** 다음 n번(기본 1) 호출을 이 오류로 실패시킨다. */
   failNext(f: FakeFail, n?: number): void
+  /** 이 뒤에 만들어진 파일은 목록 호출 n번 동안 목록에 안 보인다(get·download는 보인다). */
+  lagLists(n: number): void
   /** 부른 주소 기록: `METHOD url`(api), `UPLOAD`/`UPDATE <id>`(uploadResumable), `DOWNLOAD <id>` */
   calls: string[]
   files: Map<string, FakeFile>
@@ -32,6 +36,7 @@ export function fakeDrive(opts: { now?: () => string } = {}): FakeDrive {
   let tick = 0
   const now = opts.now ?? (() => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString())
   let seq = 0
+  let lag = 0
   const files = new Map<string, FakeFile>()
   const calls: string[] = []
   const fails: FakeFail[] = []
@@ -58,6 +63,7 @@ export function fakeDrive(opts: { now?: () => string } = {}): FakeDrive {
   const bridge: FakeDrive = {
     calls,
     files,
+    lagLists(n) { lag = n },
     failNext(f, n = 1) { for (let i = 0; i < n; i++) fails.push(f) },
     bytesOf: (id) => files.get(id)?.bytes,
     allBytes: () => [...files.values()].flatMap((f) => (f.bytes ? [f.bytes] : [])),
@@ -80,7 +86,8 @@ export function fakeDrive(opts: { now?: () => string } = {}): FakeDrive {
           const q = sp.get('q') ?? ''
           const size = Math.min(1000, Number(sp.get('pageSize') ?? 100))
           const start = Number(sp.get('pageToken') ?? 0)
-          let list = [...files.values()].filter((x) => matchQ(x, q))
+          let list = [...files.values()].filter((x) => !(x.hiddenLists && x.hiddenLists > 0) && matchQ(x, q))
+          for (const x of files.values()) if (x.hiddenLists && x.hiddenLists > 0) x.hiddenLists--
           if (sp.get('orderBy') === 'createdTime') list = list.sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1))
           const page = list.slice(start, start + size)
           const flds = sp.get('fields') ?? ''
@@ -93,7 +100,7 @@ export function fakeDrive(opts: { now?: () => string } = {}): FakeDrive {
         if (method === 'POST') {
           const b = (body ?? {}) as Partial<FakeFile>
           const t = now()
-          const nf: FakeFile = { id: nextId(), name: b.name, mimeType: b.mimeType, parents: b.parents ?? [], appProperties: { ...(b.appProperties ?? {}) }, createdTime: t, modifiedTime: t, trashed: false }
+          const nf: FakeFile = { id: nextId(), name: b.name, mimeType: b.mimeType, parents: b.parents ?? [], appProperties: { ...(b.appProperties ?? {}) }, createdTime: t, modifiedTime: t, trashed: false, hiddenLists: lag }
           files.set(nf.id, nf)
           return { status: 200, json: project(nf, fieldList(sp.get('fields'), 'id')) }
         }
@@ -105,7 +112,12 @@ export function fakeDrive(opts: { now?: () => string } = {}): FakeDrive {
         if (sp.get('alt') === 'media') return { status: 200, bytes: file.bytes ?? new Uint8Array() }
         return { status: 200, json: project(file, fieldList(sp.get('fields'), 'id,name')) }
       }
-      if (method === 'DELETE') { files.delete(id); return { status: 204 } }
+      if (method === 'DELETE') {
+        // 폴더를 지우면 안의 것도 같이 사라진다.
+        const drop = (x: string) => { files.delete(x); for (const c of [...files.values()]) if (c.parents.includes(x)) drop(c.id) }
+        drop(id)
+        return { status: 204 }
+      }
       if (method === 'PATCH') {
         const b = (body ?? {}) as Partial<FakeFile>
         if (b.name !== undefined) file.name = b.name
@@ -133,7 +145,7 @@ export function fakeDrive(opts: { now?: () => string } = {}): FakeDrive {
         file.modifiedTime = t
         return { ok: true, id: file.id }
       }
-      const nf: FakeFile = { id: nextId(), name: m.name, mimeType: m.mimeType, parents: m.parents ?? [], appProperties: { ...(m.appProperties ?? {}) }, createdTime: t, modifiedTime: t, trashed: false, bytes: copy }
+      const nf: FakeFile = { id: nextId(), name: m.name, mimeType: m.mimeType, parents: m.parents ?? [], appProperties: { ...(m.appProperties ?? {}) }, createdTime: t, modifiedTime: t, trashed: false, bytes: copy, hiddenLists: lag }
       files.set(nf.id, nf)
       return { ok: true, id: nf.id }
     },
