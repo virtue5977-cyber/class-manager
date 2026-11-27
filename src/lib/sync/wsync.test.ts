@@ -65,12 +65,65 @@ describe('wsync', () => {
   })
 })
 
+describe('wsync fixes', () => {
+  const hdr = { fmt: 1, app: 'a', deviceId: 'dev-A', deviceName: 'n', at: 't', keyId: 'k1', maxUpdated: '', tables: {} }
+  it('rejects inner deviceId differing from argument', async () => {
+    const bytes = await sealJson({ ...hdr, deviceId: 'dev-X' })
+    await expect(openWsync(bytes, dek, 'dev-A')).rejects.toThrow('BAD_SNAPSHOT')
+  })
+  it('rejects empty keyId', async () => {
+    await expect(openWsync(await sealJson({ ...hdr, keyId: '' }), dek, 'dev-A')).rejects.toThrow('BAD_SNAPSHOT')
+  })
+  it('KEY_MISMATCH only when expectedKeyId given and differs', async () => {
+    const bytes = await sealJson(hdr)
+    await expect(openWsync(bytes, dek, 'dev-A', 'k1')).resolves.toMatchObject({ keyId: 'k1' })
+    await expect(openWsync(bytes, dek, 'dev-A')).resolves.toBeTruthy()
+    await expect(openWsync(bytes, dek, 'dev-A', 'k2')).rejects.toThrow('KEY_MISMATCH')
+  })
+  it('valid AEAD around invalid gzip gives BAD_SNAPSHOT, no unhandled rejection', async () => {
+    const un: unknown[] = []
+    const h = (e: unknown) => un.push(e)
+    process.on('unhandledRejection', h)
+    const bytes = encryptBytes(dek, new TextEncoder().encode('not gzip at all'), 'watson-sync:v1:dev-A')
+    await expect(openWsync(bytes, dek, 'dev-A')).rejects.toThrow('BAD_SNAPSHOT')
+    await new Promise((r) => setTimeout(r, 50))
+    process.off('unhandledRejection', h)
+    expect(un).toEqual([])
+  })
+  it('__proto__ table round-trips via extra without polluting', async () => {
+    const extra = Object.create(null) as Record<string, unknown>
+    extra['__proto__'] = [{ id: 'p', updated_at: 'x' }]
+    const snap = await openWsync(await buildWsync({ ...base, tables: {}, extra }), dek, 'dev-A')
+    expect(Object.keys(snap.extra)).toEqual(['__proto__'])
+    expect(Object.getPrototypeOf(snap.extra)).toBeNull()
+    expect(Object.getPrototypeOf(snap.tables)).toBeNull()
+    expect(({} as Record<string, unknown>).id).toBeUndefined()
+    const again = await openWsync(await buildWsync({ ...base, tables: snap.tables, extra: snap.extra }), dek, 'dev-A')
+    expect(Object.keys(again.extra)).toEqual(['__proto__'])
+  })
+  it('Uint8Array inside extra round-trips', async () => {
+    const extra = { future: [{ id: 'f', updated_at: 'x', blob: new Uint8Array([9, 8, 7]) }] }
+    const snap = await openWsync(await buildWsync({ ...base, tables: {}, extra }), dek, 'dev-A')
+    expect((snap.extra.future as any)[0].blob).toEqual(new Uint8Array([9, 8, 7]))
+  })
+  it('fmt 1.5 / 0 is BAD_SNAPSHOT, fmt 2 NEWER_FORMAT', async () => {
+    for (const f of [1.5, 0]) await expect(openWsync(await sealJson({ ...hdr, fmt: f }), dek, 'dev-A')).rejects.toThrow('BAD_SNAPSHOT')
+    await expect(openWsync(await sealJson({ ...hdr, fmt: 2 }), dek, 'dev-A')).rejects.toThrow('NEWER_FORMAT')
+  })
+  it('wfile errors become BAD_FILE', () => {
+    const sealed = sealFile(dek, 'b1', new Uint8Array([1]))
+    expect(() => openFile(dek, 'b2', sealed)).toThrow('BAD_FILE')
+    expect(() => openFile(dek, 'b1', new Uint8Array(3))).toThrow('BAD_FILE')
+    expect(() => sealFile(new Uint8Array(5), 'b', new Uint8Array(1))).toThrow('BAD_FILE')
+  })
+})
+
 describe('wfile', () => {
   it('round-trips, aad binds blobId', async () => {
     const data = new Uint8Array([0, 1, 2, 250, 255])
     const sealed = sealFile(dek, 'b1', data)
     expect(sealed[0]).toBe(1)
     expect(openFile(dek, 'b1', sealed)).toEqual(data)
-    expect(() => openFile(dek, 'b2', sealed)).toThrow()
+    expect(() => openFile(dek, 'b2', sealed)).toThrow('BAD_FILE')
   })
 })
