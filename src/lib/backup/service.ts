@@ -210,7 +210,7 @@ async function hasAnyData(db: AppDB): Promise<boolean> {
 }
 
 /** 복원 직전 현재 상태를 복원전_ 파일로 남긴다. 보관 정리하지 않는다. 손상되어 뺀 첨부 수를 돌려준다. */
-async function writeSafetyBackup(db: AppDB, target: SafetyTarget | undefined, now: Date): Promise<number> {
+export async function writeSafetyBackup(db: AppDB, target: SafetyTarget | undefined, now: Date): Promise<number> {
   if (!(await hasAnyData(db))) return 0
   const cached = await getCachedKey(db)
   if (!cached) throw new Error('현재 데이터를 보호하는 백업을 만들 수 없습니다. 먼저 이 기기에서 백업 암호구를 설정하세요.')
