@@ -51,7 +51,7 @@ export interface SyncOnceParams {
   db: AppDB
   dek: Uint8Array
   keyId: string
-  store: Pick<DriveStore, 'resolveRoot' | 'deleteRoot' | 'listDevices' | 'downloadDevice' | 'uploadDevice' | 'listFileIds' | 'uploadFile' | 'downloadFile'>
+  store: Pick<DriveStore, 'resolveRoot' | 'deleteRoot' | 'listDevices' | 'downloadDevice' | 'uploadDevice' | 'fileModifiedTime' | 'listFileIds' | 'uploadFile' | 'downloadFile'>
   now: () => Date
   deviceName: string
   appVersion: string
@@ -113,7 +113,12 @@ type RowDecision =
  *  - 충돌에서 '살아 있음'이 더 늦은 지움 표시를 이기면 이긴 값의 도장을 둘 중 늦은 것+1ms로 올린다(자료만으로 정해짐).
  *    그래야 지움을 먼저 받은 PC도 그 값을 '더 새것'으로 받아 같은 값으로 모인다.
  */
-export function decideRow(L: SyncRow | undefined, R: SyncRow, base: BaseEntry | undefined, key: Uint8Array, table: string): RowDecision {
+/**
+ * peerSeenMe: 받은 스냅숏의 seen[내 기기 id]. undefined = 옛 스냅숏이라 모름, null = seen은 있는데 나를 합친 적 없음.
+ */
+export function decideRow(
+  L: SyncRow | undefined, R: SyncRow, base: BaseEntry | undefined, key: Uint8Array, table: string, peerSeenMe?: string | null,
+): RowDecision {
   if (!L) {
     // 로컬에 없는데 base가 있다 = 이 PC가 하드 삭제했다. 그때(base.at)보다 늦게 고친 값만 받는다.
     if (base && (base.hash === rowHash(key, R) || (base.at !== undefined && R.updated_at <= base.at))) return { kind: 'absent' }
@@ -123,9 +128,11 @@ export function decideRow(L: SyncRow | undefined, R: SyncRow, base: BaseEntry | 
   if (d.action === 'keep') return rowHash(key, L) === rowHash(key, R) ? { kind: 'equal', value: L } : { kind: 'keep' }
   if (d.action === 'take') {
     if (R.updated_at <= L.updated_at) return { kind: 'stale' }
-    // 겹친 실행: base가 내가 올린 값이고, 받은 값은 내가 올리기 전에 고친 것이다 → 상대는 내 값을 못 보고 고쳤다.
-    // 노트·누가기록은 조용히 받지 않고 충돌로 본다(진 쪽 사본, 결정적 id).
-    if (!COPY_TABLES.has(table) || base?.src !== 'up' || base.upAt === undefined || !(R.updated_at < base.upAt)) return { kind: 'take', value: R }
+    // 겹친 실행: base가 내가 올린 값인데 상대 스냅숏이 그 업로드를 합치지 않은 채 만들어졌다(seen[나] < 내 업로드의 드라이브 시각,
+    // 둘 다 드라이브 서버 시각이라 PC 시계가 틀려도 된다) → 상대는 내 값을 못 보고 고쳤다. 노트·누가기록은 조용히 받지 않고
+    // 충돌로 본다(진 쪽 사본, 결정적 id). seen이 없는 옛 스냅숏·upAt을 모르는 base는 보통 받기.
+    const unseen = peerSeenMe === null || (typeof peerSeenMe === 'string' && base?.upAt !== undefined && peerSeenMe < base.upAt)
+    if (!COPY_TABLES.has(table) || base?.src !== 'up' || base.upAt === undefined || base.upAt === 'pending' || !unseen) return { kind: 'take', value: R }
     d = decide({ local: L, remote: R, base: undefined, key, table })
   }
   let v = d.value!
@@ -196,7 +203,7 @@ const attKey = (r: SyncRow) => canonicalJson([r.student_id, r.date, r.kind])
  * 로컬 읽기 → 기기 id 순으로 받은 행을 차례로 판정 → dedupe → 진 행 하드 삭제 → 바뀐 행만 bulkPut → base 갱신.
  * 묶음 안에서는 IndexedDB 밖의 비동기(복호화 제외 해시는 동기)를 하지 않는다.
  */
-async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[], wasDirty: boolean): Promise<MergeOut> {
+async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[], wasDirty: boolean, me: string): Promise<MergeOut> {
   const out: MergeOut = { merged: 0, conflicts: 0, nonTake: false, students: new Set(), badRows: false }
   const tables: Table[] = [...SYNC_TABLES.map((t) => db.table(t)), db.sync_rows, db.note_blobs, db.meta]
   const H = (r: SyncRow) => rowHash(key, r)
@@ -204,6 +211,7 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[], wasDi
     /** 하드 삭제된(또는 받지 않은) 출결 id → 같은 칸의 이긴 출결 */
     const attWinner = new Map<string, SyncRow>()
     for (const t of SYNC_TABLES) {
+      const seenMe = remotes.map((p) => (p.snap.seen === undefined ? undefined : (p.snap.seen[me] ?? null)))
       const remoteLists = remotes.map((p) => {
         const rows = (p.snap.tables[t] ?? []) as SyncRow[]
         const ok = rows.filter(validRemote)
@@ -223,10 +231,10 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[], wasDi
       const baseOf = (id: string) => newBase.get(id) ?? bases.get(id)
       const agreed = new Set<string>()
 
-      const apply = (R: SyncRow) => {
+      const apply = (R: SyncRow, peerSeenMe?: string | null) => {
         const lr = local.get(R.id)
         if (lr && !syncableRow(t, lr)) return // 이 PC의 추정 시간표 행은 건드리지 않는다
-        const res = decideRow(cur.get(R.id), R, baseOf(R.id), key, t)
+        const res = decideRow(cur.get(R.id), R, baseOf(R.id), key, t, peerSeenMe)
         if (res.kind === 'equal' || res.kind === 'take') {
           cur.set(R.id, res.value)
           newBase.set(R.id, { hash: H(res.value), at: res.value.updated_at })
@@ -240,7 +248,7 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[], wasDi
           if (res.copy) apply(res.copy) // 사본도 받은 행처럼 판정(이미 있거나 정리된 사본을 다시 만들지 않게)
         }
       }
-      for (const rows of remoteLists) for (const R of rows) apply(R)
+      remoteLists.forEach((rows, i) => { for (const R of rows) apply(R, seenMe[i]) })
 
       if (t === 'report_attendance' && attWinner.size > 0) {
         // 하드 삭제된 출결을 가리키는 연결: 지움 표시하고 이긴 출결로 다시 잇는다(도장은 자료만으로: 둘 중 늦은 것+1ms).
@@ -449,6 +457,12 @@ export async function syncOnce(p: SyncOnceParams): Promise<SyncResult> {
     const entries = (await store.listDevices(root)).sort((a, b) => (a.deviceId < b.deviceId ? -1 : a.deviceId > b.deviceId ? 1 : a.fileId < b.fileId ? -1 : 1))
     const own = entries.find((e) => e.deviceId === me)
     const known = new Map((state.devices ?? []).map((d) => [d.deviceId, d]))
+    // 지난 업로드의 드라이브 시각을 못 읽었으면 지금 내 파일 시각으로 채운다(그 뒤 내 파일을 고친 것은 나뿐이고 아직 안 올렸다).
+    if (state.upAtPending && own) {
+      const mt = own.modifiedTime
+      await db.transaction('rw', db.sync_rows, () => db.sync_rows.filter((r) => r.upAt === 'pending').modify({ upAt: mt }))
+      state = await setSyncState(db, { upAtPending: false })
+    }
     // 오래 쉰 이 PC: 마지막 성공과 내 파일 중 늦은 것이 90일보다 오래됐고 다른 기기가 있으면 합치지 않는다.
     // 그사이 다른 PC가 지움 표시를 정리했을 수 있어 합치면 지운 행이 되살아난다. '드라이브 자료로 바꾸기'(S6)만 허용.
     const selfTimes = [own?.modifiedTime, state.lastOk].map((t) => (t ? Date.parse(t) : NaN)).filter((t) => !Number.isNaN(t))
@@ -505,7 +519,7 @@ export async function syncOnce(p: SyncOnceParams): Promise<SyncResult> {
     let nonTake = false
     let students = new Set<string>()
     if (remotes.length) {
-      const m = await mergeRemotes(db, key, remotes, wasDirty)
+      const m = await mergeRemotes(db, key, remotes, wasDirty, me)
       result.pulled = remotes.length
       result.merged += m.merged
       result.conflicts = m.conflicts
@@ -565,10 +579,16 @@ export async function syncOnce(p: SyncOnceParams): Promise<SyncResult> {
       const extraStore = await loadExtraStore(db)
       const extra: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(extraStore)) if (!KNOWN.has(k)) extra[k] = v.value
-      const bytes = await buildWsync({ dek, app: appVersion, deviceId: me, deviceName, keyId, at: now().toISOString(), tables, extra })
-      await store.uploadDevice(root, me, bytes, own?.fileId)
+      const seen: Record<string, string> = {}
+      for (const [k, v] of Object.entries(state.seen)) if (k !== me) seen[k] = v
+      const bytes = await buildWsync({ dek, app: appVersion, deviceId: me, deviceName, keyId, at: now().toISOString(), tables, extra, seen })
+      const fileId = await store.uploadDevice(root, me, bytes, own?.fileId)
       result.uploaded = 1
-      await markUploaded(db, key, tables, iso(Date.now()))
+      // 'up' base의 upAt = 이 업로드 뒤 내 파일의 드라이브 시각. 못 읽으면 'pending'으로 두고 다음 번 목록에서 채운다.
+      let upAt: string | null = null
+      try { upAt = await store.fileModifiedTime(fileId) } catch { upAt = null }
+      await markUploaded(db, key, tables, upAt ?? 'pending')
+      if (!upAt) state = await setSyncState(db, { upAtPending: true })
       // 워터마크는 이 PC의 시계로만 올린다(남의 앞선 도장까지 올리면 그 아래로 찍힌 내 고침을 놓친다).
       // 스냅숏을 읽기 직전(tb)보다 앞선 고침은 모두 올렸고, 뒤의 고침은 tb 이상으로 찍힌다.
       state = await setSyncState(db, { lastUploadedMax: maxIso(state.lastUploadedMax, iso(tb - 1)), pendingUpload: false })

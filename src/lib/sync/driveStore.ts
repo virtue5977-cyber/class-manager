@@ -118,6 +118,11 @@ export function createDriveStore(g: GoogleBridge, opts: { pageSize?: number; rec
       return (await list(inRoot(root, 'device'))).map((i) => ({ deviceId: i.appProperties?.deviceId ?? '', fileId: i.id, modifiedTime: i.modifiedTime })).filter((d) => d.deviceId)
     },
     downloadDevice: (fileId: string) => googleDownload(g, fileId),
+    /** 파일 하나의 드라이브 modifiedTime(서버 시각). files.get이라 목록 지연과 무관하다. */
+    async fileModifiedTime(fileId: string): Promise<string | null> {
+      const j = await callJson<{ modifiedTime?: string }>(g, 'GET', `/drive/v3/files/${safe(fileId, '파일 id')}?fields=modifiedTime`)
+      return typeof j?.modifiedTime === 'string' ? j.modifiedTime : null
+    },
     async uploadDevice(root: string, deviceId: string, bytes: Uint8Array, fileId?: string): Promise<string> {
       safe(deviceId, '기기 id')
       const id = fileId ?? (await findOne(root, 'device', ['deviceId', deviceId]))?.id

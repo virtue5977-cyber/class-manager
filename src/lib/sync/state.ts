@@ -59,13 +59,15 @@ export interface SyncState {
   lastSafetyBackup?: string
   /** 드라이브에 보이는 기기(이름은 컴퓨터 이름) */
   devices?: SyncDevice[]
+  /** 마지막 업로드의 드라이브 시각을 못 읽어 'up' base의 upAt이 'pending'이다(다음 번 목록에서 채운다). */
+  upAtPending?: boolean
 }
 
 export interface SyncDevice { deviceId: string; deviceName: string; modifiedTime: string; stale: boolean; mine: boolean }
 
 const ID = 'sync'
 
-const KEYS = ['enabled', 'rootId', 'deviceName', 'lastUploadedMax', 'seen', 'lastOk', 'lastError', 'keyUpdatedAt', 'firstMergeDone', 'pendingUpload', 'lastGc', 'lastSafetyBackup', 'devices'] as const
+const KEYS = ['enabled', 'rootId', 'deviceName', 'lastUploadedMax', 'seen', 'lastOk', 'lastError', 'keyUpdatedAt', 'firstMergeDone', 'pendingUpload', 'lastGc', 'lastSafetyBackup', 'devices', 'upAtPending'] as const
 
 function validLastError(v: unknown): { code: SyncErrorCode; at: string } | null {
   if (v === null) return null
@@ -128,7 +130,7 @@ export async function isDirty(db: AppDB): Promise<boolean> {
 
 const baseId = (table: string, id: string) => table + '\u0000' + id
 
-/** src 'up': 내가 올린 값이라 base가 된 것(upAt = 올린 시각, 이 PC 시계). 'merge': 받기·합치기로 맞춘 것. */
+/** src 'up': 내가 올린 값이라 base가 된 것(upAt = 그 업로드 뒤 내 파일의 드라이브 modifiedTime, 모르면 'pending'). 'merge': 받기·합치기로 맞춘 것. */
 export interface BaseEntry { hash: string; at?: string; src?: 'up' | 'merge'; upAt?: string }
 type BaseInput = { table: string; id: string; hash: string; at?: string; src?: 'up' | 'merge'; upAt?: string }
 

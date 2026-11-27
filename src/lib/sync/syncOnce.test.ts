@@ -312,14 +312,10 @@ describe('syncOnce', () => {
       await sleep()
       await saveNoteContent(B.db, n.id, { title: 'B 고침', blocks: n.blocks })
       await sleep()
-      // 겹친 실행: 둘 다 상대의 새 스냅숏을 보기 전에 올린다
-      const aId = (await getSyncState(A.db)).deviceId
-      const bSeen = (await getSyncState(B.db)).seen
+      // 겹친 실행: B는 A가 올리기 전에 기기 목록을 받았다(그 목록으로 진행) → 둘 다 상대의 새 스냅숏을 보기 전에 올린다
+      const listing = await w.store.listDevices(w.root)
       expect((await A.sync()).uploaded).toBe(1)
-      const aMod = (await w.store.listDevices(w.root)).find((x) => x.deviceId === aId)!.modifiedTime
-      await setSyncState(B.db, { seen: { ...bSeen, [aId]: aMod } })
-      expect((await B.sync()).uploaded).toBe(1)
-      await setSyncState(B.db, { seen: bSeen })
+      expect((await B.sync({ store: { ...w.store, listDevices: async () => listing } })).uploaded).toBe(1)
       const order = aFirst ? [A, B, A, B] : [B, A, B, A]
       for (const P of order) await P.sync()
       for (const P of [A, B]) {
@@ -329,6 +325,73 @@ describe('syncOnce', () => {
       }
       expect(await syncedView(A.db)).toEqual(await syncedView(B.db))
     }
+  })
+
+  test('C4 시계가 5분 늦은 PC와 보통 주고받기는 사본을 만들지 않는다(3번 왕복)', async () => {
+    const w = await world()
+    const A = await w.pc('A'), B = await w.pc('B')
+    const n = await createNote(A.db, 'W')
+    await A.sync(); await B.sync(); await A.sync()
+    const realNow = Date.now.bind(Date)
+    const behind = async <T>(fn: () => Promise<T>): Promise<T> => {
+      const spy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() - 5 * 60_000)
+      try { return await fn() } finally { spy.mockRestore() }
+    }
+    for (let i = 0; i < 3; i++) {
+      await saveNoteContent(A.db, n.id, { title: `A ${i}`, blocks: n.blocks })
+      expect((await A.sync()).uploaded).toBe(1)
+      await behind(() => B.sync())
+      expect((await B.db.notes.get(n.id))?.title).toBe(`A ${i}`)
+      await behind(() => saveNoteContent(B.db, n.id, { title: `B ${i}`, blocks: n.blocks }))
+      expect((await behind(() => B.sync())).uploaded).toBe(1)
+      const ra = await A.sync()
+      expect(ra.conflicts).toBe(0)
+      expect((await A.db.notes.get(n.id))?.title).toBe(`B ${i}`)
+    }
+    for (const P of [A, B]) expect((await P.db.notes.toArray()).some((x) => x.id.startsWith('conflict:'))).toBe(false)
+  })
+
+  test('C4 seen이 없는 옛 스냅숏이면 겹친 실행이라도 사본 없이 받는다', async () => {
+    const w = await world()
+    const A = await w.pc('A'), B = await w.pc('B')
+    const n = await createNote(A.db, 'W')
+    await A.sync(); await B.sync(); await A.sync()
+    await saveNoteContent(A.db, n.id, { title: 'A 고침', blocks: n.blocks })
+    await sleep()
+    await saveNoteContent(B.db, n.id, { title: 'B 고침', blocks: n.blocks })
+    await sleep()
+    const bId = (await getSyncState(B.db)).deviceId
+    const listing = await w.store.listDevices(w.root)
+    await A.sync()
+    await B.sync({ store: { ...w.store, listDevices: async () => listing } })
+    // B의 스냅숏을 seen 칸이 없는 옛 판 모양으로 다시 쓴다
+    const bEntry = (await w.store.listDevices(w.root)).find((x) => x.deviceId === bId)!
+    const snap = await openWsync(w.d.bytesOf(bEntry.fileId)!, DEK, bId, KEY_ID)
+    expect(snap.seen).toBeDefined()
+    const old = await buildWsync({ dek: DEK, app: '1.0.1', deviceId: bId, deviceName: 'B', keyId: KEY_ID, at: snap.at, tables: snap.tables, extra: {} })
+    await w.store.uploadDevice(w.root, bId, old, bEntry.fileId)
+    const ra = await A.sync()
+    expect(ra.conflicts).toBe(0)
+    expect((await A.db.notes.get(n.id))?.title).toBe('B 고침')
+    expect((await A.db.notes.toArray()).some((x) => x.id.startsWith('conflict:'))).toBe(false)
+  })
+
+  test('C4 올린 파일 시각을 못 읽으면 표시해 두고 다음 번 목록에서 채운다', async () => {
+    const w = await world()
+    const A = await w.pc('A')
+    await createNote(A.db, 'n')
+    const failing = { ...w.store, fileModifiedTime: async () => { throw new GoogleApiError(0, undefined, 'x') } }
+    expect(await A.sync({ store: failing })).toMatchObject({ ok: true, uploaded: 1 })
+    const ups = (await readRaw(A.db, 'sync_rows')).filter((r) => r.src === 'up')
+    expect(ups.length).toBeGreaterThan(0)
+    expect(ups.every((r) => r.upAt === 'pending')).toBe(true)
+    expect((await getSyncState(A.db)).upAtPending).toBe(true)
+    await A.sync()
+    const aId = (await getSyncState(A.db)).deviceId
+    const mt = (await w.store.listDevices(w.root)).find((x) => x.deviceId === aId)!.modifiedTime
+    const after = (await readRaw(A.db, 'sync_rows')).filter((r) => r.src === 'up')
+    expect(after.every((r) => r.upAt === mt)).toBe(true)
+    expect((await getSyncState(A.db)).upAtPending).toBeFalsy()
   })
 
   test('stale device', async () => {
@@ -652,6 +715,21 @@ describe('syncOnce', () => {
 
 describe('decideRow (순수)', () => {
   const key = syncKeyFrom(DEK)
+  test('C4 내가 올린 base 위의 받기: 상대가 내 업로드를 봤는지(seen)로만 사본을 정한다', () => {
+    const W = { id: 'n', updated_at: '2026-04-01T00:00:00.000Z', deleted: false, title: 'W' }
+    const L = { ...W, title: 'L', updated_at: '2026-04-02T00:00:00.000Z' }
+    const R = { ...W, title: 'R', updated_at: '2026-04-03T00:00:00.000Z' }
+    const base = { hash: rowHash(key, L), at: L.updated_at, src: 'up' as const, upAt: '2026-04-02T00:01:00.000Z' }
+    expect(decideRow(L, R, base, key, 'notes', '2026-04-02T00:01:00.000Z').kind).toBe('take') // 봤다
+    expect(decideRow(L, R, base, key, 'notes', '2026-04-02T00:00:30.000Z').kind).toBe('conflict') // 내 업로드 전 것만 봤다
+    expect(decideRow(L, R, base, key, 'notes', null).kind).toBe('conflict') // 나를 본 적 없다
+    expect(decideRow(L, R, base, key, 'notes', undefined).kind).toBe('take') // 옛 스냅숏: 모름
+    expect(decideRow(L, R, { ...base, upAt: 'pending' }, key, 'notes', null).kind).toBe('take')
+    expect(decideRow(L, R, { ...base, src: 'merge' }, key, 'notes', null).kind).toBe('take')
+    expect(decideRow(L, R, base, key, 'todos', null).kind).toBe('take')
+    // 상대 시계가 늦어 R이 내 업로드 시각보다 이른 도장이어도, 봤으면 받기
+    expect(decideRow(L, { ...R, updated_at: '2026-04-02T00:00:00.001Z' }, base, key, 'notes', '2026-04-02T00:01:00.000Z').kind).toBe('take')
+  })
   test('C1b 로컬에 없고 base가 있으면 base.at 이하로 온 값은 받지 않는다(지움 표시 정리·진 행)', () => {
     const R = { id: 'n', updated_at: '2026-04-01T00:00:00.000Z', deleted: false, title: '옛 값' }
     const base = { hash: rowHash(key, { other: 1 }), at: '2026-05-01T00:00:00.000Z' }

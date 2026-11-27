@@ -23,6 +23,16 @@ describe('wsync', () => {
     const snap = await openWsync(await buildWsync({ ...base, tables: {}, extra: { future_table: [row('f', '2999-01-01T00:00:00.000Z')] } }), dek, 'dev-A')
     expect(snap.maxUpdated).toBe('')
   })
+  it('seen(본 기기 파일 시각)은 선택 칸: 있으면 왕복, 없으면 undefined, 모양이 틀리면 BAD_SNAPSHOT', async () => {
+    const seen = { 'dev-B': '2026-01-02T00:00:00.000Z' }
+    const s1 = await openWsync(await buildWsync({ ...base, tables: {}, extra: {}, seen }), dek, 'dev-A')
+    expect(s1.seen).toEqual(seen)
+    const s2 = await openWsync(await buildWsync({ ...base, tables: {}, extra: {} }), dek, 'dev-A')
+    expect(s2.seen).toBeUndefined()
+    const doc = { fmt: 1, app: 'x', deviceId: 'dev-A', deviceName: 'A', at: base.at, keyId: 'k1', maxUpdated: '', tables: {} }
+    await expect(openWsync(await sealJson({ ...doc, seen: { 'dev-B': 5 } }), dek, 'dev-A')).rejects.toThrow('BAD_SNAPSHOT')
+    await expect(openWsync(await sealJson({ ...doc, seen: ['x'] }), dek, 'dev-A')).rejects.toThrow('BAD_SNAPSHOT')
+  })
   it('fails with BAD_SNAPSHOT on other deviceId, wrong key, garbage', async () => {
     const bytes = await buildWsync({ ...base, tables: {}, extra: {} })
     await expect(openWsync(bytes, dek, 'dev-B')).rejects.toThrow('BAD_SNAPSHOT')

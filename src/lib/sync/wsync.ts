@@ -17,6 +17,11 @@ export interface Snapshot {
   tables: Record<string, SyncRow[]>
   /** 이 판이 모르는 표. 열 때 tables에서 옮겨 담고, 낼 때 tables 최상위 키로 되돌려 쓴다. */
   extra: Record<string, unknown>
+  /**
+   * 이 스냅숏을 만들 때 이 기기가 합쳐 둔 다른 기기 파일의 드라이브 modifiedTime(서버 시각). 옛 판 스냅숏에는 없다(undefined).
+   * 받는 쪽은 '상대가 내 업로드를 봤는가'를 PC 시계가 아닌 이것으로 가린다.
+   */
+  seen?: Record<string, string>
 }
 
 const KNOWN = new Set<string>(SYNC_TABLES)
@@ -60,6 +65,7 @@ export async function buildWsync(p: {
   at: string
   tables: Record<string, SyncRow[]>
   extra: Record<string, unknown>
+  seen?: Record<string, string>
 }): Promise<Uint8Array> {
   let maxUpdated = ''
   for (const k of Object.keys(p.tables)) {
@@ -70,7 +76,12 @@ export async function buildWsync(p: {
   const merged = Object.create(null) as Record<string, unknown>
   for (const k of Object.keys(p.extra)) merged[k] = p.extra[k]
   for (const k of Object.keys(p.tables)) merged[k] = p.tables[k]
-  const doc = { fmt: 1, app: p.app, deviceId: p.deviceId, deviceName: p.deviceName, at: p.at, keyId: p.keyId, maxUpdated, tables: merged }
+  const doc: Record<string, unknown> = { fmt: 1, app: p.app, deviceId: p.deviceId, deviceName: p.deviceName, at: p.at, keyId: p.keyId, maxUpdated, tables: merged }
+  if (p.seen !== undefined) {
+    const seen = Object.create(null) as Record<string, string>
+    for (const [k, v] of Object.entries(p.seen)) { if (typeof v !== 'string') throw new TypeError('seen은 문자열 표입니다'); seen[k] = v }
+    doc.seen = seen
+  }
   const zipped = await gzip(new TextEncoder().encode(canonicalJson(doc)))
   return encryptBytes(p.dek, zipped, 'watson-sync:v1:' + p.deviceId)
 }
@@ -97,10 +108,17 @@ export async function openWsync(bytes: Uint8Array, dek: Uint8Array, deviceId: st
     if (!Array.isArray(v) || v.some((r) => !isObj(r) || typeof r.id !== 'string' || typeof r.updated_at !== 'string')) throw new Error('BAD_SNAPSHOT')
     tables[k] = v as SyncRow[]
   }
+  let seen: Record<string, string> | undefined
+  if ('seen' in doc) {
+    if (!isObj(doc.seen) || Object.values(doc.seen).some((v) => typeof v !== 'string')) throw new Error('BAD_SNAPSHOT')
+    seen = Object.create(null) as Record<string, string>
+    for (const [k, v] of Object.entries(doc.seen)) seen[k] = v as string
+  }
   if (expectedKeyId !== undefined && doc.keyId !== expectedKeyId) throw new Error('KEY_MISMATCH')
   return {
     fmt: 1, app: doc.app as string, deviceId: doc.deviceId as string, deviceName: doc.deviceName as string,
     at: doc.at as string, keyId: doc.keyId as string, maxUpdated: doc.maxUpdated as string, tables, extra,
+    ...(seen ? { seen } : {}),
   }
 }
 
