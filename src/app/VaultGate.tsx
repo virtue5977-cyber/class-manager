@@ -70,6 +70,8 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
   // vaultTestDb: 성능 시험 전용(DEV·bench 빌드에서 ?vaultTest=1). 배포 빌드에서는 늘 null.
   const [webDb] = useState<AppDB | null>(() => (api ? null : vaultTestDb() ?? createDb()))
   const [phase, setPhase] = useState<Phase>({ k: 'loading' })
+  const phaseRef = useRef<Phase['k']>('loading')
+  phaseRef.current = phase.k
   const dekRef = useRef<Uint8Array | null>(null)
   const vaultRef = useRef<PublicVault | null>(null)
   const runId = useRef(0)
@@ -153,7 +155,7 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
 
   /** 마법사가 넘긴 열쇠로 곧바로 연다. 열쇠 파일(공개 부분)이 그 열쇠와 맞지 않거나 읽지 못하면 상태를 다시 읽는다. */
   const openWith = useCallback(async (opened: SetupKey) => {
-    if (!api) return
+    if (!api || phaseRef.current !== 'setup') return // 이미 열렸거나 다른 화면이면 늦은 호출은 무시
     const id = ++runId.current
     dekRef.current = null
     vaultRef.current = null

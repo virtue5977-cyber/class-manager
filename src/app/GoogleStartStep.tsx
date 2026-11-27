@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BASE_SCOPES, getGoogle } from '../lib/google/google'
 import { describeGoogleError } from '../lib/google/syncError'
 
@@ -8,16 +8,22 @@ const errText = (e: unknown) => String(e instanceof Error ? e.message : e).repla
 export default function GoogleStartStep({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const finished = useRef(false)
+  const alive = useRef(true)
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+  /** 어느 길로든 한 번만 끝낸다(늦게 끝난 로그인이 다시 부르지 못하게). */
+  const finish = () => { if (finished.current) return; finished.current = true; onDone() }
 
   async function start() {
     const g = getGoogle()
-    if (!g) return onDone()
+    if (!g) return finish()
     setBusy(true)
     setError(undefined)
     try {
       await g.login(BASE_SCOPES, { incremental: false })
-      onDone()
+      if (alive.current) finish()
     } catch (e) {
+      if (!alive.current || finished.current) return
       const d = describeGoogleError(e)
       setError(d.known ? d.message : errText(e) || d.message)
       setBusy(false)
@@ -33,7 +39,7 @@ export default function GoogleStartStep({ onDone }: { onDone: () => void }) {
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row">
           <button type="button" className="primary" autoFocus disabled={busy} onClick={() => void start()}>구글로 시작</button>
-          <button type="button" onClick={onDone}>나중에</button>
+          <button type="button" onClick={finish}>나중에</button>
         </div>
       </div>
     </div>

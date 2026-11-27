@@ -545,4 +545,23 @@ describe('done(opened): 옮기기·첫 설치 직후 암호구를 다시 묻지 
     act(() => done!({ dek: v.dek, keyId: v.vault.keyId, dbName: v.vault.dbName }))
     expect(await screen.findByText(/열쇠와 자료가 서로 맞지 않습니다/)).toBeInTheDocument()
   })
+
+  test('이미 열린 뒤 done이 다시 불려도(늦은 호출) 두 번째 DB를 열지 않는다', async () => {
+    const v = await makeVault()
+    let st: VaultStatus = { state: 'none' }
+    fakeDesktop(async () => st)
+    let done: ((o?: { dek: Uint8Array; keyId: string; dbName: string }) => void) | undefined
+    const dbs: AppDB[] = []
+    render(<VaultGate renderSetup={(p) => { done = p.done; return <p>마법사 {p.reason}</p> }}>{(db) => <Probe db={db} onDb={(d) => dbs.push(d)} />}</VaultGate>)
+    await screen.findByText(/^마법사/)
+    st = { state: 'needs-pass', vault: v.vault, dpapiAvailable: false }
+    const key = { dek: v.dek, keyId: v.vault.keyId, dbName: v.vault.dbName }
+    const first = done!
+    act(() => first(key))
+    await screen.findByText(new RegExp(`열린 DB ${v.vault.dbName}`))
+    act(() => first(key))
+    await new Promise((r) => setTimeout(r, 100))
+    expect(new Set(dbs).size).toBe(1)
+    expect(dbs[0].isOpen()).toBe(true)
+  })
 })

@@ -110,7 +110,7 @@ export default function AiSettings() {
               onClick={async () => {
                 setCc('확인 중…')
                 const st = await bridge!.status()
-                setCc(st.installed ? `Claude Code ${st.version ?? ''} 연결됨` : 'Claude Code를 찾지 못했습니다. 설치 후 명령 창에서 claude 를 한 번 실행해 로그인하세요.')
+                setCc(st.installed ? `Claude Code ${st.version ?? ''} 연결됨` : 'Claude Code를 찾지 못했습니다. 설치한 뒤 PowerShell에서 claude auth login 을 실행해 로그인하세요.')
               }}
             >
               Claude Code 연결 확인

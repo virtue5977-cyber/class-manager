@@ -192,7 +192,7 @@ function claudeAskArgs(_platform) {
 /** Claude Code가 실패했을 때 보여 줄 말 */
 function claudeErrorText(text) {
   if (/unknown option|unrecognized option|unknown argument/i.test(text)) return 'Claude Code가 오래된 판입니다. 명령 창에서 claude update 를 실행해 새 판으로 올리세요.'
-  if (/expired|could not be refreshed/i.test(text)) return '로그인이 만료되었습니다. PowerShell에서 claude auth login 을 실행해 다시 로그인하세요.'
+  if (/(session|token|oauth|login)[^\n]*expired|could not be refreshed/i.test(text)) return '로그인이 만료되었습니다. PowerShell에서 claude auth login 을 실행해 다시 로그인하세요.'
   if (/login|auth|log in/i.test(text)) return 'Claude Code에 로그인되어 있지 않습니다. PowerShell에서 claude auth login 을 실행해 로그인하세요.'
   return 'Claude Code 실행 중 오류가 났습니다. Pro 사용 한도를 확인하세요.'
 }

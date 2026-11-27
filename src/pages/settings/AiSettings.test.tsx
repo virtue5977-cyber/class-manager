@@ -84,6 +84,20 @@ test('Antigravity 연결 확인: 설치는 됐지만 로그인이 안 됐으면 
   }
 })
 
+test('Claude Code 연결 확인: 없으면 PowerShell 안내', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const g = globalThis as { desktop?: unknown }
+  g.desktop = { ai: { status: async () => ({ installed: false }), ask: async () => '' } }
+  try {
+    render(<AppProviders db={db} fs={createMemoryFsAdapter()}><AiSettings /></AppProviders>)
+    await user.click(await screen.findByRole('button', { name: 'Claude Code 연결 확인' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('PowerShell에서 claude auth login')
+  } finally {
+    delete g.desktop
+  }
+})
+
 test('Antigravity 연결 확인: agy가 없으면 바뀐 안내', async () => {
   const user = userEvent.setup()
   const db = createDb('test-' + crypto.randomUUID())

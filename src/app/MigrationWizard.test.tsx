@@ -527,4 +527,17 @@ describe('끝의 구글로 시작 단계', () => {
     await waitFor(() => expect(done).toHaveBeenCalledTimes(1))
     expect(screen.queryByText(/여러 PC가 자료를 함께 씁니다/)).not.toBeInTheDocument()
   })
+
+  test('로그인이 끝나기 전에 나중에를 누르면 done은 한 번만(늦게 끝난 로그인은 무시)', async () => {
+    let resolve!: (v: boolean) => void
+    bridge(false, vi.fn(() => new Promise<boolean>((r) => { resolve = r })))
+    const done = vi.fn()
+    const user = await firstInstall(done)
+    await user.click(await screen.findByRole('button', { name: '구글로 시작' }))
+    await user.click(screen.getByRole('button', { name: '나중에' }))
+    expect(done).toHaveBeenCalledTimes(1)
+    resolve(true)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(done).toHaveBeenCalledTimes(1)
+  })
 })
