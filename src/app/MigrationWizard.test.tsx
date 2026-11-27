@@ -469,3 +469,62 @@ describe('새 DB 첨부가 백업에서 빠지면 옛 DB를 지우지 않는다'
     expect(await Dexie.exists(OLD)).toBe(true)
   })
 })
+
+describe('끝의 구글로 시작 단계', () => {
+  const g = window as { desktop?: unknown }
+  afterEach(() => { delete g.desktop })
+  const bridge = (connected: boolean, login = vi.fn(async () => true)) => {
+    g.desktop = { google: { status: vi.fn(async () => ({ client: true, connected, email: null, scopes: [] })), setClient: vi.fn(async () => true), login, logout: vi.fn(), api: vi.fn() } }
+    return login
+  }
+  async function firstInstall(done: ReturnType<typeof vi.fn>) {
+    const { api } = fakeApi()
+    const user = userEvent.setup()
+    render(<MigrationWizard reason="first-install" done={done} deps={deps(api)} />)
+    await toPassStep(user)
+    await user.type(await screen.findByLabelText(/새 암호구/), '가상암호구2026')
+    await user.type(screen.getByLabelText('한 번 더'), '가상암호구2026')
+    await user.click(screen.getByRole('button', { name: '정하기' }))
+    await user.click(await screen.findByRole('button', { name: '건너뛰기(권장하지 않음)' }))
+    return user
+  }
+
+  test('연결 안 됨이면 이 단계가 보이고, 구글로 시작은 login(BASE_SCOPES, incremental:false)', async () => {
+    const login = bridge(false)
+    const done = vi.fn()
+    const user = await firstInstall(done)
+    expect(await screen.findByText(/여러 PC가 자료를 함께 씁니다/)).toBeInTheDocument()
+    expect(done).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: '구글로 시작' }))
+    await waitFor(() => expect(done).toHaveBeenCalledTimes(1))
+    expect(login).toHaveBeenCalledWith(['openid', 'email', 'profile', 'https://www.googleapis.com/auth/drive.file'], { incremental: false })
+  })
+
+  test("'나중에'를 누르면 앱이 열린다(done에 열쇠)", async () => {
+    bridge(false)
+    const done = vi.fn()
+    const user = await firstInstall(done)
+    await user.click(await screen.findByRole('button', { name: '나중에' }))
+    expect(done).toHaveBeenCalledTimes(1)
+    expect(done).toHaveBeenCalledWith(expect.objectContaining({ dbName: expect.stringMatching(/^watson-/) }))
+  })
+
+  test('로그인이 실패하면 안내를 보이고 나중에로 넘어갈 수 있다', async () => {
+    bridge(false, vi.fn(async () => { throw new Error('admin_policy_enforced') }))
+    const done = vi.fn()
+    const user = await firstInstall(done)
+    await user.click(await screen.findByRole('button', { name: '구글로 시작' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('학교 구글 계정은 관리자가 막았을 수 있습니다')
+    expect(done).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: '나중에' }))
+    expect(done).toHaveBeenCalledTimes(1)
+  })
+
+  test('이미 연결돼 있으면 이 단계를 건너뛴다', async () => {
+    bridge(true)
+    const done = vi.fn()
+    await firstInstall(done)
+    await waitFor(() => expect(done).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText(/여러 PC가 자료를 함께 씁니다/)).not.toBeInTheDocument()
+  })
+})

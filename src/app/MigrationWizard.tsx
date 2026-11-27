@@ -13,6 +13,9 @@ import {
   BITLOCKER_NOTICE_KEY, cleanupOrphans, dbExists, discardNewVault, type DiscardStatus, finishMigration, OLD_DB_NAME, openOldDb, planStorage, resumeOrReset,
   setupNewVault, skippedRefusal, type BackupProof, type Progress, type SetupResult,
 } from '../lib/vault/migrate'
+import GoogleStartStep from './GoogleStartStep'
+import { ensureGoogleClient, getGoogle } from '../lib/google/google'
+import { BUILTIN_GOOGLE_CLIENT } from '../lib/google/client-config'
 import { RestoreScreen, saveCodeFile, type SetupKey, type SetupReason } from './VaultGate'
 
 /** 시험에서 바꿔 끼우는 것들(기본은 exe의 preload·브라우저). */
@@ -40,6 +43,7 @@ type Step =
   | { k: 'progress' }
   | { k: 'download' }
   | { k: 'bitlocker' }
+  | { k: 'google'; opened?: SetupKey }
   | { k: 'failed'; message: string; discard?: DiscardStatus }
 
 const MIN_PASS = 8
@@ -209,6 +213,18 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
     }
   }
 
+  /** 마지막: 데스크톱이고 구글이 아직 연결 안 됐으면 '구글로 시작' 단계, 아니면 바로 done. */
+  async function finishWizard(opened?: SetupKey) {
+    const g = getGoogle()
+    if (g) {
+      try {
+        const st = await ensureGoogleClient(g, BUILTIN_GOOGLE_CLIENT)
+        if (!st.connected) { setStep({ k: 'google', opened }); return }
+      } catch { /* 상태를 못 읽으면 이 단계는 건너뛴다 */ }
+    }
+    done(opened)
+  }
+
   async function derive(passphrase: string, from: 'old' | 'new') {
     const salt = crypto.getRandomValues(new Uint8Array(16))
     passKey.current = { salt, iter: iter.pass, raw: await passKeyRaw(passphrase, salt, iter.pass) }
@@ -236,7 +252,7 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
       if (mode === 'first-install') {
         r.db.close()
         setup.current = null
-        done({ dek: r.dek, keyId: r.keyId, dbName: r.db.name })
+        void finishWizard({ dek: r.dek, keyId: r.keyId, dbName: r.db.name })
         return
       }
       await backupNew(r)
@@ -477,9 +493,11 @@ export default function MigrationWizard({ reason, done, setupKey, deps = {} }: {
         <Card title="다 됐습니다">
           <p>학생 자료를 잠갔습니다. 이제 이 PC의 윈도우 계정과 백업 암호구로 엽니다.</p>
           <p className="notice">{BITLOCKER}</p>
-          <button type="button" className="primary" autoFocus onClick={() => done(openedKey.current ?? setupKey)}>시작하기</button>
+          <button type="button" className="primary" autoFocus onClick={() => void finishWizard(openedKey.current ?? setupKey)}>시작하기</button>
         </Card>
       )
+    case 'google':
+      return <GoogleStartStep onDone={() => done(step.opened)} />
     case 'failed':
       return (
         <Card title={mode === 'migrate' ? '옮기지 못했습니다' : '만들지 못했습니다'}>
