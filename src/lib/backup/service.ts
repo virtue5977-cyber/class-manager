@@ -24,13 +24,18 @@ export interface CachedKey {
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0')
 
-/** 이 기기의 표시: device_local 'deviceId'의 앞 16진 4자(없으면 만든다). */
-export async function deviceTag(db: AppDB): Promise<string> {
+/** 이 기기의 id: device_local 'deviceId'(없으면 만든다). */
+export async function deviceId(db: AppDB): Promise<string> {
   const cur = (await db.device_local.get('deviceId'))?.value
-  if (typeof cur === 'string' && /^[0-9a-f]{4}/.test(cur)) return cur.slice(0, 4)
+  if (typeof cur === 'string' && /^[0-9a-f]{4}/.test(cur)) return cur
   const id = crypto.randomUUID()
   await db.device_local.put({ id: 'deviceId', value: id })
-  return id.slice(0, 4)
+  return id
+}
+
+/** 이 기기의 표시: device_local 'deviceId'의 앞 16진 4자(없으면 만든다). */
+export async function deviceTag(db: AppDB): Promise<string> {
+  return (await deviceId(db)).slice(0, 4)
 }
 
 export function backupFileName(now: Date, existing: Set<string>, prefix = '백업_', tag?: string): string {
