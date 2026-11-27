@@ -1,16 +1,19 @@
 import Dexie from 'dexie'
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { createDb, type AppDB } from '../lib/db/schema'
 import { isDesktopApp } from '../lib/settings'
 import { getDesktop, type DesktopVaultApi, type PublicVault } from '../lib/desktop/bridge'
 import { openVaultDb } from '../lib/vault/vaultDb'
 import { vaultTestDb } from '../lib/vault/benchHook'
-import { VaultRewrapContext } from '../lib/vault/rewrapContext'
+import { VaultRewrapContext, VaultSessionContext, type VaultSession } from '../lib/vault/rewrapContext'
+import { getGoogle } from '../lib/google/google'
+import { createDriveStore } from '../lib/sync/driveStore'
+import { rewrapKeyFile } from '../lib/sync/enable'
 import { normalizeRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, verifyMetaCheck, wrapDek, type VaultPayload } from '../lib/vault/keys'
 import { fromBase64, toBase64 } from '../lib/backup/crypto'
 import { restoreIntoNewVault } from '../lib/backup/restoreVault'
 import type { DerivedPassKey } from '../lib/backup/service'
-import { canStartOver, MIGRATION_MARKER, startOver } from '../lib/vault/migrate'
+import { canStartOver, finishRekey, MIGRATION_MARKER, startOver } from '../lib/vault/migrate'
 
 export type SetupReason = 'migrate' | 'first-install' | 'incomplete'
 /** incomplete일 때 key: 이 열쇠의 DEK·keyId·DB 이름(마법사가 완료 행을 확인해 이어 할지 정한다). */
@@ -55,6 +58,7 @@ async function hasOldDb(): Promise<boolean> {
 }
 
 export const STORE_FAILED_NOTICE = '이 PC에 열쇠를 저장하지 못해 다음에도 암호구를 묻습니다'
+export const NO_GOOGLE_FOR_KEY = '동기화가 켜져 있어 드라이브 열쇠 파일도 바꿔야 하는데 구글 연결이 없습니다. 구글 연결을 확인하세요'
 
 const payloadOf = (v: PublicVault, dek: Uint8Array): VaultPayload => ({
   v: 1, keyId: v.keyId, dbName: v.dbName, pass: v.pass, ...(v.recovery ? { recovery: v.recovery } : {}), dekB64: toBase64(dek),
@@ -188,16 +192,49 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
 
   const openDb = phase.k === 'open' ? phase.db : null
   useEffect(() => () => { openDb?.close() }, [openDb])
+  // 다시 암호화(S6) 뒤 처음 연 DB: 남은 옛 DB를 지우고 표시를 지운다(완료 행이 있을 때만). 실패해도 다음에 다시 한다.
+  useEffect(() => { if (openDb) void finishRekey(openDb).catch(() => {}) }, [openDb])
 
-  /** 암호구 바꾸기: 메모리의 DEK를 새 passKey로 다시 감싸고, 복구 감싸기는 그대로 둔다. */
+  /**
+   * 암호구 바꾸기: 메모리의 DEK를 새 passKey로 다시 감싸고, 복구 감싸기는 그대로 둔다.
+   * 동기화가 켜져 있으면 드라이브 열쇠 파일을 먼저 바꾼다(실패하면 아무것도 바꾸지 않는다, spec §3·§7.7).
+   */
   const rewrap = useCallback(async (k: DerivedPassKey) => {
     const dek = dekRef.current
     const cur = vaultRef.current
     if (!api || !dek || !cur) throw new Error('열쇠가 열려 있지 않습니다.')
+    if (openDb) {
+      const g = getGoogle()
+      const store = g ? createDriveStore(g) : { writeKeyFile: async () => { throw new Error(NO_GOOGLE_FOR_KEY) } }
+      await rewrapKeyFile({ db: openDb, store, dek, keyId: cur.keyId, k })
+    }
     const next: PublicVault = { ...cur, pass: { ...wrapDek(dek, k.raw, cur.keyId, 'pass', k.salt, k.iter), updatedAt: new Date().toISOString() } }
     await api.store(payloadOf(next, dek))
     vaultRef.current = next
-  }, [api])
+  }, [api, openDb])
+
+  /** 동기화 켜기·열쇠 맞추기가 쓰는 열린 열쇠(VaultSessionContext). */
+  const session = useMemo<VaultSession | null>(() => {
+    const dek = dekRef.current
+    const v = vaultRef.current
+    if (!api || !openDb || !dek || !v) return null
+    return {
+      dek, keyId: v.keyId, dbName: v.dbName,
+      current: () => vaultRef.current ?? v,
+      store: async (p: VaultPayload) => {
+        const ok = await api.store(p)
+        const cur = vaultRef.current
+        if (cur && p.keyId === cur.keyId && p.dbName === cur.dbName) {
+          const { dekB64: _d, ...pub } = p
+          void _d
+          vaultRef.current = pub
+        }
+        return ok
+      },
+      status: () => api.status(),
+      reopen: () => { void run() },
+    }
+  }, [api, openDb, run])
 
   if (webDb) return <>{children(webDb)}</>
   if (!api) return null
@@ -207,10 +244,12 @@ export default function VaultGate({ children, renderSetup }: { children: (db: Ap
       return null
     case 'open':
       return (
-        <VaultRewrapContext.Provider value={rewrap}>
-          {phase.notice && <p className="banner vault-notice" role="status">{phase.notice}</p>}
-          {children(phase.db)}
-        </VaultRewrapContext.Provider>
+        <VaultSessionContext.Provider value={session}>
+          <VaultRewrapContext.Provider value={rewrap}>
+            {phase.notice && <p className="banner vault-notice" role="status">{phase.notice}</p>}
+            {children(phase.db)}
+          </VaultRewrapContext.Provider>
+        </VaultSessionContext.Provider>
       )
     case 'setup': {
       const done = (opened?: SetupKey) => { void (opened ? openWith(opened) : run()) }

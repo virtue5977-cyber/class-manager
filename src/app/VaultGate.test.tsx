@@ -6,7 +6,9 @@ import { AppDB, createDb } from '../lib/db/schema'
 import { newRecord } from '../lib/db/records'
 import { openVaultDb } from '../lib/vault/vaultDb'
 import Dexie from 'dexie'
-import { VaultRewrapContext } from '../lib/vault/rewrapContext'
+import { VaultRewrapContext, VaultSessionContext } from '../lib/vault/rewrapContext'
+import { fakeDrive } from '../lib/sync/fakeDrive'
+import { createDriveStore } from '../lib/sync/driveStore'
 import {
   buildVaultPayload, makeMetaCheck, newDek, newRecoveryCode, passKeyRaw, recoveryKeyRaw, unwrapDek, type VaultPayload,
 } from '../lib/vault/keys'
@@ -563,5 +565,82 @@ describe('done(opened): 옮기기·첫 설치 직후 암호구를 다시 묻지 
     await new Promise((r) => setTimeout(r, 100))
     expect(new Set(dbs).size).toBe(1)
     expect(dbs[0].isOpen()).toBe(true)
+  })
+})
+
+describe('S6: 동기화와 열쇠', () => {
+  const KITER = 100_000
+  function SyncRewrapper() {
+    const rewrap = useContext(VaultRewrapContext)
+    const session = useContext(VaultSessionContext)
+    const [msg, setMsg] = useState('')
+    return (
+      <div>
+        <p>{session ? `세션 ${session.keyId}` : '세션 없음'}</p>
+        <button onClick={async () => {
+          const salt = crypto.getRandomValues(new Uint8Array(16))
+          try {
+            await rewrap!({ salt, iter: KITER, raw: await passKeyRaw('새암호구입니다2026', salt, KITER) })
+            setMsg('바꿈')
+          } catch (e) { setMsg('실패 ' + (e as Error).message) }
+        }}>{msg || '바꾸기'}</button>
+      </div>
+    )
+  }
+  async function syncWorld(v: Awaited<ReturnType<typeof makeVault>>) {
+    const d = fakeDrive()
+    const store = createDriveStore(d, { recheckDelayMs: 0 })
+    const root = (await store.createRoot()).id
+    await store.writeKeyFile(root, { v: 1, keyId: v.vault.keyId, salt: v.vault.pass.salt, iter: KITER, iv: v.vault.pass.iv, ct: v.vault.pass.ct, check: 'x', updatedAt: '2026-01-01T00:00:00.000Z' })
+    const db = openVaultDb(v.payload.dbName, v.dek)
+    await db.open()
+    await db.meta.put({ id: 'sync', enabled: true, rootId: root, firstMergeDone: true, seen: {} })
+    db.close()
+    return { d, store, root }
+  }
+
+  test('동기화 중 암호구 바꾸기: 열쇠 파일을 먼저 새 passKey로 바꾸고 vault를 저장한다', async () => {
+    const user = userEvent.setup()
+    const v = await makeVault()
+    const { d, store, root } = await syncWorld(v)
+    const { vault } = fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+    ;(window as { desktop?: { google?: unknown } }).desktop!.google = d
+    render(<VaultGate>{() => <SyncRewrapper />}</VaultGate>)
+    expect(await screen.findByText(`세션 ${v.vault.keyId}`)).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: '바꾸기' }))
+    await screen.findByRole('button', { name: '바꿈' })
+    const kf = (await store.readKeyFile(root))!
+    const p = vault.store.mock.calls[0][0]
+    expect(kf.salt).toBe(p.pass.salt)
+    expect(unwrapDek(kf, await passKeyRaw('새암호구입니다2026', fromBase64(kf.salt), kf.iter), kf.keyId, 'pass')).toEqual(v.dek)
+  })
+
+  test('동기화 중 암호구 바꾸기: 드라이브에 못 쓰면 vault를 저장하지 않는다', async () => {
+    const user = userEvent.setup()
+    const v = await makeVault()
+    const { d } = await syncWorld(v)
+    const { vault } = fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+    ;(window as { desktop?: { google?: unknown } }).desktop!.google = d
+    render(<VaultGate>{() => <SyncRewrapper />}</VaultGate>)
+    await screen.findByText(`세션 ${v.vault.keyId}`)
+    d.failNext({ status: 0 }, 20)
+    await user.click(await screen.findByRole('button', { name: '바꾸기' }))
+    expect(await screen.findByRole('button', { name: /^실패/ })).toBeInTheDocument()
+    expect(vault.store).not.toHaveBeenCalled()
+  })
+
+  test('다시 암호화 뒤 처음 열면 rekey 표시의 옛 DB를 지운다', async () => {
+    const v = await makeVault()
+    const old = new AppDB('watson-' + 'f'.repeat(8), { vault: true })
+    await old.open()
+    old.close()
+    const db = openVaultDb(v.payload.dbName, v.dek)
+    await db.open()
+    await db.meta.put({ id: 'rekey', from: old.name, stage: 'delete-old' })
+    db.close()
+    fakeDesktop(async () => ({ state: 'ok', dekB64: v.payload.dekB64, vault: v.vault }))
+    render(<VaultGate>{(x) => <Probe db={x} />}</VaultGate>)
+    await screen.findByText(/열린 DB/)
+    await waitFor(async () => expect(await Dexie.exists(old.name)).toBe(false))
   })
 })
