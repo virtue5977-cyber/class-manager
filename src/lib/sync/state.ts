@@ -4,7 +4,7 @@ import { readRaw } from '../vault/middleware'
 import { SYNC_TABLES } from './tables'
 import { GoogleApiError, googleErrorText } from '../google/google'
 
-export const SYNC_ERROR_CODES = ['auth', 'quota', 'storage', 'rate', 'offline', 'newer-format', 'key-mismatch', 'bad-snapshot', 'unknown'] as const
+export const SYNC_ERROR_CODES = ['auth', 'quota', 'storage', 'rate', 'offline', 'newer-format', 'key-mismatch', 'bad-snapshot', 'stale-self', 'unknown'] as const
 export type SyncErrorCode = (typeof SYNC_ERROR_CODES)[number]
 
 /** 오류 → 닫힌 코드. 서버 본문·행 글은 어디에도 남기지 않는다. */
@@ -21,6 +21,7 @@ export function syncErrorCode(err: unknown): SyncErrorCode {
   if (m === 'NEWER_FORMAT') return 'newer-format'
   if (m === 'KEY_MISMATCH') return 'key-mismatch'
   if (m === 'BAD_SNAPSHOT') return 'bad-snapshot'
+  if (m === 'STALE_SELF') return 'stale-self'
   return 'unknown'
 }
 
@@ -33,6 +34,7 @@ const TEXTS: Record<SyncErrorCode, string> = {
   'newer-format': '다른 기기가 더 새 버전으로 올린 자료입니다. Watson을 업데이트하세요.',
   'key-mismatch': '동기화 암호 키가 맞지 않습니다. 키를 다시 확인하세요.',
   'bad-snapshot': '드라이브의 동기화 자료가 손상되었습니다.',
+  'stale-self': '이 PC는 90일 넘게 동기화하지 않아 드라이브 자료로 바꿔야 합니다. 설정 > 구글 계정에서 “드라이브 자료로 바꾸기”를 누르세요.',
   unknown: '동기화 중 오류가 났습니다. 잠시 뒤 다시 하세요.',
 }
 export const syncErrorText = (code: SyncErrorCode): string => TEXTS[code]
@@ -126,22 +128,35 @@ export async function isDirty(db: AppDB): Promise<boolean> {
 
 const baseId = (table: string, id: string) => table + '\u0000' + id
 
-export interface BaseEntry { hash: string; at?: string }
+/** src 'up': 내가 올린 값이라 base가 된 것(upAt = 올린 시각, 이 PC 시계). 'merge': 받기·합치기로 맞춘 것. */
+export interface BaseEntry { hash: string; at?: string; src?: 'up' | 'merge'; upAt?: string }
+type BaseInput = { table: string; id: string; hash: string; at?: string; src?: 'up' | 'merge'; upAt?: string }
 
 /**
  * 마지막으로 합친 행의 해시를 적는다. at은 그 값의 updated_at(평문 칸이라 새로 드러나는 것 없음): isDirty가 받은 행을
  * 내 고침으로 보지 않게 한다. 호출자의 트랜잭션(sync_rows 포함) 안에서도 쓸 수 있다.
  */
-export async function markBase(db: AppDB, entries: { table: string; id: string; hash: string; at?: string }[]): Promise<void> {
+export async function markBase(db: AppDB, entries: BaseInput[]): Promise<void> {
   if (entries.length === 0) return
-  await db.sync_rows.bulkPut(entries.map((e) => (e.at === undefined ? { id: baseId(e.table, e.id), hash: e.hash } : { id: baseId(e.table, e.id), hash: e.hash, at: e.at })))
+  await db.sync_rows.bulkPut(entries.map((e) => {
+    const r: Record<string, string> = { id: baseId(e.table, e.id), hash: e.hash }
+    if (e.at !== undefined) r.at = e.at
+    if (e.src !== undefined) r.src = e.src
+    if (e.upAt !== undefined) r.upAt = e.upAt
+    return r as { id: string; hash: string }
+  }))
 }
 
 export async function getBaseEntries(db: AppDB, table: string, ids: string[]): Promise<Map<string, BaseEntry>> {
   const rows = await db.sync_rows.bulkGet(ids.map((i) => baseId(table, i)))
   const out = new Map<string, BaseEntry>()
   rows.forEach((r, i) => {
-    if (r && typeof r.hash === 'string') out.set(ids[i], typeof r.at === 'string' ? { hash: r.hash, at: r.at } : { hash: r.hash })
+    if (!r || typeof r.hash !== 'string') return
+    const e: BaseEntry = { hash: r.hash }
+    if (typeof r.at === 'string') e.at = r.at
+    if (r.src === 'up' || r.src === 'merge') e.src = r.src
+    if (typeof r.upAt === 'string') e.upAt = r.upAt
+    out.set(ids[i], e)
   })
   return out
 }

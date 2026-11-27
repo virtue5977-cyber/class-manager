@@ -17,7 +17,7 @@ import { GoogleApiError } from '../google/google'
 import { reconcileStudent } from '../absenceReports/reconcile'
 import { linkId } from '../absenceReports/ids'
 import { MAX_FILE, readFile } from '../notes/notes'
-import { blobIds, bytesToB64, sealBlobRows } from '../notes/blobs'
+import { blobIds, sealBlobRows } from '../notes/blobs'
 
 const DAY = 86_400_000
 /** 90일 동안 올리지 않은 기기는 '오래된 기기': 합치지 않는다. */
@@ -98,6 +98,8 @@ const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id 
 
 // ---------- 행 하나 판정 ----------
 
+const COPY_TABLES = new Set(['notes', 'counseling_logs'])
+
 type RowDecision =
   | { kind: 'absent' | 'keep' | 'stale' }
   | { kind: 'equal' | 'take'; value: SyncRow }
@@ -111,14 +113,21 @@ type RowDecision =
  *  - 충돌에서 '살아 있음'이 더 늦은 지움 표시를 이기면 이긴 값의 도장을 둘 중 늦은 것+1ms로 올린다(자료만으로 정해짐).
  *    그래야 지움을 먼저 받은 PC도 그 값을 '더 새것'으로 받아 같은 값으로 모인다.
  */
-function decideRow(L: SyncRow | undefined, R: SyncRow, base: BaseEntry | undefined, key: Uint8Array, table: string): RowDecision {
+export function decideRow(L: SyncRow | undefined, R: SyncRow, base: BaseEntry | undefined, key: Uint8Array, table: string): RowDecision {
   if (!L) {
-    if (base && base.hash === rowHash(key, R)) return { kind: 'absent' }
+    // 로컬에 없는데 base가 있다 = 이 PC가 하드 삭제했다. 그때(base.at)보다 늦게 고친 값만 받는다.
+    if (base && (base.hash === rowHash(key, R) || (base.at !== undefined && R.updated_at <= base.at))) return { kind: 'absent' }
     return { kind: 'take', value: R }
   }
-  const d = decide({ local: L, remote: R, base: base?.hash, key, table })
+  let d = decide({ local: L, remote: R, base: base?.hash, key, table })
   if (d.action === 'keep') return rowHash(key, L) === rowHash(key, R) ? { kind: 'equal', value: L } : { kind: 'keep' }
-  if (d.action === 'take') return R.updated_at < L.updated_at ? { kind: 'stale' } : { kind: 'take', value: R }
+  if (d.action === 'take') {
+    if (R.updated_at <= L.updated_at) return { kind: 'stale' }
+    // 겹친 실행: base가 내가 올린 값이고, 받은 값은 내가 올리기 전에 고친 것이다 → 상대는 내 값을 못 보고 고쳤다.
+    // 노트·누가기록은 조용히 받지 않고 충돌로 본다(진 쪽 사본, 결정적 id).
+    if (!COPY_TABLES.has(table) || base?.src !== 'up' || base.upAt === undefined || !(R.updated_at < base.upAt)) return { kind: 'take', value: R }
+    d = decide({ local: L, remote: R, base: undefined, key, table })
+  }
   let v = d.value!
   const loser = v === L ? R : L
   if (v.updated_at < loser.updated_at) v = { ...v, updated_at: bump(v.updated_at, loser.updated_at) }
@@ -127,9 +136,13 @@ function decideRow(L: SyncRow | undefined, R: SyncRow, base: BaseEntry | undefin
 
 // ---------- 지움 표시 정리(순수) ----------
 
+/** 결정적 id로 심는 기본값 행(reflection/store.ts). 지움 표시가 '심지 마라'는 뜻이라 정리하지 않는다. */
+const SEEDED = ['phrase-default-', 'goodtext-default-']
+
 /** 하드 삭제해도 되는 지움 표시인가: 180일 지났고, 활성 기기 스냅숏 모두에서 지워졌거나 아예 없다. */
 export function isCollectable(row: SyncRow, now: Date, peerRows: (SyncRow | undefined)[]): boolean {
   if (!row.deleted) return false
+  if (SEEDED.some((p) => row.id.startsWith(p))) return false // 기본값 행: 지우면 다시 심어져 지운 기본값이 살아난다
   const t = Date.parse(row.updated_at)
   if (Number.isNaN(t) || now.getTime() - t <= TOMBSTONE_GC_MS) return false
   return peerRows.every((p) => !p || !!p.deleted)
@@ -183,9 +196,9 @@ const attKey = (r: SyncRow) => canonicalJson([r.student_id, r.date, r.kind])
  * 로컬 읽기 → 기기 id 순으로 받은 행을 차례로 판정 → dedupe → 진 행 하드 삭제 → 바뀐 행만 bulkPut → base 갱신.
  * 묶음 안에서는 IndexedDB 밖의 비동기(복호화 제외 해시는 동기)를 하지 않는다.
  */
-async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[]): Promise<MergeOut> {
+async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[], wasDirty: boolean): Promise<MergeOut> {
   const out: MergeOut = { merged: 0, conflicts: 0, nonTake: false, students: new Set(), badRows: false }
-  const tables: Table[] = [...SYNC_TABLES.map((t) => db.table(t)), db.sync_rows, db.note_blobs]
+  const tables: Table[] = [...SYNC_TABLES.map((t) => db.table(t)), db.sync_rows, db.note_blobs, db.meta]
   const H = (r: SyncRow) => rowHash(key, r)
   await mergeWrite(db, tables, async () => {
     /** 하드 삭제된(또는 받지 않은) 출결 id → 같은 칸의 이긴 출결 */
@@ -265,10 +278,10 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[]): Prom
       const deletes = hardDelete.filter((id) => local.has(id))
       const puts: Row[] = []
       const blobDrops: string[] = []
-      const marks: { table: string; id: string; hash: string; at: string }[] = []
+      const marks: { table: string; id: string; hash: string; at: string; src: 'merge' }[] = []
       for (const id of hardDelete) {
         const r = pre.get(id)!
-        marks.push({ table: t, id, hash: H(r), at: r.updated_at }) // 다른 PC의 같은 진 행을 다시 받지 않게
+        marks.push({ table: t, id, hash: H(r), at: r.updated_at, src: 'merge' }) // 다른 PC의 같은 진 행을 다시 받지 않게
         if (local.has(id)) out.nonTake = true
       }
       for (const v of keep) {
@@ -277,7 +290,7 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[]): Prom
         if (agreed.has(v.id)) {
           const h = H(v)
           const old = bases.get(v.id) // 저장된 base와 비교(newBase는 아직 메모리에만 있다)
-          if (!old || old.hash !== h || old.at !== v.updated_at) marks.push({ table: t, id: v.id, hash: h, at: v.updated_at })
+          if (!old || old.hash !== h || old.at !== v.updated_at || old.src !== 'merge') marks.push({ table: t, id: v.id, hash: h, at: v.updated_at, src: 'merge' })
         }
         const lr = local.get(v.id)
         if (lr && canonicalJson(view(t, lr)) === canonicalJson(v)) continue
@@ -286,9 +299,8 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[]): Prom
           if (!v.deleted && lr && !lr.deleted) {
             if (lr.data !== undefined) row.data = lr.data
             if (lr.chunks !== undefined) row.chunks = lr.chunks
-          } else if (v.deleted) {
-            if (!db.isVault) row.data = ''
-            if (lr && db.isVault) blobDrops.push(...blobIds(lr as unknown as NoteFileRec))
+          } else if (v.deleted && lr) {
+            blobDrops.push(...blobIds(lr as unknown as NoteFileRec))
           }
         }
         puts.push(row)
@@ -306,6 +318,12 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[]): Prom
       if (marks.length) await markBase(db, marks)
       out.merged += deletes.length + puts.length
     }
+    // 올려야 할 합친 결과는 같은 묶음에서 pendingUpload로 남긴다: 업로드 전에 무엇이 실패해도(첨부 받기 등) 다음 번에 올린다.
+    // 합친 행은 base(at)로 dirty에서 빠지므로 이것이 없으면 그 결과가 이 PC에만 남는다.
+    if (wasDirty || out.nonTake) {
+      const cur = (await db.meta.get('sync')) ?? { id: 'sync' }
+      await db.meta.put({ ...cur, id: 'sync', pendingUpload: true })
+    }
   })
   return out
 }
@@ -313,7 +331,6 @@ async function mergeRemotes(db: AppDB, key: Uint8Array, remotes: Remote[]): Prom
 // ---------- 첨부 ----------
 
 async function hasLocalContent(db: AppDB, f: NoteFileRec): Promise<boolean> {
-  if (!db.isVault) return typeof f.data === 'string'
   return (await db.note_blobs.bulkGet(blobIds(f))).every(Boolean)
 }
 
@@ -338,25 +355,15 @@ async function downloadAttachments(db: AppDB, dek: Uint8Array, store: SyncOncePa
       warn('attachment-bad')
       continue
     }
-    if (db.isVault) {
-      const { rows, chunks } = await sealBlobRows(db, f.id, bytes) // 묶음 밖에서 암호화
-      await mergeWrite(db, [db.note_files, db.note_blobs], async () => {
-        const cur = await db.note_files.get(f.id)
-        if (!cur || cur.deleted || cur.size !== f.size) return
-        const { chunks: _c, ...rest } = cur
-        await db.note_blobs.bulkPut(rows)
-        await db.note_files.put(chunks ? { ...rest, chunks } : rest) // 병합 쓰기: updated_at 그대로
-        down++
-      })
-    } else {
-      const data = bytesToB64(bytes)
-      await mergeWrite(db, [db.note_files], async () => {
-        const cur = await db.note_files.get(f.id)
-        if (!cur || cur.deleted || cur.size !== f.size) return
-        await db.note_files.put({ ...cur, data })
-        down++
-      })
-    }
+    const { rows, chunks } = await sealBlobRows(db, f.id, bytes) // 묶음 밖에서 암호화
+    await mergeWrite(db, [db.note_files, db.note_blobs], async () => {
+      const cur = await db.note_files.get(f.id)
+      if (!cur || cur.deleted || cur.size !== f.size) return
+      const { chunks: _c, ...rest } = cur
+      await db.note_blobs.bulkPut(rows)
+      await db.note_files.put(chunks ? { ...rest, chunks } : rest) // 병합 쓰기: updated_at 그대로
+      down++
+    })
   }
   return down
 }
@@ -391,15 +398,16 @@ async function readOwnTables(db: AppDB): Promise<Record<string, SyncRow[]>> {
 }
 
 /** 올린 값을 base로 적는다(바뀐 것만). 다른 PC가 이 값에서 고친 것을 충돌이 아닌 '받기'로 보게 한다. */
-async function markUploaded(db: AppDB, key: Uint8Array, tables: Record<string, SyncRow[]>): Promise<void> {
+async function markUploaded(db: AppDB, key: Uint8Array, tables: Record<string, SyncRow[]>, upAt: string): Promise<void> {
   for (const [t, rows] of Object.entries(tables)) {
     if (!rows.length) continue
     const cur = await getBaseEntries(db, t, rows.map((r) => r.id))
-    const marks: { table: string; id: string; hash: string; at: string }[] = []
+    const marks: { table: string; id: string; hash: string; at: string; src: 'up'; upAt: string }[] = []
     for (const r of rows) {
       const h = rowHash(key, r)
       const b = cur.get(r.id)
-      if (!b || b.hash !== h || b.at !== r.updated_at) marks.push({ table: t, id: r.id, hash: h, at: r.updated_at })
+      // 바뀐 값만 'up'으로 적는다(이미 맞춘 그대로 다시 올린 행은 그 출처를 둔다).
+      if (!b || b.hash !== h || b.at !== r.updated_at) marks.push({ table: t, id: r.id, hash: h, at: r.updated_at, src: 'up', upAt })
     }
     if (marks.length) await db.transaction('rw', db.sync_rows, () => markBase(db, marks))
   }
@@ -413,6 +421,7 @@ const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).pad
 
 export async function syncOnce(p: SyncOnceParams): Promise<SyncResult> {
   const { db, dek, keyId, store, now, deviceName, appVersion } = p
+  if (!db.isVault) throw new Error('SYNC_NEEDS_VAULT') // 첨부·도장 규칙이 암호화 DB를 전제로 한다(§7.5: 1.0 암호화 완료)
   let state: SyncState = await getSyncState(db)
   if (!state.enabled || !state.rootId) throw new Error('SYNC_NOT_ENABLED')
   const key = syncKeyFrom(dek)
@@ -440,6 +449,13 @@ export async function syncOnce(p: SyncOnceParams): Promise<SyncResult> {
     const entries = (await store.listDevices(root)).sort((a, b) => (a.deviceId < b.deviceId ? -1 : a.deviceId > b.deviceId ? 1 : a.fileId < b.fileId ? -1 : 1))
     const own = entries.find((e) => e.deviceId === me)
     const known = new Map((state.devices ?? []).map((d) => [d.deviceId, d]))
+    // 오래 쉰 이 PC: 마지막 성공과 내 파일 중 늦은 것이 90일보다 오래됐고 다른 기기가 있으면 합치지 않는다.
+    // 그사이 다른 PC가 지움 표시를 정리했을 수 있어 합치면 지운 행이 되살아난다. '드라이브 자료로 바꾸기'(S6)만 허용.
+    const selfTimes = [own?.modifiedTime, state.lastOk].map((t) => (t ? Date.parse(t) : NaN)).filter((t) => !Number.isNaN(t))
+    if (selfTimes.length && entries.some((e) => e.deviceId !== me) && nowD.getTime() - Math.max(...selfTimes) > STALE_MS) {
+      await setSyncState(db, { lastError: { code: 'stale-self', at: nowD.toISOString() } })
+      return { ...result, ok: false, error: 'stale-self' }
+    }
     const gcDue = !state.lastGc || nowD.getTime() - Date.parse(state.lastGc) >= GC_EVERY_MS || Number.isNaN(Date.parse(state.lastGc))
     const devices: SyncDevice[] = []
     const remotes: Remote[] = []
@@ -489,7 +505,7 @@ export async function syncOnce(p: SyncOnceParams): Promise<SyncResult> {
     let nonTake = false
     let students = new Set<string>()
     if (remotes.length) {
-      const m = await mergeRemotes(db, key, remotes)
+      const m = await mergeRemotes(db, key, remotes, wasDirty)
       result.pulled = remotes.length
       result.merged += m.merged
       result.conflicts = m.conflicts
@@ -552,7 +568,7 @@ export async function syncOnce(p: SyncOnceParams): Promise<SyncResult> {
       const bytes = await buildWsync({ dek, app: appVersion, deviceId: me, deviceName, keyId, at: now().toISOString(), tables, extra })
       await store.uploadDevice(root, me, bytes, own?.fileId)
       result.uploaded = 1
-      await markUploaded(db, key, tables)
+      await markUploaded(db, key, tables, iso(Date.now()))
       // 워터마크는 이 PC의 시계로만 올린다(남의 앞선 도장까지 올리면 그 아래로 찍힌 내 고침을 놓친다).
       // 스냅숏을 읽기 직전(tb)보다 앞선 고침은 모두 올렸고, 뒤의 고침은 tb 이상으로 찍힌다.
       state = await setSyncState(db, { lastUploadedMax: maxIso(state.lastUploadedMax, iso(tb - 1)), pendingUpload: false })

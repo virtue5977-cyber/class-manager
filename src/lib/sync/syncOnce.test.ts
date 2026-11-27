@@ -1,14 +1,16 @@
 // @vitest-environment node
 import { describe, expect, test, vi } from 'vitest'
-import { createDb, type AppDB } from '../db/schema'
-import { TEST_KEY } from '../vault/testing'
+import { AppDB } from '../db/schema'
+import { TEST_KEY, openTestVaultDb } from '../vault/testing'
+import { GoogleApiError } from '../google/google'
 import { mergeWrite, readRaw } from '../vault/middleware'
 import { createDriveStore, type DriveStore } from './driveStore'
 import { fakeDrive, type FakeDrive } from './fakeDrive'
-import { getSyncState, setSyncState, isDirty } from './state'
+import { getSyncState, setSyncState, isDirty, syncErrorText } from './state'
 import { buildWsync, openWsync } from './wsync'
 import { SYNC_TABLES } from './tables'
-import { syncOnce, tombstoneGc, isCollectable, syncWarningText, type SyncResult } from './syncOnce'
+import { syncOnce, tombstoneGc, isCollectable, syncWarningText, decideRow, type SyncResult } from './syncOnce'
+import { syncKeyFrom, rowHash } from './hash'
 import { createClass, saveStudent, emptyStudent } from '../roster/roster'
 import { createNote, saveNoteContent, deleteNote, attachFile, readFile } from '../notes/notes'
 import { saveAttendance, type AttendanceInput } from '../attendance/attendance'
@@ -32,7 +34,7 @@ async function world(): Promise<World> {
   const store = createDriveStore(d, { recheckDelayMs: 0 })
   const root = (await store.createRoot()).id
   const pc = async (name: string): Promise<PC> => {
-    const db = createDb(`sync-${name}-${crypto.randomUUID()}`)
+    const db = openTestVaultDb(`sync-${name}-${crypto.randomUUID()}`)
     await setSyncState(db, { enabled: true, rootId: root, deviceName: name, firstMergeDone: true })
     return { name, db, sync: (o = {}) => syncOnce({ db, dek: DEK, keyId: KEY_ID, store, now: () => new Date(), deviceName: name, appVersion: '1.0.2', ...o }) }
   }
@@ -72,7 +74,7 @@ function contains(hay: Uint8Array, needle: Uint8Array): boolean {
 describe('syncOnce', () => {
   test('켜지 않았으면 SYNC_NOT_ENABLED', async () => {
     const w = await world()
-    const db = createDb('sync-off-' + crypto.randomUUID())
+    const db = openTestVaultDb('sync-off-' + crypto.randomUUID())
     await expect(syncOnce({ db, dek: DEK, keyId: KEY_ID, store: w.store, now: () => new Date(), deviceName: 'x', appVersion: '1.0.2' })).rejects.toThrow('SYNC_NOT_ENABLED')
   })
 
@@ -233,6 +235,100 @@ describe('syncOnce', () => {
     expect(await readRaw(B.db, 'note_blobs')).toEqual([])
     const raw = (await readRaw(B.db, 'note_files'))[0]
     expect(raw.data ?? '').toBe('')
+  })
+
+  test('평문 DB는 SYNC_NEEDS_VAULT', async () => {
+    const w = await world()
+    const db = new AppDB('sync-plain-' + crypto.randomUUID())
+    await setSyncState(db, { enabled: true, rootId: w.root })
+    await expect(syncOnce({ db, dek: DEK, keyId: KEY_ID, store: w.store, now: () => new Date(), deviceName: 'x', appVersion: '1.0.2' })).rejects.toThrow('SYNC_NEEDS_VAULT')
+  })
+
+  test('C1 오래 쉰 PC가 돌아오면 합치지 않고 stale-self (지움 표시 정리 뒤 되살림 방지)', async () => {
+    const w = await world()
+    const X = await w.pc('X'), S = await w.pc('S')
+    const n = await createNote(X.db, '지울 노트')
+    await X.sync(); await S.sync(); await X.sync()
+    await deleteNote(X.db, n.id)
+    await X.sync()
+    // 181일 뒤: S는 그동안 동기화하지 않았다(오래된 기기). X는 지움 표시를 정리한다.
+    const later = () => new Date(Date.now() + 181 * DAY)
+    const xId = (await getSyncState(X.db)).deviceId
+    w.d.files.get((await w.store.listDevices(w.root)).find((x) => x.deviceId === xId)!.fileId)!.modifiedTime = new Date(Date.now() + 180 * DAY).toISOString()
+    await setSyncState(X.db, { lastGc: undefined })
+    await X.sync({ now: later })
+    expect(await X.db.notes.get(n.id)).toBeUndefined()
+    // S가 돌아온다: S에는 노트가 살아 있다
+    const sId = (await getSyncState(S.db)).deviceId
+    const sFile = (await w.store.listDevices(w.root)).find((x) => x.deviceId === sId)!
+    const before = w.d.files.get(sFile.fileId)!.modifiedTime
+    await createNote(S.db, 'S의 새 노트')
+    const r = await S.sync({ now: later })
+    expect(r).toMatchObject({ ok: false, error: 'stale-self', uploaded: 0, merged: 0 })
+    expect((await getSyncState(S.db)).lastError?.code).toBe('stale-self')
+    expect(syncErrorText('stale-self')).toContain('드라이브 자료로 바꾸기')
+    expect(w.d.files.get(sFile.fileId)!.modifiedTime).toBe(before)
+    await X.sync({ now: later })
+    expect(await X.db.notes.get(n.id)).toBeUndefined()
+  })
+
+  test('C1 내 파일이 없어도 최근에 성공했으면 stale-self가 아니다(빠진 기기는 다시 올린다)', async () => {
+    const w = await world()
+    const A = await w.pc('A'), B = await w.pc('B')
+    await A.sync(); await B.sync()
+    const bId = (await getSyncState(B.db)).deviceId
+    await w.store.deleteDevice((await w.store.listDevices(w.root)).find((x) => x.deviceId === bId)!.fileId)
+    expect(await B.sync()).toMatchObject({ ok: true, uploaded: 1 })
+    // 파일은 있고 lastOk가 없어도(옛 상태) 파일이 최근이면 된다
+    await setSyncState(B.db, { lastOk: undefined })
+    expect((await B.sync()).ok).toBe(true)
+  })
+
+  test('C2 합친 결과가 업로드 전에 실패해도 다음 번에 올린다', async () => {
+    const w = await world()
+    const A = await w.pc('A'), B = await w.pc('B')
+    const n = await createNote(A.db, '원래')
+    await A.sync(); await B.sync(); await A.sync()
+    await saveNoteContent(B.db, n.id, { title: 'B', blocks: n.blocks })
+    await attachFile(B.db, n.id, { name: 'b.bin', mime: 'application/octet-stream', bytes: new Uint8Array([1]) })
+    await B.sync()
+    await sleep()
+    await saveNoteContent(A.db, n.id, { title: 'A 늦게', blocks: n.blocks }) // A가 이긴다
+    const failing = { ...w.store, downloadFile: async () => { throw new GoogleApiError(429, undefined, 'x') } }
+    expect(await A.sync({ store: failing })).toMatchObject({ ok: false, error: 'rate', uploaded: 0 })
+    expect((await A.db.notes.get(n.id))?.title).toBe('A 늦게')
+    expect((await A.sync()).uploaded).toBe(1)
+    await B.sync()
+    expect((await B.db.notes.get(n.id))?.title).toBe('A 늦게')
+  })
+
+  test('C4 두 PC가 서로 못 보고 같은 노트를 고쳐 올리면 둘 다 같은 승자와 사본 하나', async () => {
+    for (const aFirst of [true, false]) {
+      const w = await world()
+      const A = await w.pc('A'), B = await w.pc('B')
+      const n = await createNote(A.db, 'W')
+      await A.sync(); await B.sync(); await A.sync()
+      await saveNoteContent(A.db, n.id, { title: 'A 고침', blocks: n.blocks })
+      await sleep()
+      await saveNoteContent(B.db, n.id, { title: 'B 고침', blocks: n.blocks })
+      await sleep()
+      // 겹친 실행: 둘 다 상대의 새 스냅숏을 보기 전에 올린다
+      const aId = (await getSyncState(A.db)).deviceId
+      const bSeen = (await getSyncState(B.db)).seen
+      expect((await A.sync()).uploaded).toBe(1)
+      const aMod = (await w.store.listDevices(w.root)).find((x) => x.deviceId === aId)!.modifiedTime
+      await setSyncState(B.db, { seen: { ...bSeen, [aId]: aMod } })
+      expect((await B.sync()).uploaded).toBe(1)
+      await setSyncState(B.db, { seen: bSeen })
+      const order = aFirst ? [A, B, A, B] : [B, A, B, A]
+      for (const P of order) await P.sync()
+      for (const P of [A, B]) {
+        expect((await P.db.notes.get(n.id))?.title).toBe('B 고침')
+        const copies = alive(await P.db.notes.toArray()).filter((x) => x.id.startsWith('conflict:'))
+        expect(copies.map((c) => (c as NoteRec).title)).toEqual(['A 고침'])
+      }
+      expect(await syncedView(A.db)).toEqual(await syncedView(B.db))
+    }
   })
 
   test('stale device', async () => {
@@ -536,6 +632,8 @@ describe('syncOnce', () => {
     const bId = (await getSyncState(B.db)).deviceId
     const bf = w.d.files.get((await w.store.listDevices(w.root)).find((x) => x.deviceId === bId)!.fileId)!
     bf.modifiedTime = new Date(Date.now() + 170 * DAY).toISOString() // B는 활성
+    const aId = (await getSyncState(A.db)).deviceId
+    w.d.files.get((await w.store.listDevices(w.root)).find((x) => x.deviceId === aId)!.fileId)!.modifiedTime = new Date(Date.now() + 170 * DAY).toISOString() // A도 활성
     await setSyncState(A.db, { lastGc: undefined })
     await A.sync({ now: later(179) })
     expect(await A.db.notes.get(n.id)).toBeDefined()
@@ -552,6 +650,24 @@ describe('syncOnce', () => {
   })
 })
 
+describe('decideRow (순수)', () => {
+  const key = syncKeyFrom(DEK)
+  test('C1b 로컬에 없고 base가 있으면 base.at 이하로 온 값은 받지 않는다(지움 표시 정리·진 행)', () => {
+    const R = { id: 'n', updated_at: '2026-04-01T00:00:00.000Z', deleted: false, title: '옛 값' }
+    const base = { hash: rowHash(key, { other: 1 }), at: '2026-05-01T00:00:00.000Z' }
+    expect(decideRow(undefined, R, base, key, 'notes').kind).toBe('absent')
+    expect(decideRow(undefined, { ...R, updated_at: base.at }, base, key, 'notes').kind).toBe('absent')
+    expect(decideRow(undefined, { ...R, updated_at: '2026-06-01T00:00:00.000Z' }, base, key, 'notes').kind).toBe('take')
+    expect(decideRow(undefined, R, undefined, key, 'notes').kind).toBe('take')
+  })
+  test('같은 도장이면 받지 않는다(stale)', () => {
+    const W = { id: 'n', updated_at: '2026-04-01T00:00:00.000Z', deleted: false, title: 'W' }
+    const L = { ...W, title: 'L', updated_at: '2026-04-02T00:00:00.000Z' }
+    const R = { ...W, title: 'R', updated_at: L.updated_at }
+    expect(decideRow(L, R, { hash: rowHash(key, L) }, key, 'todos').kind).toBe('stale')
+  })
+})
+
 describe('tombstoneGc (순수)', () => {
   const now = new Date('2027-01-01T00:00:00.000Z')
   const old = '2026-06-01T00:00:00.000Z' // 214일 전
@@ -564,6 +680,10 @@ describe('tombstoneGc (순수)', () => {
     expect(isCollectable(r('a', old, true), now, [undefined, r('a', old, true)])).toBe(true)
     expect(isCollectable(r('a', old, true), now, [r('a', young, false)])).toBe(false)
     expect(isCollectable(r('a', 'garbage', true), now, [])).toBe(false)
+    // C3 기본값 행은 지우면 다시 심어지므로 정리하지 않는다
+    expect(isCollectable(r('phrase-default-3', old, true), now, [])).toBe(false)
+    expect(isCollectable(r('goodtext-default-0', old, true), now, [])).toBe(false)
+    expect(tombstoneGc({ reflection_phrases: [r('phrase-default-1', old, true), r('p-x', old, true)] }, [], now)).toEqual({ reflection_phrases: ['p-x'] })
   })
   test('지울 행 목록 고정', () => {
     const local = {
