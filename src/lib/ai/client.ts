@@ -1,5 +1,7 @@
 /** Claude API 호출(사용자가 넣은 키, 브라우저/exe에서 직접). 키·본문은 오류 문구에 넣지 않는다. */
 
+import { aiErrorGuide } from './errorGuide'
+
 export const AI_MODEL = 'claude-haiku-5-5'
 export const AI_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -88,7 +90,7 @@ export function getAntigravity(): AntigravityApi | undefined {
 }
 
 /** IPC 오류 앞에 붙는 "Error invoking remote method ..." 를 떼어 낸다. */
-const cleanIpcError = (e: unknown) => new AiError(String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').replace('사용량 한도(Pro 프로그램용 크레딧)', 'Pro 사용 한도'), 'CLAUDE-CODE')
+const cleanIpcError = (e: unknown) => new AiError(aiErrorGuide(String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').replace('사용량 한도(Pro 프로그램용 크레딧)', 'Pro 사용 한도')), 'CLAUDE-CODE')
 
 /** 설정에 따라 Claude Code(Pro 구독)·Claude API 키·Antigravity·구글 Gemini API 키로 부른다. 기본값: exe면 Claude Code, 아니면 키. */
 export function createRoutedAiCaller(

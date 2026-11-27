@@ -84,6 +84,25 @@ test('Antigravity 연결 확인: 설치는 됐지만 로그인이 안 됐으면 
   }
 })
 
+test('Antigravity 연결 확인: agy가 없으면 바뀐 안내', async () => {
+  const user = userEvent.setup()
+  const db = createDb('test-' + crypto.randomUUID())
+  const g = globalThis as { desktop?: unknown }
+  g.desktop = { agy: { status: async () => ({ installed: false }), ask: async () => '' } }
+  try {
+    render(
+      <AppProviders db={db} fs={createMemoryFsAdapter()}>
+        <AiSettings />
+      </AppProviders>,
+    )
+    await user.click(await screen.findByRole('radio', { name: '구글 Antigravity(로그인)' }))
+    await user.click(await screen.findByRole('button', { name: 'Antigravity 연결 확인' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Antigravity CLI(agy)가 이 PC에 없습니다. 설정 > AI에서 Claude Code를 고르거나')
+  } finally {
+    delete g.desktop
+  }
+})
+
 test('구글 Gemini API 키: 연결 방식으로 고르면 키·모델 칸이 나오고, 이름 가리기는 끌 수 없다', async () => {
   const { render, screen } = await import('@testing-library/react')
   const { default: userEvent } = await import('@testing-library/user-event')

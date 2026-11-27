@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { aiErrorGuide } from '../../lib/ai/errorGuide'
 import { useAi, useDb } from '../../app/context'
 import type { AiPromptRec, AppSettingsRec } from '../../lib/db/types'
 import { effectiveMask, getAiKey, getGeminiKey, getSettings, isDesktopApp, setAiKey, setGeminiKey, updateSettings } from '../../lib/settings'
@@ -84,9 +85,9 @@ export default function AiSettings() {
                 const st = await agy!.status()
                 setCc(
                   !st.installed
-                    ? 'Antigravity CLI(agy)를 찾지 못했습니다. 설치 후 명령 창에서 agy 를 한 번 실행해 로그인하세요.'
+                    ? aiErrorGuide('Antigravity CLI(agy)를 찾지 못했습니다.')
                     : st.loggedIn === false
-                      ? `Antigravity ${st.version ?? ''} 설치됨 · ${st.message ?? '로그인이 필요합니다.'}`
+                      ? `Antigravity ${st.version ?? ''} 설치됨 · ${aiErrorGuide(st.message ?? '로그인이 필요합니다.')}`
                       : `Antigravity ${st.version ?? ''} 연결됨`,
                 )
               }}

@@ -34,5 +34,5 @@ test('Claude Code 경로: exe면 기본 Claude Code, 키 선택 시 키, 브리�
   expect(await createRoutedAiCaller(async () => undefined, key, () => undefined)({ system: '', user: '' })).toBe('키 결과')
   await expect(createRoutedAiCaller(async () => 'claude-code', key, () => undefined)({ system: '', user: '' })).rejects.toThrow('설치형(Windows 앱)에서만')
   const bad = { status: async () => ({ installed: true }), ask: async () => { throw new Error("Error invoking remote method 'ai:ask': Error: Claude Code에 로그인되어 있지 않습니다.") } }
-  await expect(createRoutedAiCaller(async () => 'claude-code', key, () => bad)({ system: '', user: '' })).rejects.toThrow(/^Claude Code에 로그인되어 있지 않습니다\.$/)
+  await expect(createRoutedAiCaller(async () => 'claude-code', key, () => bad)({ system: '', user: '' })).rejects.toThrow(/^Claude Code 로그인이 없거나 만료되었습니다\. PowerShell에서 claude auth login /)
 })
