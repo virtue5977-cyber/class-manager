@@ -3,7 +3,7 @@ import { registerFlush } from '../../lib/ui/flush'
 import EmptyState from '../../components/EmptyState'
 import AudioDrop from './AudioDrop'
 import { appendTranscript } from '../../lib/stt/stt'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageHead from '../../components/PageHead'
 import ExportMenu from '../../components/ExportMenu'
 import { exportPdf } from '../../lib/export/pdf'
@@ -15,7 +15,8 @@ import { isHideNames } from '../../components/HideNames'
 import { useAi, useDb, useFs } from '../../app/context'
 import type { CounselingLogRec, StudentRec } from '../../lib/db/types'
 import { listStudents } from '../../lib/roster/roster'
-import { deleteLog, KINDS, kindOf, listAllLogs, listLogsByStudent, listLogsByStudents, logTags, METHODS, nugaCopyText, nugaHead, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
+import { deleteLog, KINDS, kindOf, logTags, METHODS, nugaCopyText, nugaHead, nugaHeader, saveLog, searchLogs, TARGETS, TOPICS, updateNuga } from '../../lib/counseling/counseling'
+import { useCounselingLogs } from '../../lib/counseling/useLogs'
 import { runNuga } from '../../lib/counseling/nuga'
 import { getSettings, updateSettings } from '../../lib/settings'
 import { APP_SETTINGS_ID } from '../../lib/backup/service'
@@ -46,9 +47,17 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
   const [students, setStudents] = useState<StudentRec[]>([])
   // 명령·할 일 링크(#/counseling?sid=…)로 오면 그 학생을 연다.
   const [selected, setSelected] = useState<string | undefined>(() => hashParam('sid') ?? undefined)
-  const [logs, setLogs] = useState<CounselingLogRec[]>([])
-  const [counts, setCounts] = useState<Record<string, number>>({})
-  const [lastDate, setLastDate] = useState<Record<string, string>>({})
+  // 기록은 한 번의 liveQuery를 사이드바 배지·전체 목록과 나눠 쓴다(바뀌면 저절로 다시 온다).
+  const classLogs = useCounselingLogs(db, classId)
+  const { logs, counts, lastDate } = useMemo(() => {
+    const byStudent: Record<string, CounselingLogRec[]> = Object.fromEntries(students.map((s) => [s.id, []]))
+    for (const l of classLogs ?? []) byStudent[l.student_id]?.push(l)
+    return {
+      logs: selected ? (byStudent[selected] ?? []) : [],
+      counts: Object.fromEntries(students.map((s) => [s.id, byStudent[s.id].length])) as Record<string, number>,
+      lastDate: Object.fromEntries(students.map((s) => [s.id, byStudent[s.id].at(-1)?.date ?? ''])) as Record<string, string>,
+    }
+  }, [classLogs, students, selected])
   const [sort, setSort] = useState<'번호순' | '오래된 순'>('번호순')
   const [filter, setFilter] = useState<Filter>('전체')
   const [topic, setTopic] = useState('')
@@ -70,15 +79,9 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
     if (!classId) return
     const n = ++seq.current
     const studs = await listStudents(db, classId)
-    const all = await listLogsByStudents(db, studs.map((s) => s.id))
-    const c: Record<string, number> = Object.fromEntries(studs.map((s) => [s.id, all[s.id].length]))
-    const mine = selected ? (all[selected] ?? (await listLogsByStudent(db, selected))) : []
     if (n !== seq.current) return
     setStudents(studs)
-    setCounts(c)
-    setLastDate(Object.fromEntries(studs.map((s) => [s.id, all[s.id].at(-1)?.date ?? ''])))
-    setLogs(mine)
-  }, [db, classId, selected])
+  }, [db, classId])
   useEffect(() => {
     reload()
   }, [reload])
@@ -202,7 +205,7 @@ export default function CounselingPage({ today = toYmd(new Date()) }: { today?: 
         </ul>
         </div>
         <div className="stack wide">
-          {!student && classId && <AllLogs students={students} today={today} onOpen={(sid) => { setSelected(sid); setMessages([]) }} />}
+          {!student && classId && <AllLogs classId={classId} students={students} today={today} onOpen={(sid) => { setSelected(sid); setMessages([]) }} />}
           {student && (
             <>
               <button type="button" className="link back-all" onClick={() => setSelected(undefined)}><Icon name="arrowLeft" size={14} /> 전체 기록</button>
@@ -479,12 +482,14 @@ type KindFilter = '전체' | '상담' | '관찰'
 type StatusFilter = '전체' | '미정리' | '정리됨' | '나이스 입력 완료'
 
 /** 기본 화면: 학급 전체 누가기록(최근 먼저). 종류·학생·기간·정리 상태로 거른다. 줄을 누르면 그 학생 화면. */
-function AllLogs({ students, today, onOpen }: { students: StudentRec[]; today: string; onOpen: (sid: string) => void }) {
+function AllLogs({ classId, students, today, onOpen }: { classId?: string; students: StudentRec[]; today: string; onOpen: (sid: string) => void }) {
   const db = useDb()
   const fs = useFs()
   const alertOff = useLive<boolean>(async () => !!(await db.app_settings.get(APP_SETTINGS_ID))?.nuga_alert_off, [db], false)
   const ids = students.map((s) => s.id)
-  const loaded = useLive<CounselingLogRec[] | undefined>(() => listAllLogs(db, ids), [db, ids.join(',')], undefined)
+  const classLogs = useCounselingLogs(db, classId)
+  const idSet = new Set(ids)
+  const loaded = classLogs && classLogs.filter((l) => idSet.has(l.student_id)).reverse()
   const all = loaded ?? []
   const [kind, setKind] = useState<KindFilter>('전체')
   const [sid, setSid] = useState('')

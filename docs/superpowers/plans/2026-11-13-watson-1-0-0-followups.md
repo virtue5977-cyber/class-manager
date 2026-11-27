@@ -63,3 +63,4 @@
 
 ## 측정
 - Task 20 measurements (Chromium 153, 2-core VM, median before→after): 홈 469→383ms, 출결 398→396ms, 누가기록 985(worst 1027)→728(759)ms; readFile longest task 10MB 300→0ms, 50MB 1195→53ms; export 5×10MB longest task 1013→203ms; restore longest task 491ms (unchanged)
+- 1.0.2 A4 measurement (same VM, 누가기록 중앙, 겹친 읽기 3→1): 725 -> 511ms (최대 766 -> 606ms, 가장 긴 task 126 -> 110ms); 홈·출결 변화 없음
