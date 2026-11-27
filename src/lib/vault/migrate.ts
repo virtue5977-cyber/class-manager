@@ -204,11 +204,21 @@ export async function migrate(opts: {
   batch?: number
   /** note_files 한 쪽의 base64 글자 수 예산(기본 32MB) */
   fileBudget?: number
-}): Promise<{ newName: string; counts: Record<string, number> }> {
+  /**
+   * 암호화 DB → 다른 열쇠의 암호화 DB(S6 다시 암호화). 명시해야만 받는다(실수로 옮기기 길에 암호화 DB를 넘기지 않게).
+   * 신고서 id는 이미 결정적이라 그대로 두고(드라이브 id와 같아야 한다), 첨부는 note_blobs를 옛 열쇠로 풀어 새 열쇠로 다시 봉인한다.
+   * 풀리지 않는 행(손상)은 미들웨어가 읽기에서 빼므로 복사되지 않는다. 풀리지 않는 첨부는 메타 행만 옮긴다(동기화가 드라이브에서 다시 받는다).
+   */
+  fromVault?: boolean
+}): Promise<{ newName: string; counts: Record<string, number>; filesWithoutContent: number }> {
   const { oldDb, newDb } = opts
   const size = opts.batch ?? BATCH
   if (!newDb.isVault) throw new Error('새 DB가 암호화 DB가 아닙니다.')
-  if (oldDb.isVault) throw new Error('옛 DB가 평문 DB가 아닙니다.')
+  if (oldDb.isVault && !opts.fromVault) throw new Error('옛 DB가 평문 DB가 아닙니다.')
+  if (!oldDb.isVault && opts.fromVault) throw new Error('옛 DB가 암호화 DB가 아닙니다.')
+  if (oldDb.name === newDb.name) throw new Error('같은 DB로는 복사할 수 없습니다.')
+  const vaultSrc = oldDb.isVault
+  let filesWithoutContent = 0
   if (!oldDb.isOpen()) await oldDb.open()
   const totals: Record<string, number> = {}
   for (const t of COPY_ORDER) totals[t] = await oldDb.table(t).count()
@@ -216,10 +226,7 @@ export async function migrate(opts: {
   const counts: Record<string, number> = {}
   const tell = (table: string, done: number) => opts.onProgress?.({ table, done, total: totals[table], overall: { ...overall } })
 
-  const plan = planReports(
-    (await oldDb.absence_reports.toArray()) as AbsenceReportRec[],
-    (await oldDb.report_attendance.toArray()) as ReportAttendanceRec[],
-  )
+  const plan = await reportPlan(oldDb)
 
   for (const t of COPY_ORDER) {
     tell(t, 0)
@@ -250,15 +257,24 @@ export async function migrate(opts: {
     }
     if (t === 'note_files') {
       let n = 0
-      const fileCost = (r: Row) => (typeof r.data === 'string' ? r.data.length : 0)
+      const fileCost = (r: Row) => (typeof r.data === 'string' ? r.data.length : vaultSrc && typeof r.size === 'number' ? Math.ceil(r.size * 4 / 3) : 0)
       await budgetPages(oldDb.note_files, size, opts.fileBudget ?? FILE_PAGE_BUDGET, fileCost, async (rows) => {
         const files: NoteFileRec[] = []
         const blobs: NoteBlobRec[] = []
         for (const r of rows as unknown as NoteFileRec[]) {
           const out = stripFile(r)
           if (!r.deleted) {
+            let bytes: Uint8Array
+            if (vaultSrc) {
+              try { bytes = await openBlobBytes(oldDb, r, { yieldBetween: true }) } catch {
+                // 아직 받지 못했거나 손상된 첨부: 메타 행만(동기화가 드라이브에서 받는다)
+                filesWithoutContent++
+                files.push(out)
+                continue
+              }
+            } else bytes = b64ToBytes(typeof r.data === 'string' ? r.data : '')
             // 묶음 밖에서 암호화(sealBlobRows가 큰 파일을 조각내고 양보한다). 내용 없는 첨부도 빈 blob을 둔다(평문 readFile과 같게).
-            const sealed = await sealBlobRows(newDb, r.id, b64ToBytes(typeof r.data === 'string' ? r.data : ''))
+            const sealed = await sealBlobRows(newDb, r.id, bytes)
             blobs.push(...sealed.rows)
             if (sealed.chunks) out.chunks = sealed.chunks
           }
@@ -282,7 +298,14 @@ export async function migrate(opts: {
     })
     counts[t] = n
   }
-  return { newName: newDb.name, counts }
+  return { newName: newDb.name, counts, filesWithoutContent }
+}
+
+/** 신고서 id 계획. 암호화 DB(1.0 이후)는 이미 결정적 id라 그대로 둔다(동기화 id가 바뀌면 안 된다). */
+async function reportPlan(oldDb: AppDB): Promise<{ reports: AbsenceReportRec[]; links: ReportAttendanceRec[] }> {
+  const reports = (await oldDb.absence_reports.toArray()) as AbsenceReportRec[]
+  const links = (await oldDb.report_attendance.toArray()) as ReportAttendanceRec[]
+  return oldDb.isVault ? { reports, links } : planReports(reports, links)
 }
 
 // ---- 확인 ----
@@ -343,10 +366,8 @@ async function rawGet(db: AppDB, table: string, ids: string[]): Promise<(Row | u
  */
 export async function verifyMigration(oldDb: AppDB, newDb: AppDB, samples = 20): Promise<VerifyResult> {
   const problems: string[] = []
-  const plan = planReports(
-    (await oldDb.absence_reports.toArray()) as AbsenceReportRec[],
-    (await oldDb.report_attendance.toArray()) as ReportAttendanceRec[],
-  )
+  const plan = await reportPlan(oldDb)
+  const vaultSrc = oldDb.isVault
   for (const t of COPY_ORDER) {
     try {
       const newCount = await newDb.table(t).count()
@@ -364,7 +385,10 @@ export async function verifyMigration(oldDb: AppDB, newDb: AppDB, samples = 20):
         if (all.length !== newCount) problems.push(`${t}: 행 수 ${all.length} → ${newCount}`)
         expected = pickSample(all, samples)
       } else {
-        const ids = (await oldDb.table(t).toCollection().primaryKeys()) as string[]
+        // 암호화 DB: 풀리는 행만 옮겨졌다(손상 행은 읽기에서 빠진다)
+        const ids = vaultSrc
+          ? ((await oldDb.table(t).toArray()) as Row[]).map((r) => r.id)
+          : ((await oldDb.table(t).toCollection().primaryKeys()) as string[])
         if (ids.length !== newCount) problems.push(`${t}: 행 수 ${ids.length} → ${newCount}`)
         const pick = pickSample(ids, samples)
         expected = ((await oldDb.table(t).bulkGet(pick)) as Row[]).filter(Boolean)
@@ -383,7 +407,10 @@ export async function verifyMigration(oldDb: AppDB, newDb: AppDB, samples = 20):
         for (let i = 0; i < expected.length; i++) {
           const o = expected[i] as unknown as NoteFileRec
           if (o.deleted) continue
-          const want = b64ToBytes(typeof o.data === 'string' ? o.data : '')
+          let want: Uint8Array
+          if (vaultSrc) {
+            try { want = await openBlobBytes(oldDb, o) } catch { continue } // 옛 DB에도 내용이 없던 첨부
+          } else want = b64ToBytes(typeof o.data === 'string' ? o.data : '')
           let back: Uint8Array | null = null
           try { back = await openBlobBytes(newDb, got[i] as unknown as NoteFileRec) } catch { back = null }
           if (!back || back.length !== want.length || back.some((b, j) => b !== want[j])) { problems.push(`note_files: 첨부 ${o.id} 내용이 다릅니다`); continue }
@@ -627,6 +654,27 @@ export async function cleanupOrphans(): Promise<string[]> {
     }
   }
   return removed
+}
+
+// ---- 다시 암호화(S6) 마무리 ----
+/**
+ * 다시 암호화한 새 DB의 meta 표시: { id: 'rekey', from: 옛 DB 이름, stage: 'copy' | 'delete-old' }.
+ * 새 DB를 만들 때 남기고, vault.store 뒤 옛 DB를 지운 다음에 지운다.
+ */
+export const REKEY_MARKER = 'rekey'
+
+/**
+ * 앱이 이 DB를 열었을 때(= vault.json이 이 DB를 가리킨다) 다시 암호화가 끝나지 않았으면 옛 DB를 지우고 표시를 지운다.
+ * 완료 행이 있어야만 한다(완료 행은 복사·확인 뒤에만 쓰므로 옛 DB의 자료는 모두 여기 있다). 지웠으면(표시가 있었으면) 참.
+ */
+export async function finishRekey(db: AppDB): Promise<boolean> {
+  const m = (await db.meta.get(REKEY_MARKER)) as Record<string, unknown> | undefined
+  if (!m) return false
+  if ((await db.meta.get('vault'))?.complete !== true) return false
+  const from = typeof m.from === 'string' ? m.from : ''
+  if (from && from !== db.name && from !== OLD_DB_NAME && (await dbExists(from))) await Dexie.delete(from)
+  await db.meta.delete(REKEY_MARKER)
+  return true
 }
 
 async function finalizeMeta(db: AppDB, from: string): Promise<void> {

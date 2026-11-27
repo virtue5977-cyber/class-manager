@@ -15,7 +15,7 @@ import { openVaultDb } from './vaultDb'
 import { fromBase64 } from '../backup/crypto'
 import {
   cleanupOrphans, discardNewVault, createNewVaultDb, filterDeviceLocal, finishMigration, markComplete, migrate, planReports, planStorage, resumeOrReset,
-  setupNewVault, verifyMigration, COPY_ORDER,
+  setupNewVault, verifyMigration, COPY_ORDER, finishRekey, REKEY_MARKER,
 } from './migrate'
 
 const ITER = 1000
@@ -633,5 +633,72 @@ describe('resumeOrReset: 이어 끝낼 때 BitLocker 안내', () => {
     await db.device_local.put({ id: 'bitlockerNoticeShown', value: T })
     db.close()
     expect(await resumeOrReset({ dbName: db.name, reset: async () => true, oldName, key: { dek, keyId } })).toEqual({ action: 'resumed', bitlocker: false })
+  })
+})
+
+describe('vault → vault 복사(S6 다시 암호화)', () => {
+  async function vaultSource() {
+    const old = await seedOld()
+    const { db, dek } = await fullSetup(old)
+    return { src: db, srcDek: dek }
+  }
+  test('명시적 옵션 없이는 암호화 DB를 옛 DB로 받지 않는다', async () => {
+    const { src } = await vaultSource()
+    const { dek, keyId } = newDek()
+    const dst = await createNewVaultDb(dek, keyId)
+    await expect(migrate({ oldDb: src, newDb: dst })).rejects.toThrow('옛 DB가 평문 DB가 아닙니다.')
+    src.close(); dst.close()
+  })
+  test('fromVault: 다른 열쇠의 새 DB로 그대로 복사(id·updated_at·첨부), 확인 통과, 원시 행은 새 열쇠로만 풀린다', async () => {
+    const { src, srcDek } = await vaultSource()
+    const { dek, keyId } = newDek()
+    const dst = await createNewVaultDb(dek, keyId)
+    const passKey = await derived()
+    const r = await migrate({ oldDb: src, newDb: dst, passKey, fromVault: true })
+    expect(r.counts.students).toBe(3)
+    expect(await dst.students.toArray()).toEqual(await src.students.toArray())
+    expect(await dst.absence_reports.toArray()).toEqual(await src.absence_reports.toArray())
+    expect(await dst.report_attendance.toArray()).toEqual(await src.report_attendance.toArray())
+    expect(new TextDecoder().decode((await readFile(dst, 'f1')).bytes)).toBe(ATTACH)
+    expect((await getCachedKey(dst))!.salt).toEqual(passKey.salt)
+    expect((await dst.device_local.get('deviceId'))?.value).toBe('abcd1234-0000-4000-8000-000000000000')
+    const v = await verifyMigration(src, dst)
+    expect(v).toEqual({ ok: true, problems: [] })
+    // 옛 열쇠로는 새 DB가 풀리지 않는다
+    const wrong = openVaultDb(dst.name, srcDek)
+    expect(await wrong.students.toArray()).toEqual([])
+    wrong.close()
+    src.close(); dst.close()
+  })
+})
+
+describe('finishRekey', () => {
+  test('rekey 표시가 가리키는 옛 DB를 지우고 표시를 지운다', async () => {
+    const { dek, keyId } = newDek()
+    const oldDb = openVaultDb('watson-old-' + crypto.randomUUID().slice(0, 4), dek)
+    await oldDb.open()
+    oldDb.close()
+    const k = newDek()
+    const db = await createNewVaultDb(k.dek, k.keyId)
+    await markComplete(db, k.dek, k.keyId)
+    await db.meta.put({ id: REKEY_MARKER, from: oldDb.name, stage: 'copy' })
+    expect(await finishRekey(db)).toBe(true)
+    expect(await Dexie.exists(oldDb.name)).toBe(false)
+    expect(await db.meta.get(REKEY_MARKER)).toBeUndefined()
+    expect(await finishRekey(db)).toBe(false)
+    void keyId
+    db.close()
+  })
+  test('완료 행이 없으면 옛 DB를 지우지 않는다', async () => {
+    const { dek } = newDek()
+    const oldDb = openVaultDb('watson-old2-' + crypto.randomUUID().slice(0, 4), dek)
+    await oldDb.open()
+    oldDb.close()
+    const k = newDek()
+    const db = await createNewVaultDb(k.dek, k.keyId)
+    await db.meta.put({ id: REKEY_MARKER, from: oldDb.name, stage: 'copy' })
+    expect(await finishRekey(db)).toBe(false)
+    expect(await Dexie.exists(oldDb.name)).toBe(true)
+    db.close()
   })
 })
