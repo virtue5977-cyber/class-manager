@@ -49,11 +49,21 @@ export interface SyncState {
   lastError?: { code: SyncErrorCode; at: string } | null
   keyUpdatedAt?: string
   firstMergeDone: boolean
+  /** 합친 뒤 올려야 하는데 아직 못 올렸다(충돌·겹침 정리·신고서 맞춤 결과 등, dirty만으로는 안 보이는 것). */
+  pendingUpload?: boolean
+  /** 마지막 지움 표시 정리 시각(ISO) */
+  lastGc?: string
+  /** 마지막 합치기 전 안전 백업 날짜(YYYY-MM-DD, 이 PC 시간) */
+  lastSafetyBackup?: string
+  /** 드라이브에 보이는 기기(이름은 컴퓨터 이름) */
+  devices?: SyncDevice[]
 }
+
+export interface SyncDevice { deviceId: string; deviceName: string; modifiedTime: string; stale: boolean; mine: boolean }
 
 const ID = 'sync'
 
-const KEYS = ['enabled', 'rootId', 'deviceName', 'lastUploadedMax', 'seen', 'lastOk', 'lastError', 'keyUpdatedAt', 'firstMergeDone'] as const
+const KEYS = ['enabled', 'rootId', 'deviceName', 'lastUploadedMax', 'seen', 'lastOk', 'lastError', 'keyUpdatedAt', 'firstMergeDone', 'pendingUpload', 'lastGc', 'lastSafetyBackup', 'devices'] as const
 
 function validLastError(v: unknown): { code: SyncErrorCode; at: string } | null {
   if (v === null) return null
@@ -91,16 +101,24 @@ export async function setSyncState(db: AppDB, patch: Partial<SyncState>): Promis
 }
 
 /**
- * SYNC_TABLES 어디든 max(updated_at) > lastUploadedMax 이면 true.
+ * SYNC_TABLES 어디든 max(updated_at) > lastUploadedMax 인 행이 있고, 그 행이 드라이브와 맞춘 그대로(base의 at === updated_at)가
+ * 아니면 true. base 예외가 있어 다른 PC의 앞선 시계 도장으로 받은 행 때문에 늘 dirty가 되지 않고, 워터마크를 남의 도장까지
+ * 올리지 않아도 된다(그 아래로 찍힌 내 고침을 놓치지 않게).
  * updated_at은 암호화 DB에서도 평문 칸이라 readRaw(복호화 없이 원시 행)에서 그대로 읽는다. 복호화 없음.
  * note_files는 created_at도 보지만 암호화 DB에서는 봉인되므로 생성 시 updated_at이 함께 찍히는 점에 기댄다.
  */
 export async function isDirty(db: AppDB): Promise<boolean> {
   const last = (await getSyncState(db)).lastUploadedMax ?? ''
   for (const t of SYNC_TABLES) {
+    const cands: Record<string, unknown>[] = []
     for (const r of await readRaw(db, t)) {
-      if (typeof r.updated_at === 'string' && r.updated_at > last) return true
-      if (t === 'note_files' && typeof r.created_at === 'string' && r.created_at > last) return true
+      if ((typeof r.updated_at === 'string' && r.updated_at > last) || (t === 'note_files' && typeof r.created_at === 'string' && r.created_at > last)) cands.push(r)
+    }
+    if (!cands.length) continue
+    const bases = await db.sync_rows.bulkGet(cands.map((r) => baseId(t, String(r.id))))
+    for (let i = 0; i < cands.length; i++) {
+      const b = bases[i]
+      if (!b || typeof b.at !== 'string' || b.at !== cands[i].updated_at) return true
     }
   }
   return false
@@ -108,10 +126,24 @@ export async function isDirty(db: AppDB): Promise<boolean> {
 
 const baseId = (table: string, id: string) => table + '\u0000' + id
 
-/** 마지막으로 합친 행의 해시를 적는다. 호출자의 트랜잭션(sync_rows 포함) 안에서도 쓸 수 있다. */
-export async function markBase(db: AppDB, entries: { table: string; id: string; hash: string }[]): Promise<void> {
+export interface BaseEntry { hash: string; at?: string }
+
+/**
+ * 마지막으로 합친 행의 해시를 적는다. at은 그 값의 updated_at(평문 칸이라 새로 드러나는 것 없음): isDirty가 받은 행을
+ * 내 고침으로 보지 않게 한다. 호출자의 트랜잭션(sync_rows 포함) 안에서도 쓸 수 있다.
+ */
+export async function markBase(db: AppDB, entries: { table: string; id: string; hash: string; at?: string }[]): Promise<void> {
   if (entries.length === 0) return
-  await db.sync_rows.bulkPut(entries.map((e) => ({ id: baseId(e.table, e.id), hash: e.hash })))
+  await db.sync_rows.bulkPut(entries.map((e) => (e.at === undefined ? { id: baseId(e.table, e.id), hash: e.hash } : { id: baseId(e.table, e.id), hash: e.hash, at: e.at })))
+}
+
+export async function getBaseEntries(db: AppDB, table: string, ids: string[]): Promise<Map<string, BaseEntry>> {
+  const rows = await db.sync_rows.bulkGet(ids.map((i) => baseId(table, i)))
+  const out = new Map<string, BaseEntry>()
+  rows.forEach((r, i) => {
+    if (r && typeof r.hash === 'string') out.set(ids[i], typeof r.at === 'string' ? { hash: r.hash, at: r.at } : { hash: r.hash })
+  })
+  return out
 }
 
 export async function getBase(db: AppDB, table: string, ids: string[]): Promise<Map<string, string>> {

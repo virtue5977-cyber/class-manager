@@ -60,7 +60,7 @@ export function decide(p: {
 }
 
 /** 바뀐 행의 새 updated_at: 그 행과 그 묶음 승자 중 늦은 쪽 + 1ms. 자료만으로 정해져 PC마다 같다(시계 무관). */
-function bump(a: string, b: string): string {
+export function bump(a: string, b: string): string {
   const t = Math.max(Date.parse(a), Date.parse(b))
   if (Number.isNaN(t)) throw new Error('updated_at이 ISO 날짜가 아닙니다')
   return new Date(t + 1).toISOString()

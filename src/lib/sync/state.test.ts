@@ -106,3 +106,24 @@ describe('sync state', () => {
     expect(await getSyncState(db)).toMatchObject({ rootId: 'r', deviceName: 'n', lastOk: 'o' })
   })
 })
+
+describe('isDirty와 base at', () => {
+  test('워터마크 위의 행도 base at이 같으면(받은 그대로) dirty 아님, 고치면 dirty', async () => {
+    const db = createDb('test-' + crypto.randomUUID())
+    const rec = newRecord({ school_year: 2026, grade: 1, class_no: 1 })
+    await db.classes.add(rec)
+    const stored = (await db.classes.get(rec.id))!
+    expect(await isDirty(db)).toBe(true)
+    await markBase(db, [{ table: 'classes', id: rec.id, hash: H('x'), at: stored.updated_at }])
+    expect(await isDirty(db)).toBe(false)
+    await db.classes.put({ ...stored, grade: 2, updated_at: new Date(Date.parse(stored.updated_at) + 5).toISOString() })
+    expect(await isDirty(db)).toBe(true)
+  })
+  test('base at이 없으면(옛 base) 예외가 아니다', async () => {
+    const db = createDb('test-' + crypto.randomUUID())
+    const rec = newRecord({ school_year: 2026, grade: 1, class_no: 1 })
+    await db.classes.add(rec)
+    await markBase(db, [{ table: 'classes', id: rec.id, hash: H('x') }])
+    expect(await isDirty(db)).toBe(true)
+  })
+})
